@@ -83,7 +83,7 @@ class WhatsAppService {
   private connecting = false;
   private activeQR: string | undefined;
   private qrResolve: ((qr: string) => void) | null = null;
-  private botEnabled = false;
+  private botEnabled = true; // Auto-enabled on connect so bot replies immediately
   // Auto-load bot state from global
   constructor() {
     if (typeof globalThis !== "undefined") {
@@ -93,7 +93,8 @@ class WhatsAppService {
   }
   private userContexts = new Map<string, { role: string; content: string }[]>();
   private botModel = "gemini-2.5-flash";
-  private botSystemPrompt = "You are a helpful WhatsApp AI assistant. Keep responses concise and friendly. You can help with questions, tasks, and general conversation.";
+  private botSystemPrompt = "You are a helpful WhatsApp AI assistant. Keep responses concise and friendly. You can help with questions, tasks, and general conversation. Respond in the same language the user writes in.";
+  private connectedNumber: string | null = null; // The WhatsApp number that's connected
 
   connect(): Promise<string> {
     return new Promise<string>(async (resolve, reject) => {
@@ -148,6 +149,21 @@ class WhatsAppService {
             this.activeQR = undefined;
             this.qrResolve?.("");
             this.qrResolve = null;
+
+            // Auto-enable bot on connect so auto-reply works immediately
+            this.botEnabled = true;
+            console.log('[WhatsApp] Connected! Bot auto-reply is ENABLED. Messages will receive AI responses.');
+
+            // Try to get the connected phone number
+            try {
+              const meId = this.sock?.user?.id;
+              if (meId) {
+                // Extract just the phone number part from JID like 1234567890@s.whatsapp.net
+                this.connectedNumber = meId.split('@')[0] || meId;
+                console.log(`[WhatsApp] Connected as: ${this.connectedNumber}`);
+              }
+            } catch {}
+
             this.emit("whatsapp_status", this.state);
           }
 
@@ -245,8 +261,8 @@ class WhatsAppService {
     this.emit("whatsapp_status", this.state);
   }
 
-  getStatus(): { connected: boolean; qr?: string } {
-    return { ...this.state };
+  getStatus(): { connected: boolean; qr?: string; botEnabled?: boolean; connectedNumber?: string | null } {
+    return { ...this.state, botEnabled: this.botEnabled, connectedNumber: this.connectedNumber };
   }
 
   async sendMessage(rawJid: string, text: string): Promise<void> {
@@ -278,19 +294,22 @@ class WhatsAppService {
   }
 
   // Bot methods
-  setBotEnabled(enabled: boolean) { 
-    this.botEnabled = enabled; 
+  setBotEnabled(enabled: boolean) {
+    this.botEnabled = enabled;
     (globalThis as any).__whatsapp_bot_enabled = enabled;
-    console.log(`[WhatsApp Bot] ${enabled ? "ENABLED" : "DISABLED"}`);
+    console.log(`[WhatsApp Bot] ${enabled ? 'ENABLED' : 'DISABLED'}`);
   }
   isBotEnabled(): boolean { return this.botEnabled; }
   setBotConfig(config: { model?: string; systemPrompt?: string }) {
     if (config.model) this.botModel = config.model;
     if (config.systemPrompt) this.botSystemPrompt = config.systemPrompt;
   }
-  getBotConfig() { return { model: this.botModel, systemPrompt: this.botSystemPrompt, enabled: this.botEnabled }; }
+  getBotConfig() { return { model: this.botModel, systemPrompt: this.botSystemPrompt, enabled: this.botEnabled, connectedNumber: this.connectedNumber }; }
 
   private async handleBotReply(jid: string, userMessage: string) {
+    console.log(`[WhatsApp Bot] >>> Incoming message from ${jid}: "${userMessage.slice(0, 80)}"`);
+    console.log(`[WhatsApp Bot] Bot enabled: ${this.botEnabled}, Socket: ${!!this.sock}, Connected: ${this.state.connected}`);
+    
     try {
       // Validate jid before any operations
       if (!jid || !jid.includes('@')) {
@@ -298,9 +317,16 @@ class WhatsAppService {
         return;
       }
       
+      // Skip group messages by default (can be configured later)
+      if (jid.endsWith('@g.us')) {
+        console.log(`[WhatsApp Bot] Skipping group message from ${jid}`);
+        return;
+      }
+      
       // Send typing indicator
       try {
         await this.sock.sendPresenceUpdate("composing", jid);
+        console.log('[WhatsApp Bot] Typing indicator sent');
       } catch (e) {
         console.warn('[WhatsApp Bot] Could not send typing indicator:', e);
       }
@@ -318,7 +344,7 @@ class WhatsAppService {
       const controller = new AbortController();
       setTimeout(() => controller.abort(), 90000);
 
-      console.log(`[WhatsApp Bot] Processing reply for ${jid}, message: ${userMessage.slice(0, 50)}...`);
+      console.log(`[WhatsApp Bot] Calling AI API at ${apiUrl}/api/gemini/chat with model: ${this.botModel}`);
 
       const res = await fetch(`${apiUrl}/api/gemini/chat`, {
         method: "POST",
@@ -334,8 +360,11 @@ class WhatsAppService {
 
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
+        console.error(`[WhatsApp Bot] API returned ${res.status}: ${errText.slice(0, 300)}`);
         throw new Error(`Chat API error: ${res.status} ${errText.slice(0, 200)}`);
       }
+
+      console.log('[WhatsApp Bot] API response OK, reading SSE stream...');
 
       // Read SSE stream to get full response
       const reader = res.body?.getReader();
@@ -393,20 +422,16 @@ class WhatsAppService {
       await this.sock.sendMessage(jid, { text: cleanResponse });
       this.emit("whatsapp_message", { from: "bot", text: cleanResponse, timestamp: Date.now() });
       
-      console.log(`[WhatsApp Bot] Reply sent to ${jid}: ${cleanResponse.slice(0, 80)}...`);
+      console.log(`[WhatsApp Bot] <<< Reply sent to ${jid}: "${cleanResponse.slice(0, 80)}..."`);
 
       // Stop typing indicator
       await this.sock.sendPresenceUpdate("paused", jid);
     } catch (error: any) {
-      console.error("[WhatsApp Bot] Reply error:", error.message);
+      console.error(`[WhatsApp Bot] Reply FAILED for ${jid}: ${error.message}`);
+      // Don't try to send error messages to WhatsApp - could cause loops
       try {
-        await this.sock.sendMessage(jid, { 
-          text: "Sorry, I encountered an error processing your message. Please try again later." 
-        });
         await this.sock.sendPresenceUpdate("paused", jid);
-      } catch (sendErr) {
-        console.error("[WhatsApp Bot] Failed to send error message:", sendErr);
-      }
+      } catch {}
     }
   }
 

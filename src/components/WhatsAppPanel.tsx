@@ -43,6 +43,8 @@ interface WhatsAppMessage {
 interface WhatsAppStatus {
   connected: boolean;
   qr?: string;
+  botEnabled?: boolean;
+  connectedNumber?: string | null;
 }
 
 export function WhatsAppPanel({
@@ -58,7 +60,7 @@ export function WhatsAppPanel({
   const [inputText, setInputText] = useState("");
   const [inputJid, setInputJid] = useState("");
   const [sending, setSending] = useState(false);
-  const [botEnabled, setBotEnabled] = useState(false);
+  const [botEnabled, setBotEnabled] = useState(true); // Bot is enabled by default now
   const [botModel, setBotModel] = useState("gemini-2.5-flash");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -75,6 +77,10 @@ export function WhatsAppPanel({
         });
         if (data.connected) {
           setConnecting(false);
+          // Sync bot enabled state from server
+          if (data.botEnabled !== undefined) {
+            setBotEnabled(data.botEnabled);
+          }
         }
       }
     } catch {}
@@ -139,12 +145,21 @@ export function WhatsAppPanel({
     }
   };
 
-  // Load bot config
+  // Load bot config + status with connected number
   useEffect(() => {
     if (!open || !status.connected) return;
     fetch("/api/whatsapp/bot").then(r => r.json()).then(d => {
-      setBotEnabled(d.enabled || false);
+      setBotEnabled(d.enabled !== undefined ? d.enabled : true);
       if (d.model) setBotModel(d.model);
+    }).catch(() => {});
+    // Also fetch status to get connectedNumber
+    fetch("/api/whatsapp/status").then(r => r.json()).then(d => {
+      if (d.connectedNumber) {
+        setStatus((prev) => ({ ...prev, connectedNumber: d.connectedNumber }));
+      }
+      if (d.botEnabled !== undefined) {
+        setBotEnabled(d.botEnabled);
+      }
     }).catch(() => {});
   }, [open, status.connected]);
 
@@ -304,6 +319,24 @@ export function WhatsAppPanel({
             )}
           </div>
 
+          {/* Connected Number Info */}
+          {status.connected && (status as any).connectedNumber && (
+            <div className="mb-3 p-2.5 rounded-lg bg-emerald-500/5 border border-emerald-500/10">
+              <div className="flex items-center gap-2">
+                <div className="h-6 w-6 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
+                  <MessageCircle className="h-3 w-3 text-emerald-500" />
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground">Connected as</p>
+                  <p className="text-xs font-mono font-semibold">+{(status as any).connectedNumber}</p>
+                </div>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1.5 ml-8">
+                Anyone who messages this number will receive AI auto-replies
+              </p>
+            </div>
+          )}
+
           {/* Bot Controls */}
           {status.connected && (
             <div className="mb-4 p-3 rounded-xl bg-primary/5 border border-primary/10 space-y-2">
@@ -317,11 +350,33 @@ export function WhatsAppPanel({
                   onCheckedChange={handleBotToggle}
                 />
               </div>
-              {botEnabled && (
+              {botEnabled ? (
+                <div className="space-y-1">
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                    Bot is ACTIVE - auto-replying to all incoming messages
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Using model: {botModel || "AI"}. Messages to your WhatsApp number get AI responses.
+                  </p>
+                </div>
+              ) : (
                 <p className="text-[10px] text-muted-foreground">
-                  Agent will automatically reply to WhatsApp messages using {botModel || "AI"}
+                  Bot is OFF - incoming messages will not receive auto-replies
                 </p>
               )}
+            </div>
+          )}
+
+          {/* How it works explanation */}
+          {status.connected && (
+            <div className="mb-4 p-2.5 rounded-lg bg-muted/30 border border-border/50">
+              <p className="text-[10px] font-semibold text-muted-foreground mb-1">How Auto-Reply Works:</p>
+              <ol className="text-[10px] text-muted-foreground space-y-0.5 ml-3 list-decimal">
+                <li>Your WhatsApp number (scanned above) acts as the bot number</li>
+                <li>When anyone sends a message to this number, the AI generates a reply</li>
+                <li>The reply is sent automatically from your WhatsApp number</li>
+                <li>No separate number needed - your phone stays connected</li>
+              </ol>
             </div>
           )}
 

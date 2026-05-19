@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Star, Pencil, Download, Trash2, MoreHorizontal } from "lucide-react";
 
 interface ChatActionMenuProps {
@@ -12,10 +13,56 @@ interface ChatActionMenuProps {
   onDelete: () => void;
 }
 
+interface ColorScheme {
+  btnBg: string;
+  btnBgHover: string;
+  btnBorder: string;
+  btnText: string;
+  btnTextHover: string;
+  menuBg: string;
+  menuBorder: string;
+  menuShadow: string;
+  itemText: string;
+  itemHoverBg: string;
+  destructiveHoverBg: string;
+  separatorBg: string;
+}
+
+const DARK_COLORS: ColorScheme = {
+  btnBg: "rgba(255,255,255,0.06)",
+  btnBgHover: "rgba(255,255,255,0.12)",
+  btnBorder: "rgba(255,255,255,0.1)",
+  btnText: "rgba(255,255,255,0.55)",
+  btnTextHover: "rgba(255,255,255,0.9)",
+  menuBg: "#1e1e2e",
+  menuBorder: "rgba(255,255,255,0.1)",
+  menuShadow: "0 8px 24px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)",
+  itemText: "rgba(255,255,255,0.85)",
+  itemHoverBg: "rgba(255,255,255,0.06)",
+  destructiveHoverBg: "rgba(239,68,68,0.15)",
+  separatorBg: "rgba(255,255,255,0.08)",
+};
+
+const LIGHT_COLORS: ColorScheme = {
+  btnBg: "rgba(0,0,0,0.04)",
+  btnBgHover: "rgba(0,0,0,0.08)",
+  btnBorder: "rgba(0,0,0,0.1)",
+  btnText: "rgba(0,0,0,0.5)",
+  btnTextHover: "rgba(0,0,0,0.8)",
+  menuBg: "#ffffff",
+  menuBorder: "rgba(0,0,0,0.12)",
+  menuShadow: "0 8px 24px rgba(0,0,0,0.15), 0 2px 8px rgba(0,0,0,0.08)",
+  itemText: "rgba(0,0,0,0.8)",
+  itemHoverBg: "rgba(0,0,0,0.04)",
+  destructiveHoverBg: "rgba(239,68,68,0.08)",
+  separatorBg: "rgba(0,0,0,0.08)",
+};
+
 /**
  * A custom dropdown menu that does NOT use Radix UI Portal.
- * Renders directly in the DOM tree with inline styles for guaranteed visibility.
- * Uses a global click-away listener to close.
+ * Uses createPortal + position:fixed for the dropdown panel to avoid being
+ * clipped by any parent overflow:hidden/scroll containers (e.g. ScrollArea).
+ * Calculates position dynamically from the trigger button's bounding rect.
  * Supports both light and dark modes.
  */
 export function ChatActionMenu({
@@ -27,8 +74,13 @@ export function ChatActionMenu({
   onDelete,
 }: ChatActionMenuProps) {
   const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [isDark, setIsDark] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  // Ensure we're mounted (for createPortal)
+  useEffect(() => { setMounted(true); }, []);
 
   // Detect dark mode
   useEffect(() => {
@@ -39,72 +91,166 @@ export function ChatActionMenu({
       setIsDark(hasDark);
     };
     checkDark();
-    // Observe class changes on <html>
     const observer = new MutationObserver(checkDark);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme"] });
     return () => observer.disconnect();
   }, []);
 
-  // Colors based on theme
-  const colors = isDark ? {
-    btnBg: "rgba(255,255,255,0.06)",
-    btnBgHover: "rgba(255,255,255,0.12)",
-    btnBorder: "rgba(255,255,255,0.1)",
-    btnText: "rgba(255,255,255,0.55)",
-    btnTextHover: "rgba(255,255,255,0.9)",
-    menuBg: "#1e1e2e",
-    menuBorder: "rgba(255,255,255,0.1)",
-    menuShadow: "0 4px 16px rgba(0,0,0,0.4), 0 1px 4px rgba(0,0,0,0.3)",
-    itemText: "rgba(255,255,255,0.85)",
-    itemHoverBg: "rgba(255,255,255,0.06)",
-    destructiveHoverBg: "rgba(239,68,68,0.15)",
-    separatorBg: "rgba(255,255,255,0.08)",
-  } : {
-    btnBg: "rgba(0,0,0,0.04)",
-    btnBgHover: "rgba(0,0,0,0.08)",
-    btnBorder: "rgba(0,0,0,0.1)",
-    btnText: "rgba(0,0,0,0.5)",
-    btnTextHover: "rgba(0,0,0,0.8)",
-    menuBg: "#ffffff",
-    menuBorder: "rgba(0,0,0,0.12)",
-    menuShadow: "0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)",
-    itemText: "rgba(0,0,0,0.8)",
-    itemHoverBg: "rgba(0,0,0,0.04)",
-    destructiveHoverBg: "rgba(239,68,68,0.08)",
-    separatorBg: "rgba(0,0,0,0.08)",
-  };
+  const colors = isDark ? DARK_COLORS : LIGHT_COLORS;
 
   // Close on click outside
-  const handleClickOutside = useCallback((e: MouseEvent) => {
-    if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+  useEffect(() => {
+    if (!open) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      // Don't close if clicking the trigger
+      if (triggerRef.current && triggerRef.current.contains(target)) return;
+      // Don't close if clicking inside the menu
+      const menuEl = document.querySelector('[data-chat-action-menu="true"]');
+      if (menuEl && menuEl.contains(target)) return;
       setOpen(false);
-    }
+    };
+
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+
+    // Use small delay so the current click doesn't immediately close
+    const timer = setTimeout(() => {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleEsc);
+    }, 10);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEsc);
+    };
+  }, [open]);
+
+  // Calculate and update menu position
+  const updatePosition = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const menuWidth = 192;
+    // Position below and right-aligned with button
+    let top = rect.bottom + 4;
+    let left = rect.right - menuWidth;
+    // Clamp within viewport
+    top = Math.max(8, Math.min(top, window.innerHeight - 320));
+    left = Math.max(8, Math.min(left, window.innerWidth - menuWidth - 8));
+    setMenuPos({ top, left });
   }, []);
 
+  // Update position when menu opens or window scrolls/resizes
   useEffect(() => {
-    if (open) {
-      document.addEventListener("mousedown", handleClickOutside);
-      const handleEsc = (e: KeyboardEvent) => {
-        if (e.key === "Escape") setOpen(false);
-      };
-      document.addEventListener("keydown", handleEsc);
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
-        document.removeEventListener("keydown", handleEsc);
-      };
-    }
-  }, [open, handleClickOutside]);
+    if (!open) return;
+    updatePosition();
+
+    const handleScroll = () => updatePosition();
+    const handleResize = () => updatePosition();
+
+    window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [open, updatePosition]);
+
+  const handleToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setOpen((prev) => !prev);
+  };
+
+  const handleAction = (action: () => void) => {
+    action();
+    setOpen(false);
+  };
+
+  // Portal dropdown menu
+  const menuPortal = mounted && open && menuPos
+    ? createPortal(
+        <div
+          data-chat-action-menu="true"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: "fixed",
+            top: menuPos.top,
+            left: menuPos.left,
+            zIndex: 99999,
+            minWidth: 192,
+            background: colors.menuBg,
+            border: `1px solid ${colors.menuBorder}`,
+            borderRadius: 8,
+            boxShadow: colors.menuShadow,
+            padding: "4px 0",
+            overflow: "hidden",
+            opacity: 1,
+            transform: "scale(1)",
+            transition: "opacity 0.1s, transform 0.1s",
+          }}
+        >
+          {/* Favorite / Remove from Favorites */}
+          <MenuItem
+            icon={<Star style={{ width: 14, height: 14, color: "#f59e0b", fill: isFavorite ? "#f59e0b" : "none" }} />}
+            label={isFavorite ? "Remove from Favorites" : "Add to Favorites"}
+            onClick={(e) => { onToggleFavorite(e as React.MouseEvent); setOpen(false); }}
+            colors={colors}
+          />
+
+          {/* Rename */}
+          <MenuItem
+            icon={<Pencil style={{ width: 14, height: 14 }} />}
+            label="Rename"
+            onClick={() => handleAction(onRename)}
+            colors={colors}
+          />
+
+          {/* Separator */}
+          <div style={{ height: 1, background: colors.separatorBg, margin: "4px 0" }} />
+
+          {/* Export Markdown */}
+          <MenuItem
+            icon={<Download style={{ width: 14, height: 14, color: "#10b981" }} />}
+            label="Export Markdown"
+            onClick={() => handleAction(onExportMarkdown)}
+            colors={colors}
+          />
+
+          {/* Export JSON */}
+          <MenuItem
+            icon={<Download style={{ width: 14, height: 14, color: "#10b981" }} />}
+            label="Export JSON"
+            onClick={() => handleAction(onExportJSON)}
+            colors={colors}
+          />
+
+          {/* Separator */}
+          <div style={{ height: 1, background: colors.separatorBg, margin: "4px 0" }} />
+
+          {/* Delete */}
+          <MenuItem
+            icon={<Trash2 style={{ width: 14, height: 14, color: "#ef4444" }} />}
+            label="Delete"
+            onClick={() => handleAction(onDelete)}
+            destructive
+            colors={colors}
+          />
+        </div>,
+        document.body
+      )
+    : null;
 
   return (
-    <div ref={menuRef} style={{ position: "relative", flexShrink: 0 }}>
-      {/* ⋮ Trigger button - ALWAYS VISIBLE with inline styles */}
+    <>
+      {/* Trigger button - ALWAYS VISIBLE with inline styles */}
       <button
+        ref={triggerRef}
         type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          setOpen((prev) => !prev);
-        }}
+        onClick={handleToggle}
         style={{
           width: 28,
           height: 28,
@@ -134,74 +280,9 @@ export function ChatActionMenu({
         <MoreHorizontal style={{ width: 16, height: 16, pointerEvents: "none" }} />
       </button>
 
-      {/* Dropdown panel - positioned absolutely, NO portal */}
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            right: 0,
-            top: "100%",
-            zIndex: 9999,
-            minWidth: 192,
-            marginTop: 4,
-            background: colors.menuBg,
-            border: `1px solid ${colors.menuBorder}`,
-            borderRadius: 8,
-            boxShadow: colors.menuShadow,
-            padding: "4px 0",
-            overflow: "hidden",
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Favorite / Remove from Favorites */}
-          <MenuItem
-            icon={<Star style={{ width: 14, height: 14, color: "#f59e0b", fill: isFavorite ? "#f59e0b" : "none" }} />}
-            label={isFavorite ? "Remove from Favorites" : "Add to Favorites"}
-            onClick={(e) => { onToggleFavorite(e); setOpen(false); }}
-            colors={colors}
-          />
-
-          {/* Rename */}
-          <MenuItem
-            icon={<Pencil style={{ width: 14, height: 14 }} />}
-            label="Rename"
-            onClick={() => { onRename(); setOpen(false); }}
-            colors={colors}
-          />
-
-          {/* Separator */}
-          <div style={{ height: 1, background: colors.separatorBg, margin: "4px 0" }} />
-
-          {/* Export Markdown */}
-          <MenuItem
-            icon={<Download style={{ width: 14, height: 14, color: "#10b981" }} />}
-            label="Export Markdown"
-            onClick={() => { onExportMarkdown(); setOpen(false); }}
-            colors={colors}
-          />
-
-          {/* Export JSON */}
-          <MenuItem
-            icon={<Download style={{ width: 14, height: 14, color: "#10b981" }} />}
-            label="Export JSON"
-            onClick={() => { onExportJSON(); setOpen(false); }}
-            colors={colors}
-          />
-
-          {/* Separator */}
-          <div style={{ height: 1, background: colors.separatorBg, margin: "4px 0" }} />
-
-          {/* Delete */}
-          <MenuItem
-            icon={<Trash2 style={{ width: 14, height: 14, color: "#ef4444" }} />}
-            label="Delete"
-            onClick={() => { onDelete(); setOpen(false); }}
-            destructive
-            colors={colors}
-          />
-        </div>
-      )}
-    </div>
+      {/* Dropdown rendered via portal at document.body - NOT affected by parent overflow */}
+      {menuPortal}
+    </>
   );
 }
 

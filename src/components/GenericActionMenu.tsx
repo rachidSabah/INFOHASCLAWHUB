@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 
 interface MenuAction {
   icon: React.ReactNode;
@@ -13,14 +14,63 @@ interface GenericActionMenuProps {
   actions: MenuAction[];
 }
 
+interface ColorScheme {
+  btnBg: string;
+  btnBgHover: string;
+  btnBorder: string;
+  btnText: string;
+  btnTextHover: string;
+  menuBg: string;
+  menuBorder: string;
+  menuShadow: string;
+  itemText: string;
+  itemHoverBg: string;
+  destructiveHoverBg: string;
+  separatorBg: string;
+}
+
+const DARK_COLORS: ColorScheme = {
+  btnBg: "rgba(255,255,255,0.06)",
+  btnBgHover: "rgba(255,255,255,0.12)",
+  btnBorder: "rgba(255,255,255,0.1)",
+  btnText: "rgba(255,255,255,0.55)",
+  btnTextHover: "rgba(255,255,255,0.9)",
+  menuBg: "#1e1e2e",
+  menuBorder: "rgba(255,255,255,0.1)",
+  menuShadow: "0 8px 24px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)",
+  itemText: "rgba(255,255,255,0.85)",
+  itemHoverBg: "rgba(255,255,255,0.06)",
+  destructiveHoverBg: "rgba(239,68,68,0.15)",
+  separatorBg: "rgba(255,255,255,0.08)",
+};
+
+const LIGHT_COLORS: ColorScheme = {
+  btnBg: "rgba(0,0,0,0.04)",
+  btnBgHover: "rgba(0,0,0,0.08)",
+  btnBorder: "rgba(0,0,0,0.1)",
+  btnText: "rgba(0,0,0,0.5)",
+  btnTextHover: "rgba(0,0,0,0.8)",
+  menuBg: "#ffffff",
+  menuBorder: "rgba(0,0,0,0.12)",
+  menuShadow: "0 8px 24px rgba(0,0,0,0.15), 0 2px 8px rgba(0,0,0,0.08)",
+  itemText: "rgba(0,0,0,0.8)",
+  itemHoverBg: "rgba(0,0,0,0.04)",
+  destructiveHoverBg: "rgba(239,68,68,0.08)",
+  separatorBg: "rgba(0,0,0,0.08)",
+};
+
 /**
- * Generic dropdown menu using inline styles (no Radix, no Portal).
- * Same approach as ChatActionMenu but for arbitrary actions.
+ * Generic dropdown menu using createPortal + position:fixed (no Radix, no Portal).
+ * Uses the same approach as ChatActionMenu to avoid overflow clipping.
  */
 export function GenericActionMenu({ actions }: GenericActionMenuProps) {
   const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [isDark, setIsDark] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     const checkDark = () => {
@@ -35,79 +85,76 @@ export function GenericActionMenu({ actions }: GenericActionMenuProps) {
     return () => observer.disconnect();
   }, []);
 
-  const colors = isDark ? {
-    btnBg: "rgba(255,255,255,0.06)",
-    btnBgHover: "rgba(255,255,255,0.12)",
-    btnBorder: "rgba(255,255,255,0.1)",
-    btnText: "rgba(255,255,255,0.55)",
-    btnTextHover: "rgba(255,255,255,0.9)",
-    menuBg: "#1e1e2e",
-    menuBorder: "rgba(255,255,255,0.1)",
-    menuShadow: "0 4px 16px rgba(0,0,0,0.4), 0 1px 4px rgba(0,0,0,0.3)",
-    itemText: "rgba(255,255,255,0.85)",
-    itemHoverBg: "rgba(255,255,255,0.06)",
-    destructiveHoverBg: "rgba(239,68,68,0.15)",
-    separatorBg: "rgba(255,255,255,0.08)",
-  } : {
-    btnBg: "rgba(0,0,0,0.04)",
-    btnBgHover: "rgba(0,0,0,0.08)",
-    btnBorder: "rgba(0,0,0,0.1)",
-    btnText: "rgba(0,0,0,0.5)",
-    btnTextHover: "rgba(0,0,0,0.8)",
-    menuBg: "#ffffff",
-    menuBorder: "rgba(0,0,0,0.12)",
-    menuShadow: "0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)",
-    itemText: "rgba(0,0,0,0.8)",
-    itemHoverBg: "rgba(0,0,0,0.04)",
-    destructiveHoverBg: "rgba(239,68,68,0.08)",
-    separatorBg: "rgba(0,0,0,0.08)",
-  };
+  const colors = isDark ? DARK_COLORS : LIGHT_COLORS;
 
-  const handleClickOutside = useCallback((e: MouseEvent) => {
-    if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+  useEffect(() => {
+    if (!open) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (triggerRef.current && triggerRef.current.contains(target)) return;
+      const menuEl = document.querySelector('[data-generic-action-menu="true"]');
+      if (menuEl && menuEl.contains(target)) return;
       setOpen(false);
-    }
+    };
+
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+
+    const timer = setTimeout(() => {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleEsc);
+    }, 10);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEsc);
+    };
+  }, [open]);
+
+  const updatePosition = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const menuWidth = 160;
+    let top = rect.bottom + 4;
+    let left = rect.right - menuWidth;
+    top = Math.max(8, Math.min(top, window.innerHeight - 300));
+    left = Math.max(8, Math.min(left, window.innerWidth - menuWidth - 8));
+    setMenuPos({ top, left });
   }, []);
 
   useEffect(() => {
-    if (open) {
-      document.addEventListener("mousedown", handleClickOutside);
-      const handleEsc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-      document.addEventListener("keydown", handleEsc);
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
-        document.removeEventListener("keydown", handleEsc);
-      };
-    }
-  }, [open, handleClickOutside]);
+    if (!open) return;
+    updatePosition();
 
-  return (
-    <div ref={menuRef} style={{ position: "relative", flexShrink: 0 }}>
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); e.preventDefault(); setOpen((p) => !p); }}
-        style={{
-          width: 28, height: 28, display: "inline-flex", alignItems: "center", justifyContent: "center",
-          borderRadius: 6, border: `1px solid ${colors.btnBorder}`, background: colors.btnBg,
-          color: colors.btnText, cursor: "pointer", flexShrink: 0, transition: "all 0.15s ease", padding: 0, outline: "none",
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = colors.btnBgHover; e.currentTarget.style.color = colors.btnTextHover; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = colors.btnBg; e.currentTarget.style.color = colors.btnText; }}
-        title="Actions"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }}>
-          <circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" />
-        </svg>
-      </button>
+    const handleScroll = () => updatePosition();
+    const handleResize = () => updatePosition();
+    window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [open, updatePosition]);
 
-      {open && (
+  const menuPortal = mounted && open && menuPos
+    ? createPortal(
         <div
-          style={{
-            position: "absolute", right: 0, top: "100%", zIndex: 9999, minWidth: 160, marginTop: 4,
-            background: colors.menuBg, border: `1px solid ${colors.menuBorder}`, borderRadius: 8,
-            boxShadow: colors.menuShadow, padding: "4px 0", overflow: "hidden",
-          }}
+          data-generic-action-menu="true"
           onClick={(e) => e.stopPropagation()}
+          style={{
+            position: "fixed",
+            top: menuPos.top,
+            left: menuPos.left,
+            zIndex: 99999,
+            minWidth: 160,
+            background: colors.menuBg,
+            border: `1px solid ${colors.menuBorder}`,
+            borderRadius: 8,
+            boxShadow: colors.menuShadow,
+            padding: "4px 0",
+            overflow: "hidden",
+          }}
         >
           {actions.map((action, i) => (
             <div key={i}>
@@ -135,8 +182,31 @@ export function GenericActionMenu({ actions }: GenericActionMenuProps) {
               )}
             </div>
           ))}
-        </div>
-      )}
-    </div>
+        </div>,
+        document.body
+      )
+    : null;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={(e) => { e.stopPropagation(); e.preventDefault(); setOpen((p) => !p); }}
+        style={{
+          width: 28, height: 28, display: "inline-flex", alignItems: "center", justifyContent: "center",
+          borderRadius: 6, border: `1px solid ${colors.btnBorder}`, background: colors.btnBg,
+          color: colors.btnText, cursor: "pointer", flexShrink: 0, transition: "all 0.15s ease", padding: 0, outline: "none",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = colors.btnBgHover; e.currentTarget.style.color = colors.btnTextHover; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = colors.btnBg; e.currentTarget.style.color = colors.btnText; }}
+        title="Actions"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }}>
+          <circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" />
+        </svg>
+      </button>
+      {menuPortal}
+    </>
   );
 }
