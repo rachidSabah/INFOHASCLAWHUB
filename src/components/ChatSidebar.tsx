@@ -32,6 +32,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { ChatActionMenu } from "@/components/ChatActionMenu";
+import { GenericActionMenu } from "@/components/GenericActionMenu";
 import {
   Dialog,
   DialogContent,
@@ -701,40 +702,22 @@ export function ChatSidebar() {
                         <div className="text-xs font-medium truncate">{agent.name}</div>
                         <div className="text-[10px] text-muted-foreground truncate">{agent.role}</div>
                       </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 shrink-0"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <MoreHorizontal className="h-3.5 w-3.5" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-40">
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              useUIStore.getState().setSettingsOpen(true);
-                            }}
-                          >
-                            <Pencil className="h-3.5 w-3.5 mr-2" />
-                            Configure
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteAgentId(agent.id);
-                            }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <GenericActionMenu
+                        actions={[
+                          {
+                            icon: <Pencil style={{ width: 14, height: 14 }} />,
+                            label: "Configure",
+                            onClick: () => useUIStore.getState().setSettingsOpen(true),
+                          },
+                          { icon: <Trash2 style={{ width: 14, height: 14, color: "#ef4444" }} />, label: "---", onClick: () => {} },
+                          {
+                            icon: <Trash2 style={{ width: 14, height: 14, color: "#ef4444" }} />,
+                            label: "Delete",
+                            onClick: () => setDeleteAgentId(agent.id),
+                            destructive: true,
+                          },
+                        ]}
+                      />
                     </div>
                   ))}
                   {filteredAgents.length === 0 && (
@@ -787,40 +770,22 @@ export function ChatSidebar() {
                         <div className="text-xs font-medium truncate">{skill.name}</div>
                         <div className="text-[10px] text-muted-foreground truncate">{skill.description}</div>
                       </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 shrink-0"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <MoreHorizontal className="h-3.5 w-3.5" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-40">
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // View source functionality could be added later
-                            }}
-                          >
-                            <BookOpen className="h-3.5 w-3.5 mr-2" />
-                            View Source
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteSkillId(skill.id);
-                            }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <GenericActionMenu
+                        actions={[
+                          {
+                            icon: <BookOpen style={{ width: 14, height: 14 }} />,
+                            label: "View Source",
+                            onClick: () => {},
+                          },
+                          { icon: <Trash2 style={{ width: 14, height: 14, color: "#ef4444" }} />, label: "---", onClick: () => {} },
+                          {
+                            icon: <Trash2 style={{ width: 14, height: 14, color: "#ef4444" }} />,
+                            label: "Delete",
+                            onClick: () => setDeleteSkillId(skill.id),
+                            destructive: true,
+                          },
+                        ]}
+                      />
                     </div>
                   ))}
                   {filteredSkills.length === 0 && (
