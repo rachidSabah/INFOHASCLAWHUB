@@ -19,14 +19,18 @@ import { X, MessageSquare } from "lucide-react";
 function DashboardContent() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
+  const [sidebarWidth, setSidebarWidth] = useState(320);
+  const [sidebarReady, setSidebarReady] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Load saved width after hydration to prevent mismatch
+  useEffect(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("clawhub_sidebar_width");
-      return saved ? parseInt(saved) : 320;
+      if (saved) setSidebarWidth(parseInt(saved));
+      setSidebarReady(true);
     }
-    return 320;
-  });
-  const [isDragging, setIsDragging] = useState(false);
+  }, []);
 
   useEffect(() => {
     const onboarded = localStorage.getItem("clawhub_onboarded");
@@ -189,8 +193,9 @@ function DashboardContent() {
           sidebarOpen ? "" : "w-0"
         )}
         style={{ width: sidebarOpen ? sidebarWidth : 0 }}
+        suppressHydrationWarning
       >
-        <div className="h-full overflow-y-auto overflow-x-hidden" style={{ width: sidebarWidth }}>
+        <div className="h-full overflow-y-auto overflow-x-hidden" style={{ width: sidebarWidth }} suppressHydrationWarning>
           <ChatSidebar />
         </div>
         {/* Resize handle */}

@@ -525,7 +525,7 @@ export function ChatSidebar() {
                             </Button>
                           </div>
                         ) : (
-                          <span className="truncate text-xs select-none max-w-[55%]">
+                          <span className="truncate text-xs select-none max-w-[70%]">
                             {conv.title || "Untitled"}
                           </span>
                         )}
@@ -633,7 +633,7 @@ export function ChatSidebar() {
                             </Button>
                           </div>
                         ) : (
-                          <span className="truncate text-xs select-none max-w-[55%]">
+                          <span className="truncate text-xs select-none max-w-[70%]">
                             {conv.title || "Untitled"}
                           </span>
                         )}
