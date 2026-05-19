@@ -119,30 +119,31 @@ export function ChatSidebar() {
 
 
   const filteredConversations = conversations.filter((c) =>
-    c.title.toLowerCase().includes(searchQuery.toLowerCase())
+    (c.title || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const favoriteConversations = filteredConversations.filter((c) => c.isFavorite);
   const nonFavoriteConversations = filteredConversations.filter((c) => !c.isFavorite);
 
   const filteredAgents = agents.filter((a) =>
-    a.name.toLowerCase().includes(searchQuery.toLowerCase())
+    (a.name || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const filteredSkills = skills.filter((s) =>
-    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.description.toLowerCase().includes(searchQuery.toLowerCase())
+    (s.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (s.description || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const groupedConversations = nonFavoriteConversations.reduce(
     (groups, conv) => {
-      const date = new Date(conv.updatedAt).toDateString();
+      const safeDate = conv.updatedAt ? new Date(conv.updatedAt) : new Date();
+      const date = safeDate.toDateString();
       const today = new Date().toDateString();
       const yesterday = new Date(Date.now() - 86400000).toDateString();
       let label: string;
       if (date === today) label = "Today";
       else if (date === yesterday) label = "Yesterday";
-      else label = formatDate(new Date(conv.updatedAt));
+      else label = formatDate(safeDate);
       if (!groups[label]) groups[label] = [];
       groups[label].push(conv);
       return groups;
@@ -531,11 +532,11 @@ export function ChatSidebar() {
                           </div>
                         ) : (
                           <span className="flex-1 truncate text-xs select-none">
-                            {conv.title}
+                            {conv.title || "Untitled"}
                           </span>
                         )}
 
-                        {/* Action buttons - compact dropdown */}
+                        {/* Action buttons - ALWAYS VISIBLE dropdown menu (28px) */}
                         {!selectMode && editingId !== conv.id && (
                           <div className="shrink-0 ml-auto z-10">
                             <DropdownMenu>
@@ -543,8 +544,8 @@ export function ChatSidebar() {
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent"
-                                  title="Actions"
+                                  className="h-7 w-7 shrink-0 text-muted-foreground/70 hover:text-foreground hover:bg-accent/80 transition-colors"
+                                  title="Actions: Favorite, Rename, Export, Delete"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <MoreHorizontal className="h-4 w-4" />
@@ -561,7 +562,7 @@ export function ChatSidebar() {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setEditingId(conv.id);
-                                    setEditTitle(conv.title);
+                                    setEditTitle(conv.title || "");
                                   }}
                                 >
                                   <Pencil className="h-3.5 w-3.5 mr-2" />
@@ -694,11 +695,11 @@ export function ChatSidebar() {
                           </div>
                         ) : (
                           <span className="flex-1 truncate text-xs select-none">
-                            {conv.title}
+                            {conv.title || "Untitled"}
                           </span>
                         )}
 
-                        {/* Action buttons - compact dropdown */}
+                        {/* Action buttons - ALWAYS VISIBLE dropdown menu (28px) */}
                         {!selectMode && editingId !== conv.id && (
                           <div className="shrink-0 ml-auto z-10">
                             <DropdownMenu>
@@ -706,8 +707,8 @@ export function ChatSidebar() {
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent"
-                                  title="Actions"
+                                  className="h-7 w-7 shrink-0 text-muted-foreground/70 hover:text-foreground hover:bg-accent/80 transition-colors"
+                                  title="Actions: Favorite, Rename, Export, Delete"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <MoreHorizontal className="h-4 w-4" />
@@ -724,7 +725,7 @@ export function ChatSidebar() {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setEditingId(conv.id);
-                                    setEditTitle(conv.title);
+                                    setEditTitle(conv.title || "");
                                   }}
                                 >
                                   <Pencil className="h-3.5 w-3.5 mr-2" />

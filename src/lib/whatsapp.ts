@@ -208,10 +208,8 @@ class WhatsAppService {
 
   private async handleBotReply(jid: string, userMessage: string) {
     try {
-      console.log(`[WhatsApp Bot] Processing message from ${jid}: "${userMessage.slice(0, 50)}..."`);
-      
       // Send typing indicator
-      try { await this.sock.sendPresenceUpdate("composing", jid); } catch {}
+      await this.sock.sendPresenceUpdate("composing", jid);
       
       // Get or create conversation context
       let context = this.userContexts.get(jid) || [];
@@ -220,95 +218,97 @@ class WhatsAppService {
       // Keep context manageable (last 20 messages)
       if (context.length > 20) context = context.slice(-20);
 
-      // Try multiple possible API URLs
-      const apiUrls = [
-        process.env.NEXT_PUBLIC_APP_URL,
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-      ].filter(Boolean) as string[];
+      // Build API URL - prefer internal localhost for reliability
+      const apiUrl = "http://localhost:3000";
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 90000);
 
+      console.log(`[WhatsApp Bot] Processing reply for ${jid}, message: ${userMessage.slice(0, 50)}...`);
+
+      const res = await fetch(`${apiUrl}/api/gemini/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: userMessage,
+          model: this.botModel,
+          systemPrompt: this.botSystemPrompt,
+          conversationHistory: context.slice(0, -1),
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(`Chat API error: ${res.status} ${errText.slice(0, 200)}`);
+      }
+
+      // Read SSE stream to get full response
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
       let fullResponse = "";
-      let success = false;
 
-      for (const apiUrl of apiUrls) {
-        try {
-          console.log(`[WhatsApp Bot] Trying ${apiUrl}/api/gemini/chat`);
-          const controller = new AbortController();
-          setTimeout(() => controller.abort(), 45000);
+      if (reader) {
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
 
-          const res = await fetch(`${apiUrl}/api/gemini/chat`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              prompt: userMessage,
-              model: this.botModel,
-              systemPrompt: this.botSystemPrompt,
-              conversationHistory: context.slice(0, -1),
-            }),
-            signal: controller.signal,
-          });
-
-          if (!res.ok) {
-            console.log(`[WhatsApp Bot] ${apiUrl} returned ${res.status}`);
-            continue;
-          }
-
-          // Read SSE stream
-          const reader = res.body?.getReader();
-          const decoder = new TextDecoder();
-
-          if (reader) {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              const text = decoder.decode(value, { stream: true });
-              const lines = text.split("\n");
-              for (const line of lines) {
-                if (line.startsWith("data: ")) {
-                  try {
-                    const data = JSON.parse(line.slice(6));
-                    if (data.type === "chunk") fullResponse += data.content;
-                    if (data.type === "done") fullResponse = fullResponse || "";
-                  } catch {}
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed === "data: [DONE]") continue;
+            if (trimmed.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(trimmed.slice(6));
+                if (data.type === "chunk" && data.content) {
+                  fullResponse += data.content;
+                } else if (data.type === "done") {
+                  // Stream complete - fullResponse is already built
+                } else if (data.type === "error") {
+                  console.error("[WhatsApp Bot] Stream error:", data.error);
+                  throw new Error(data.error);
                 }
+              } catch (parseErr: any) {
+                // Non-JSON line, skip
               }
             }
           }
-
-          if (fullResponse) { success = true; break; }
-        } catch (e: any) {
-          console.log(`[WhatsApp Bot] ${apiUrl} failed: ${e.message}`);
-          continue;
         }
       }
 
-      if (success && fullResponse) {
-        // Clean response for WhatsApp
-        const cleanResponse = fullResponse
-          .replace(/\*\*(.+?)\*\*/g, "*$1*")
-          .replace(/```[\s\S]*?```/g, "[code]")
-          .replace(/\n\n+/g, "\n\n")
-          .trim()
-          .slice(0, 1500);
-
-        context.push({ role: "assistant", content: cleanResponse });
-        this.userContexts.set(jid, context);
-        await this.sock.sendMessage(jid, { text: cleanResponse });
-        this.emit("whatsapp_message", { from: "bot", text: cleanResponse, timestamp: Date.now() });
-        console.log(`[WhatsApp Bot] Reply sent to ${jid}`);
-      } else {
-        console.log(`[WhatsApp Bot] No response generated for ${jid}`);
+      if (!fullResponse || fullResponse.trim().length === 0) {
+        throw new Error("Empty response from chat API");
       }
 
-      // Stop typing
-      try { await this.sock.sendPresenceUpdate("paused", jid); } catch {}
+      // Clean response for WhatsApp formatting
+      const cleanResponse = fullResponse
+        .replace(/\*\*(.+?)\*\*/g, "*$1*")     // Bold markdown → WhatsApp bold
+        .replace(/```[\s\S]*?```/g, "[code]")   // Code blocks
+        .replace(/`([^`]+)`/g, "_$1_")          // Inline code → italic
+        .trim();
+
+      context.push({ role: "assistant", content: cleanResponse });
+      this.userContexts.set(jid, context);
+      
+      await this.sock.sendMessage(jid, { text: cleanResponse });
+      this.emit("whatsapp_message", { from: "bot", text: cleanResponse, timestamp: Date.now() });
+      
+      console.log(`[WhatsApp Bot] Reply sent to ${jid}: ${cleanResponse.slice(0, 80)}...`);
+
+      // Stop typing indicator
+      await this.sock.sendPresenceUpdate("paused", jid);
     } catch (error: any) {
       console.error("[WhatsApp Bot] Reply error:", error.message);
       try {
-        await this.sock.sendMessage(jid, { text: "I received your message but couldn't process it. Please try again." });
-      } catch {}
+        await this.sock.sendMessage(jid, { 
+          text: "Sorry, I encountered an error processing your message. Please try again later." 
+        });
+        await this.sock.sendPresenceUpdate("paused", jid);
+      } catch (sendErr) {
+        console.error("[WhatsApp Bot] Failed to send error message:", sendErr);
+      }
     }
   }
 
