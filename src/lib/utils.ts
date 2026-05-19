@@ -6,15 +6,28 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatDate(date: Date): string {
-  if (isToday(date)) return "Today";
-  if (isYesterday(date)) return "Yesterday";
-  return format(date, "MMM d, yyyy");
+export function formatDate(date: Date | string | undefined | null): string {
+  if (!date) return "Unknown";
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return "Unknown";
+  try {
+    if (isToday(d)) return "Today";
+    if (isYesterday(d)) return "Yesterday";
+    return format(d, "MMM d, yyyy");
+  } catch {
+    return "Unknown";
+  }
 }
 
-export function formatTime(date: Date | string): string {
+export function formatTime(date: Date | string | undefined | null): string {
+  if (!date) return "";
   const d = typeof date === "string" ? new Date(date) : date;
-  return formatDistanceToNow(d, { addSuffix: true });
+  if (isNaN(d.getTime())) return "";
+  try {
+    return formatDistanceToNow(d, { addSuffix: true });
+  } catch {
+    return "";
+  }
 }
 
 export function truncate(str: string, length: number): string {

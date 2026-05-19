@@ -12,18 +12,19 @@ export function HistorySidebar() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredConversations = conversations.filter((c) =>
-    c.title.toLowerCase().includes(searchQuery.toLowerCase())
+    (c.title || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const groupedConversations = filteredConversations.reduce(
     (groups, conv) => {
-      const date = new Date(conv.updatedAt).toDateString();
+      const safeDate = conv.updatedAt ? new Date(conv.updatedAt) : new Date();
+      const date = safeDate.toDateString();
       const today = new Date().toDateString();
       const yesterday = new Date(Date.now() - 86400000).toDateString();
       let label: string;
       if (date === today) label = "Today";
       else if (date === yesterday) label = "Yesterday";
-      else label = formatDate(new Date(conv.updatedAt));
+      else label = formatDate(safeDate);
       if (!groups[label]) groups[label] = [];
       groups[label].push(conv);
       return groups;
