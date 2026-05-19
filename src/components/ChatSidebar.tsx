@@ -16,7 +16,6 @@ import {
   MessageSquare,
   Trash2,
   Search,
-  MoreHorizontal,
   Pencil,
   Users,
   UserPlus,
@@ -32,13 +31,7 @@ import {
   Brain,
   Terminal,
 } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { ChatActionMenu } from "@/components/ChatActionMenu";
 import {
   Dialog,
   DialogContent,
@@ -538,66 +531,14 @@ export function ChatSidebar() {
 
                         {/* Action buttons - ALWAYS VISIBLE dropdown menu */}
                         {!selectMode && editingId !== conv.id && (
-                          <DropdownMenu modal={false}>
-                            <DropdownMenuTrigger asChild>
-                              <button
-                                type="button"
-                                className="shrink-0 h-7 w-7 inline-flex items-center justify-center rounded-md bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus:outline-none focus:ring-1 focus:ring-ring"
-                                title="Actions: Favorite, Rename, Export, Delete"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <MoreHorizontal className="h-4 w-4 pointer-events-none" />
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48" sideOffset={2}>
-                              <DropdownMenuItem
-                                onClick={(e) => toggleFavorite(conv.id, true, e)}
-                              >
-                                <Star className="h-3.5 w-3.5 mr-2 text-amber-500 fill-amber-500" />
-                                Remove from Favorites
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingId(conv.id);
-                                    setEditTitle(conv.title || "");
-                                  }}
-                                >
-                                  <Pencil className="h-3.5 w-3.5 mr-2" />
-                                  Rename
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleExport(conv.id, "markdown");
-                                  }}
-                                >
-                                  <Download className="h-3.5 w-3.5 mr-2 text-emerald-500" />
-                                  Export Markdown
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleExport(conv.id, "json");
-                                  }}
-                                >
-                                  <Download className="h-3.5 w-3.5 mr-2 text-emerald-500" />
-                                  Export JSON
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  className="text-destructive focus:text-destructive"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setDeleteDialogId(conv.id);
-                                  }}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5 mr-2" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                          <ChatActionMenu
+                            isFavorite={true}
+                            onToggleFavorite={(e) => toggleFavorite(conv.id, true, e)}
+                            onRename={() => { setEditingId(conv.id); setEditTitle(conv.title || ""); }}
+                            onExportMarkdown={() => handleExport(conv.id, "markdown")}
+                            onExportJSON={() => handleExport(conv.id, "json")}
+                            onDelete={() => setDeleteDialogId(conv.id)}
+                          />
                         )}
                       </div>
                     ))}
@@ -698,66 +639,14 @@ export function ChatSidebar() {
 
                         {/* Action buttons - ALWAYS VISIBLE dropdown menu */}
                         {!selectMode && editingId !== conv.id && (
-                          <DropdownMenu modal={false}>
-                            <DropdownMenuTrigger asChild>
-                              <button
-                                type="button"
-                                className="shrink-0 h-7 w-7 inline-flex items-center justify-center rounded-md bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus:outline-none focus:ring-1 focus:ring-ring"
-                                title="Actions: Favorite, Rename, Export, Delete"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <MoreHorizontal className="h-4 w-4 pointer-events-none" />
-                              </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48" sideOffset={2}>
-                              <DropdownMenuItem
-                                onClick={(e) => toggleFavorite(conv.id, false, e)}
-                              >
-                                <Star className="h-3.5 w-3.5 mr-2 text-amber-500" />
-                                Add to Favorites
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditingId(conv.id);
-                                  setEditTitle(conv.title || "");
-                                }}
-                              >
-                                <Pencil className="h-3.5 w-3.5 mr-2" />
-                                Rename
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleExport(conv.id, "markdown");
-                                }}
-                              >
-                                <Download className="h-3.5 w-3.5 mr-2 text-emerald-500" />
-                                Export Markdown
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleExport(conv.id, "json");
-                                }}
-                              >
-                                <Download className="h-3.5 w-3.5 mr-2 text-emerald-500" />
-                                Export JSON
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDeleteDialogId(conv.id);
-                                }}
-                              >
-                                <Trash2 className="h-3.5 w-3.5 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <ChatActionMenu
+                            isFavorite={false}
+                            onToggleFavorite={(e) => toggleFavorite(conv.id, false, e)}
+                            onRename={() => { setEditingId(conv.id); setEditTitle(conv.title || ""); }}
+                            onExportMarkdown={() => handleExport(conv.id, "markdown")}
+                            onExportJSON={() => handleExport(conv.id, "json")}
+                            onDelete={() => setDeleteDialogId(conv.id)}
+                          />
                         )}
                       </div>
                     ))}

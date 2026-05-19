@@ -281,8 +281,18 @@ class WhatsAppService {
 
   private async handleBotReply(jid: string, userMessage: string) {
     try {
+      // Validate jid before any operations
+      if (!jid || !jid.includes('@')) {
+        console.error('[WhatsApp Bot] Invalid JID for bot reply:', jid);
+        return;
+      }
+      
       // Send typing indicator
-      await this.sock.sendPresenceUpdate("composing", jid);
+      try {
+        await this.sock.sendPresenceUpdate("composing", jid);
+      } catch (e) {
+        console.warn('[WhatsApp Bot] Could not send typing indicator:', e);
+      }
       
       // Get or create conversation context
       let context = this.userContexts.get(jid) || [];
@@ -291,8 +301,9 @@ class WhatsAppService {
       // Keep context manageable (last 20 messages)
       if (context.length > 20) context = context.slice(-20);
 
-      // Build API URL - prefer internal localhost for reliability
-      const apiUrl = "http://localhost:3000";
+      // Use the same port the server is running on
+      const port = process.env.PORT || process.env.NEXT_PORT || 3000;
+      const apiUrl = `http://localhost:${port}`;
       const controller = new AbortController();
       setTimeout(() => controller.abort(), 90000);
 
@@ -337,14 +348,17 @@ class WhatsAppService {
                 const data = JSON.parse(trimmed.slice(6));
                 if (data.type === "chunk" && data.content) {
                   fullResponse += data.content;
-                } else if (data.type === "done") {
-                  // Stream complete - fullResponse is already built
                 } else if (data.type === "error") {
                   console.error("[WhatsApp Bot] Stream error:", data.error);
                   throw new Error(data.error);
                 }
+                // data.type === "done" — stream complete, no action needed
               } catch (parseErr: any) {
-                // Non-JSON line, skip
+                // Only re-throw if it's our own thrown error, not a JSON parse error
+                if (parseErr.message && !parseErr.message.includes('JSON')) {
+                  throw parseErr;
+                }
+                // Non-JSON line, skip silently
               }
             }
           }

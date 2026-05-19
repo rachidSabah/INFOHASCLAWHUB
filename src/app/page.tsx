@@ -177,11 +177,11 @@ function DashboardContent() {
       {/* Sidebar */}
       <div
         className={cn(
-          "shrink-0 transition-all duration-300 ease-in-out overflow-hidden",
+          "shrink-0 transition-all duration-300 ease-in-out overflow-x-hidden",
           sidebarOpen ? "w-[320px]" : "w-0"
         )}
       >
-        <div className="w-[320px] h-full">
+        <div className="w-[320px] h-full overflow-y-auto overflow-x-hidden">
           <ChatSidebar />
         </div>
       </div>
