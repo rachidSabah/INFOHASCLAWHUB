@@ -19,8 +19,8 @@ export async function GET(request: NextRequest) {
       orderBy: { installs: 'desc' },
     });
     return NextResponse.json(plugins);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }
 
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const plugin = await db.plugin.create({ data: body });
     return NextResponse.json(plugin);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }

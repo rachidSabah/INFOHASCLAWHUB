@@ -1,5 +1,3 @@
-import { db } from "@/lib/db";
-
 export interface AgentRunConfig {
   model?: string;
   maxIterations?: number;
@@ -402,7 +400,7 @@ export class AgentRunner {
 
             if (signal.aborted) return;
 
-            complete: {
+            {
               const altPlan = parsePlan(replanResponse);
               if (altPlan.steps.length > 0 && altPlan.steps[0] !== step) {
                 plan.steps.splice(stepIdx + 1, 0, altPlan.steps[0]);

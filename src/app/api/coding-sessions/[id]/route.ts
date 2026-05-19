@@ -15,8 +15,8 @@ export async function GET(
       return NextResponse.json({ error: 'Coding session not found' }, { status: 404 });
     }
     return NextResponse.json(session);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }
 
@@ -29,8 +29,8 @@ export async function PATCH(
     const body = await request.json();
     const session = await db.codingSession.update({ where: { id }, data: body });
     return NextResponse.json(session);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }
 
@@ -42,7 +42,7 @@ export async function DELETE(
     const { id } = await params;
     await db.codingSession.delete({ where: { id } });
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }

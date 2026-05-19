@@ -1,19 +1,31 @@
 import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from 'next/server';
 
-import ZAI from 'z-ai-web-dev-sdk';
+let ZAI: any = null;
+async function getZAI() {
+  if (!ZAI) {
+    const mod = await import('z-ai-web-dev-sdk');
+    ZAI = mod.default;
+  }
+  return ZAI.create();
+}
 
 
 
 async function callAI(prompt: string) {
-  const zai = await ZAI.create();
-  const completion = await zai.chat.completions.create({
-    messages: [
-      { role: 'system', content: 'You are a git merge conflict resolution expert. Analyze the conflict and provide a resolution that combines both sides intelligently. Return a JSON object with: "resolvedCode" (the merged code), "strategy" (how the merge was done), and "explanation".' },
-      { role: 'user', content: prompt }
-    ],
-  });
-  return completion.choices[0]?.message?.content || '{}';
+  try {
+    const zai = await getZAI();
+    const completion = await zai.chat.completions.create({
+      messages: [
+        { role: 'system', content: 'You are a git merge conflict resolution expert. Analyze the conflict and provide a resolution that combines both sides intelligently. Return a JSON object with: "resolvedCode" (the merged code), "strategy" (how the merge was done), and "explanation".' },
+        { role: 'user', content: prompt }
+      ],
+    });
+    return completion.choices[0]?.message?.content || '{}';
+  } catch (error) {
+    console.error('ZAI SDK error:', error);
+    return '{}';
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -46,7 +58,7 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ resolution, analysisId: gitAnalysis.id });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }

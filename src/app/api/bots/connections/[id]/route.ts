@@ -15,8 +15,8 @@ export async function GET(
       return NextResponse.json({ error: 'Bot connection not found' }, { status: 404 });
     }
     return NextResponse.json(connection);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }
 
@@ -29,8 +29,8 @@ export async function PATCH(
     const body = await request.json();
     const connection = await db.botConnection.update({ where: { id }, data: body });
     return NextResponse.json(connection);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }
 
@@ -42,7 +42,7 @@ export async function DELETE(
     const { id } = await params;
     await db.botConnection.delete({ where: { id } });
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }

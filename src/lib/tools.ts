@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { exec } from "child_process";
 import { MCPClient, getMcpServerConfigs } from "@/lib/mcp";
 
 export interface ToolParameter {
@@ -351,8 +352,7 @@ export async function executeToolCall(
       : path.join(os.homedir(), "Desktop");
     try {
       const result = await new Promise<string>((resolve) => {
-        const { exec } = require("child_process");
-        exec(call.arguments.command, { cwd: activeDir, timeout: 30000 }, (error: any, stdout: string, stderr: string) => {
+        exec(call.arguments.command, { cwd: activeDir, timeout: 30000 }, (error: Error | null, stdout: string, stderr: string) => {
           resolve(
             JSON.stringify({
               stdout: stdout || "(no stdout)",

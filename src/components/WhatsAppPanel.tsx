@@ -341,7 +341,7 @@ export function WhatsAppPanel({
           </div>
 
           {/* Connected Number Info */}
-          {status.connected && (status as any).connectedNumber && (
+          {status.connected && status.connectedNumber && (
             <div className="mb-3 p-2.5 rounded-lg bg-emerald-500/5 border border-emerald-500/10">
               <div className="flex items-center gap-2">
                 <div className="h-6 w-6 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
@@ -349,7 +349,7 @@ export function WhatsAppPanel({
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground">Connected as</p>
-                  <p className="text-xs font-mono font-semibold">+{(status as any).connectedNumber}</p>
+                  <p className="text-xs font-mono font-semibold">+{status.connectedNumber}</p>
                 </div>
               </div>
               <p className="text-[10px] text-muted-foreground mt-1.5 ml-8">

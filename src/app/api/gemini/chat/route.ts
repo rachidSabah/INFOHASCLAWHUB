@@ -640,9 +640,9 @@ export async function POST(req: NextRequest) {
 
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done", duration: 0, tokens: { prompt: promptTokens, completion: completionTokens, total: totalTokens }, cost, toolCalls: allToolCalls })}\n\n`));
           controller.close();
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.error(`[${requestId}] Stream Error:`, error);
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", error: error instanceof Error ? error.message : 'Unknown error' })}\n\n`));
           controller.close();
         }
       },
@@ -655,8 +655,8 @@ export async function POST(req: NextRequest) {
         Connection: "keep-alive",
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`[${requestId}] Fatal API Error:`, error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }

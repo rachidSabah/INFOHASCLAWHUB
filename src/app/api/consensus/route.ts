@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
 
     const allResults = await Promise.all(promises);
     return NextResponse.json({ results: allResults });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }

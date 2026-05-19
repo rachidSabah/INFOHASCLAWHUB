@@ -7,14 +7,22 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const messages = await db.message.findMany({
-      where: { conversationId: id },
-      orderBy: { createdAt: "asc" },
+    const conversation = await db.conversation.findUnique({
+      where: { id },
+      include: {
+        messages: {
+          orderBy: { createdAt: "asc" },
+        },
+      },
     });
 
-    return NextResponse.json(messages);
+    if (!conversation) {
+      return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(conversation);
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : "Failed to fetch messages";
+    const errorMessage = error instanceof Error ? error.message : "Failed to fetch conversation";
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

@@ -8,8 +8,8 @@ export async function GET() {
   try {
     const routes = await db.modelRoute.findMany({ orderBy: { priority: 'desc' } });
     return NextResponse.json(routes);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }
 
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const route = await db.modelRoute.create({ data: body });
     return NextResponse.json(route);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }

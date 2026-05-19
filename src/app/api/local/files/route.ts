@@ -67,8 +67,8 @@ export async function GET(req: NextRequest) {
       path: resolved,
       entries,
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }
 
@@ -98,8 +98,8 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }
 
@@ -125,8 +125,8 @@ export async function PUT(req: NextRequest) {
 
     const data = fs.readFileSync(resolved, "utf-8");
     return NextResponse.json({ content: data, path: resolved, size: stats.size, updatedAt: stats.mtime });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }
 
@@ -153,7 +153,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true, path: resolved });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }

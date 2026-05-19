@@ -1,19 +1,31 @@
 import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from 'next/server';
 
-import ZAI from 'z-ai-web-dev-sdk';
+let ZAI: any = null;
+async function getZAI() {
+  if (!ZAI) {
+    const mod = await import('z-ai-web-dev-sdk');
+    ZAI = mod.default;
+  }
+  return ZAI.create();
+}
 
 
 
 async function callAI(prompt: string) {
-  const zai = await ZAI.create();
-  const completion = await zai.chat.completions.create({
-    messages: [
-      { role: 'system', content: 'You are a security expert. Scan the provided code for exposed secrets, API keys, passwords, tokens, and private keys. Return a JSON array of found secrets with: filePath, line, secretType, maskedValue (show first 2 and last 2 chars), severity.' },
-      { role: 'user', content: prompt }
-    ],
-  });
-  return completion.choices[0]?.message?.content || '[]';
+  try {
+    const zai = await getZAI();
+    const completion = await zai.chat.completions.create({
+      messages: [
+        { role: 'system', content: 'You are a security expert. Scan the provided code for exposed secrets, API keys, passwords, tokens, and private keys. Return a JSON array of found secrets with: filePath, line, secretType, maskedValue (show first 2 and last 2 chars), severity.' },
+        { role: 'user', content: prompt }
+      ],
+    });
+    return completion.choices[0]?.message?.content || '[]';
+  } catch (error) {
+    console.error('ZAI SDK error:', error);
+    return '[]';
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -32,8 +44,8 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json(secrets);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }
 
@@ -74,7 +86,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ scanned: files.length, found: foundSecrets.length, secrets: foundSecrets });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }

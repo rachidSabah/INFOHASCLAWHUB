@@ -88,10 +88,10 @@ export async function GET() {
       latestCommit: latestCommit.substring(0, 7),
       commits: hasUpdate ? commitList.slice(0, 5) : [],
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return Response.json({
       hasUpdate: false,
-      error: error.message || "Internal error",
+      error: error instanceof Error ? error.message : 'Unknown error' || "Internal error",
     }, { status: 500 });
   }
 }
