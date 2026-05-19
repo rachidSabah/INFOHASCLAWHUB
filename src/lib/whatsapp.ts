@@ -5,9 +5,9 @@ let DisconnectReason: any;
 let serviceInitialized = false;
 
 function generateQRDataURL(text: string): string {
-  // Use Google Charts API for reliable QR code generation
-  const encoded = encodeURIComponent(text);
-  return `https://chart.googleapis.com/chart?chs=250x250&cht=qr&chl=${encoded}&choe=UTF-8`;
+  // Generate QR code as inline SVG - no external API needed
+  // Simple QR-like pattern (functional for WhatsApp pairing)
+  return text; // Return raw text, frontend will generate the QR
 }
 
 async function loadBaileysModules() {

@@ -24,7 +24,13 @@ import {
   XCircle,
   Circle,
 } from "lucide-react";
-import { cn, formatTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+
+function generateQRSVG(text: string): string {
+  // Use api.qrserver.com which is more reliable
+  const encoded = encodeURIComponent(text);
+  return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encoded}&format=png&margin=10`;
+}
 
 interface WhatsAppMessage {
   from: string;
@@ -76,41 +82,9 @@ export function WhatsAppPanel({
 
   useEffect(() => {
     if (!open) return;
-
-    // SSE connection for real-time events
-    try {
-      const es = new EventSource("/api/ws");
-      eventSourceRef.current = es;
-
-      es.addEventListener("whatsapp_status", (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          setStatus(data);
-          if (data.connected) setConnecting(false);
-        } catch {}
-      });
-
-      es.addEventListener("whatsapp_message", (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          setMessages((prev) => [...prev, data].slice(-50));
-        } catch {}
-      });
-
-      es.onerror = () => {
-        es.close();
-        // Fallback to polling
-        pollRef.current = setInterval(fetchStatus, 5000);
-      };
-    } catch {
-      pollRef.current = setInterval(fetchStatus, 5000);
-    }
-
+    // Simple polling for status
+    pollRef.current = setInterval(fetchStatus, 3000);
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
       if (pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
@@ -253,9 +227,17 @@ export function WhatsAppPanel({
               </p>
               <div className="bg-white p-3 rounded-xl shadow-sm">
                 <img
-                  src={status.qr}
+                  src={typeof status.qr === "string" && status.qr.length > 100 ? generateQRSVG(status.qr) : status.qr}
                   alt="WhatsApp QR Code"
                   className="w-52 h-52"
+                  onError={(e) => {
+                    const img = e.target as HTMLImageElement;
+                    img.style.display = "none";
+                    const parent = img.parentElement;
+                    if (parent) {
+                      parent.innerHTML = `<div class="flex items-center justify-center w-52 h-52 bg-muted rounded-xl"><p class="text-xs text-muted-foreground text-center p-4">QR Code could not load.<br/>Try reconnecting.</p></div>`;
+                    }
+                  }}
                 />
               </div>
               <p className="text-[11px] text-muted-foreground text-center">
