@@ -432,70 +432,79 @@ class WhatsAppService {
    * STRATEGY 1: Call the local /api/gemini/chat endpoint
    */
   private async callLocalChatAPI(userMessage: string, context: { role: string; content: string }[]): Promise<string> {
-    const port = process.env.PORT || process.env.NEXT_PORT || 3000;
-    const apiUrl = `http://localhost:${port}`;
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 60000);
 
-    console.log(`[WhatsApp Bot] Trying local API at ${apiUrl}/api/gemini/chat`);
+    const ports = [3000, 3001, 3002, 3003, 3004, 3005];
+    
+    for (const port of ports) {
+      try {
+        const apiUrl = `http://127.0.0.1:${port}`;
+        console.log(`[WhatsApp Bot] Trying ${apiUrl}/api/gemini/chat`);
 
-    const res = await fetch(`${apiUrl}/api/gemini/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt: userMessage,
-        model: this.botModel,
-        systemPrompt: this.botSystemPrompt,
-        conversationHistory: context.slice(0, -1),
-      }),
-      signal: controller.signal,
-    });
+        const res = await fetch(`${apiUrl}/api/gemini/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: userMessage,
+            model: this.botModel,
+            systemPrompt: this.botSystemPrompt,
+            conversationHistory: context.slice(0, -1),
+          }),
+          signal: controller.signal,
+        });
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      throw new Error(`Chat API error: ${res.status} ${errText.slice(0, 200)}`);
-    }
+        if (!res.ok) {
+          console.log(`[WhatsApp Bot] Port ${port} returned ${res.status}, trying next...`);
+          continue;
+        }
 
-    // Read SSE stream to get full response
-    const reader = res.body?.getReader();
-    const decoder = new TextDecoder();
-    let fullResponse = "";
+        // Read SSE stream to get full response
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder();
+        let fullResponse = "";
 
-    if (reader) {
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
+        if (reader) {
+          let buffer = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
 
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed === "data: [DONE]") continue;
-          if (trimmed.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(trimmed.slice(6));
-              if (data.type === "chunk" && data.content) {
-                fullResponse += data.content;
-              } else if (data.type === "error") {
-                throw new Error(data.error);
-              }
-            } catch (parseErr: any) {
-              if (parseErr.message && !parseErr.message.includes('JSON')) {
-                throw parseErr;
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed || trimmed === "data: [DONE]") continue;
+              if (trimmed.startsWith("data: ")) {
+                try {
+                  const data = JSON.parse(trimmed.slice(6));
+                  if (data.type === "chunk" && data.content) {
+                    fullResponse += data.content;
+                  } else if (data.type === "error") {
+                    throw new Error(data.error);
+                  }
+                } catch (parseErr: any) {
+                  if (parseErr.message && !parseErr.message.includes('JSON')) {
+                    throw parseErr;
+                  }
+                }
               }
             }
           }
         }
+
+        if (fullResponse && fullResponse.trim().length > 0) {
+          return fullResponse;
+        }
+        console.log(`[WhatsApp Bot] Port ${port} returned empty response, trying next...`);
+      } catch (e: any) {
+        if (e.name === "AbortError") throw e;
+        console.log(`[WhatsApp Bot] Port ${port} failed: ${e.message}, trying next...`);
       }
     }
 
-    if (!fullResponse || fullResponse.trim().length === 0) {
-      throw new Error("Empty response from local chat API");
-    }
-
-    return fullResponse;
+    throw new Error("All local API ports failed (tried 3000-3005)");
   }
 
   /**
