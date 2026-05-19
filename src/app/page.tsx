@@ -19,6 +19,14 @@ import { X, MessageSquare } from "lucide-react";
 function DashboardContent() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("clawhub_sidebar_width");
+      return saved ? parseInt(saved) : 320;
+    }
+    return 320;
+  });
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     const onboarded = localStorage.getItem("clawhub_onboarded");
@@ -177,13 +185,41 @@ function DashboardContent() {
       {/* Sidebar */}
       <div
         className={cn(
-          "shrink-0 transition-all duration-300 ease-in-out overflow-x-hidden",
-          sidebarOpen ? "w-[320px]" : "w-0"
+          "relative shrink-0 transition-all duration-300 ease-in-out overflow-x-hidden select-none",
+          sidebarOpen ? "" : "w-0"
         )}
+        style={{ width: sidebarOpen ? sidebarWidth : 0 }}
       >
-        <div className="w-[320px] h-full overflow-y-auto overflow-x-hidden">
+        <div className="h-full overflow-y-auto overflow-x-hidden" style={{ width: sidebarWidth }}>
           <ChatSidebar />
         </div>
+        {/* Resize handle */}
+        {sidebarOpen && (
+          <div
+            className={cn(
+              "absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 transition-colors z-50",
+              isDragging && "bg-primary/50 w-1"
+            )}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+              const startX = e.clientX;
+              const startWidth = sidebarWidth;
+              const onMove = (ev: MouseEvent) => {
+                const newWidth = Math.max(250, Math.min(600, startWidth + (ev.clientX - startX)));
+                setSidebarWidth(newWidth);
+                localStorage.setItem("clawhub_sidebar_width", String(newWidth));
+              };
+              const onUp = () => {
+                setIsDragging(false);
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup", onUp);
+              };
+              document.addEventListener("mousemove", onMove);
+              document.addEventListener("mouseup", onUp);
+            }}
+          />
+        )}
       </div>
 
       {/* Main Content */}
