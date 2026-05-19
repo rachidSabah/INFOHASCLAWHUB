@@ -9,12 +9,16 @@ import { ChatWindow } from "@/components/ChatWindow";
 import { ChatInput } from "@/components/ChatInput";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { OnboardingWizard } from "@/components/OnboardingWizard";
+import { UpdateChecker } from "@/components/UpdateChecker";
+import { SchedulerBackground } from "@/components/SchedulerBackground";
+import { CommandPalette } from "@/components/CommandPalette";
 import { useChatStore, useSettingsStore, useUIStore, useAgentStore, useSkillStore, usePromptStore } from "@/lib/stores";
 import { cn } from "@/lib/utils";
 import { X, MessageSquare } from "lucide-react";
 
 function DashboardContent() {
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   useEffect(() => {
     const onboarded = localStorage.getItem("clawhub_onboarded");
@@ -68,7 +72,7 @@ function DashboardContent() {
     loadConversations();
   }, [setConversations]);
 
-  // Load agents on mount
+  // Load agents on mount + auto-seed if empty
   useEffect(() => {
     const loadAgents = async () => {
       try {
@@ -76,6 +80,14 @@ function DashboardContent() {
         if (res.ok) {
           const data = await res.json();
           setAgents(data);
+          // Auto-seed agents if none exist (first run)
+          if (data.length === 0) {
+            try {
+              await fetch("/api/agents/seed", { method: "POST" });
+              const reload = await fetch(`/api/agents?t=${Date.now() + 1}`);
+              if (reload.ok) setAgents(await reload.json());
+            } catch {}
+          }
         }
       } catch {}
     };
@@ -149,8 +161,9 @@ function DashboardContent() {
         e.preventDefault();
         useUIStore.getState().setSettingsOpen(true);
       }
-      // Escape: Close settings
-      if (e.key === "Escape") {
+      // Escape: Close settings (only if open)
+      if (e.key === "Escape" && useUIStore.getState().settingsOpen) {
+        e.preventDefault();
         useUIStore.getState().setSettingsOpen(false);
       }
     };
@@ -232,6 +245,10 @@ function DashboardContent() {
       {showOnboarding && (
         <OnboardingWizard onComplete={() => setShowOnboarding(false)} />
       )}
+
+      <UpdateChecker />
+      <SchedulerBackground />
+      <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
     </div>
   );
 }

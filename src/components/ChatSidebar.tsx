@@ -9,6 +9,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { MemoryPanel } from "@/components/MemoryPanel";
 import { KnowledgePanel } from "@/components/KnowledgePanel";
+import { TerminalPanel } from "@/components/TerminalPanel";
+import { FileBrowser } from "@/components/FileBrowser";
 import {
   Plus,
   MessageSquare,
@@ -28,6 +30,7 @@ import {
   Download,
   Check,
   Brain,
+  Terminal,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -82,6 +85,8 @@ export function ChatSidebar() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspacePath: workspaceInput }),
       });
+      // Save to localStorage as backup persistence
+      localStorage.setItem("clawhub_workspace", workspaceInput);
       setIsEditingWorkspace(false);
       toast.success("Workspace directory updated");
     } catch (e) {
@@ -89,6 +94,15 @@ export function ChatSidebar() {
       toast.error("Failed to save workspace directory");
     }
   };
+
+  // Load workspace from localStorage on mount if settings haven't loaded yet
+  useEffect(() => {
+    const saved = localStorage.getItem("clawhub_workspace");
+    if (saved && !settings.workspacePath) {
+      updateSetting("workspacePath", saved);
+      setWorkspaceInput(saved);
+    }
+  }, []);
 
   // Skill creation state
   const [addSkillOpen, setAddSkillOpen] = useState(false);
@@ -105,31 +119,30 @@ export function ChatSidebar() {
 
 
   const filteredConversations = conversations.filter((c) =>
-    (c.title || "").toLowerCase().includes(searchQuery.toLowerCase())
+    c.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const favoriteConversations = filteredConversations.filter((c) => c.isFavorite);
   const nonFavoriteConversations = filteredConversations.filter((c) => !c.isFavorite);
 
   const filteredAgents = agents.filter((a) =>
-    (a.name || "").toLowerCase().includes(searchQuery.toLowerCase())
+    a.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const filteredSkills = skills.filter((s) =>
-    (s.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (s.description || "").toLowerCase().includes(searchQuery.toLowerCase())
+    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.description.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const groupedConversations = nonFavoriteConversations.reduce(
     (groups, conv) => {
-      const safeDate = conv.updatedAt ? new Date(conv.updatedAt) : new Date();
-      const date = safeDate.toDateString();
+      const date = new Date(conv.updatedAt).toDateString();
       const today = new Date().toDateString();
       const yesterday = new Date(Date.now() - 86400000).toDateString();
       let label: string;
       if (date === today) label = "Today";
       else if (date === yesterday) label = "Yesterday";
-      else label = formatDate(safeDate);
+      else label = formatDate(new Date(conv.updatedAt));
       if (!groups[label]) groups[label] = [];
       groups[label].push(conv);
       return groups;
@@ -144,6 +157,7 @@ export function ChatSidebar() {
   const handleRename = async (id: string) => {
     const trimmedTitle = editTitle.trim();
     if (trimmedTitle) {
+      const originalTitle = useChatStore.getState().conversations.find((c) => c.id === id)?.title || "";
       updateConversation(id, { title: trimmedTitle });
       try {
         await fetch(`/api/conversations/${id}`, {
@@ -154,6 +168,7 @@ export function ChatSidebar() {
         toast.success("Conversation renamed");
       } catch (error) {
         console.error("Failed to persist rename:", error);
+        updateConversation(id, { title: originalTitle });
         toast.error("Failed to rename conversation");
       }
     }
@@ -173,6 +188,7 @@ export function ChatSidebar() {
       toast.success(newVal ? "Added to favorites" : "Removed from favorites");
     } catch (error) {
       console.error("Failed to toggle favorite:", error);
+      updateConversation(id, { isFavorite: currentVal });
       toast.error("Failed to update favorites");
     }
   };
@@ -207,6 +223,7 @@ export function ChatSidebar() {
     setBulkDeleteOpen(false);
     toast.success(`${idsToDelete.length} conversation${idsToDelete.length !== 1 ? "s" : ""} deleted`);
 
+    let hasFailed = false;
     await Promise.all(
       idsToDelete.map(async (id) => {
         try {
@@ -215,9 +232,18 @@ export function ChatSidebar() {
           });
         } catch (error) {
           console.error(`Failed to delete conversation ${id}:`, error);
+          hasFailed = true;
         }
       })
     );
+
+    if (hasFailed) {
+      toast.error("Some conversations could not be deleted");
+      try {
+        const res = await fetch(`/api/conversations?t=${Date.now()}`);
+        if (res.ok) useChatStore.getState().setConversations(await res.json());
+      } catch {}
+    }
   };
 
   const handleExport = async (convId: string, format: "markdown" | "json") => {
@@ -306,29 +332,40 @@ export function ChatSidebar() {
 
         <div className="p-3 pb-0">
           <Tabs defaultValue="chats" className="w-full">
-            <TabsList className="!flex !w-full h-9 bg-background/50 p-1 rounded-lg">
-              <TabsTrigger value="chats" className="flex-1 text-[10px] px-1 gap-1 justify-center">
-                <MessageSquare className="h-3 w-3 shrink-0" />
-                <span>Chats</span>
-              </TabsTrigger>
-              <TabsTrigger value="agents" className="flex-1 text-[10px] px-1 gap-1 justify-center">
-                <Users className="h-3 w-3 shrink-0" />
-                <span>Agents</span>
-              </TabsTrigger>
-              <TabsTrigger value="skills" className="flex-1 text-[10px] px-1 gap-1 justify-center">
-                <Wrench className="h-3 w-3 shrink-0" />
-                <span>Skills</span>
-              </TabsTrigger>
-              <TabsTrigger value="memory" className="flex-1 text-[10px] px-1 gap-1 justify-center">
-                <Brain className="h-3 w-3 shrink-0" />
-                <span>Memory</span>
-              </TabsTrigger>
-              <TabsTrigger value="knowledge" className="flex-1 text-[10px] px-1 gap-1 justify-center">
-                <BookOpen className="h-3 w-3 shrink-0" />
-                <span>Knowledge</span>
-              </TabsTrigger>
-
-            </TabsList>
+            <div className="space-y-1">
+              <TabsList className="flex w-full h-8 bg-background/50 p-1 rounded-lg overflow-x-auto scrollbar-none gap-0.5 flex-nowrap">
+                <TabsTrigger value="chats" className="shrink-0 text-[10px] px-2 py-1 gap-1 justify-center rounded-md min-w-fit data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                  <MessageSquare className="h-3 w-3 shrink-0" />
+                  <span className="font-medium">Chats</span>
+                </TabsTrigger>
+                <TabsTrigger value="agents" className="shrink-0 text-[10px] px-2 py-1 gap-1 justify-center rounded-md min-w-fit data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                  <Users className="h-3 w-3 shrink-0" />
+                  <span className="font-medium">Agents</span>
+                </TabsTrigger>
+                <TabsTrigger value="skills" className="shrink-0 text-[10px] px-2 py-1 gap-1 justify-center rounded-md min-w-fit data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                  <Wrench className="h-3 w-3 shrink-0" />
+                  <span className="font-medium">Skills</span>
+                </TabsTrigger>
+                <TabsTrigger value="memory" className="shrink-0 text-[10px] px-2 py-1 gap-1 justify-center rounded-md min-w-fit data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                  <Brain className="h-3 w-3 shrink-0" />
+                  <span className="font-medium">Memory</span>
+                </TabsTrigger>
+              </TabsList>
+              <TabsList className="flex w-full h-8 bg-background/50 p-1 rounded-lg overflow-x-auto scrollbar-none gap-0.5 flex-nowrap">
+                <TabsTrigger value="knowledge" className="shrink-0 text-[10px] px-2 py-1 gap-1 justify-center rounded-md min-w-fit data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                  <BookOpen className="h-3 w-3 shrink-0" />
+                  <span className="font-medium">Knowledge</span>
+                </TabsTrigger>
+                <TabsTrigger value="terminal" className="shrink-0 text-[10px] px-2 py-1 gap-1 justify-center rounded-md min-w-fit data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                  <Terminal className="h-3 w-3 shrink-0" />
+                  <span className="font-medium">Terminal</span>
+                </TabsTrigger>
+                <TabsTrigger value="files" className="shrink-0 text-[10px] px-2 py-1 gap-1 justify-center rounded-md min-w-fit data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                  <FolderOpen className="h-3 w-3 shrink-0" />
+                  <span className="font-medium">Files</span>
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
             {/* ── CHATS TAB ── */}
             <TabsContent value="chats" className="mt-3 space-y-3">
@@ -498,52 +535,47 @@ export function ChatSidebar() {
                           </span>
                         )}
 
-                        {/* Action buttons - shown on hover */}
+                        {/* Action buttons - compact dropdown */}
                         {!selectMode && editingId !== conv.id && (
-                          <div className="flex items-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 text-amber-500 hover:bg-amber-500/10"
-                              title="Unfavorite"
-                              onClick={(e) => toggleFavorite(conv.id, true, e)}
-                            >
-                              <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                              title="Rename"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingId(conv.id);
-                                setEditTitle(conv.title);
-                              }}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
+                          <div className="shrink-0 ml-auto z-10">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-6 w-6 text-muted-foreground hover:bg-accent/80"
-                                  title="More options"
+                                  className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent"
+                                  title="Actions"
                                   onClick={(e) => e.stopPropagation()}
                                 >
-                                  <MoreHorizontal className="h-3.5 w-3.5" />
+                                  <MoreHorizontal className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-44">
+                              <DropdownMenuContent align="end" className="w-48">
+                                <DropdownMenuItem
+                                  onClick={(e) => toggleFavorite(conv.id, true, e)}
+                                >
+                                  <Star className="h-3.5 w-3.5 mr-2 text-amber-500 fill-amber-500" />
+                                  Remove from Favorites
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingId(conv.id);
+                                    setEditTitle(conv.title);
+                                  }}
+                                >
+                                  <Pencil className="h-3.5 w-3.5 mr-2" />
+                                  Rename
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleExport(conv.id, "markdown");
                                   }}
                                 >
-                                  <Download className="h-3.5 w-3.5 mr-2" />
-                                  Export as Markdown
+                                  <Download className="h-3.5 w-3.5 mr-2 text-emerald-500" />
+                                  Export Markdown
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={(e) => {
@@ -551,8 +583,8 @@ export function ChatSidebar() {
                                     handleExport(conv.id, "json");
                                   }}
                                 >
-                                  <Download className="h-3.5 w-3.5 mr-2" />
-                                  Export as JSON
+                                  <Download className="h-3.5 w-3.5 mr-2 text-emerald-500" />
+                                  Export JSON
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
@@ -666,52 +698,47 @@ export function ChatSidebar() {
                           </span>
                         )}
 
-                        {/* Action buttons - shown on hover */}
+                        {/* Action buttons - compact dropdown */}
                         {!selectMode && editingId !== conv.id && (
-                          <div className="flex items-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 text-amber-500/70 hover:bg-amber-500/10 hover:text-amber-500"
-                              title="Favorite"
-                              onClick={(e) => toggleFavorite(conv.id, false, e)}
-                            >
-                              <Star className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                              title="Rename"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingId(conv.id);
-                                setEditTitle(conv.title);
-                              }}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
+                          <div className="shrink-0 ml-auto z-10">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-6 w-6 text-muted-foreground hover:bg-accent/80"
-                                  title="More options"
+                                  className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent"
+                                  title="Actions"
                                   onClick={(e) => e.stopPropagation()}
                                 >
-                                  <MoreHorizontal className="h-3.5 w-3.5" />
+                                  <MoreHorizontal className="h-4 w-4" />
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-44">
+                              <DropdownMenuContent align="end" className="w-48">
+                                <DropdownMenuItem
+                                  onClick={(e) => toggleFavorite(conv.id, false, e)}
+                                >
+                                  <Star className="h-3.5 w-3.5 mr-2 text-amber-500" />
+                                  Add to Favorites
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingId(conv.id);
+                                    setEditTitle(conv.title);
+                                  }}
+                                >
+                                  <Pencil className="h-3.5 w-3.5 mr-2" />
+                                  Rename
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleExport(conv.id, "markdown");
                                   }}
                                 >
-                                  <Download className="h-3.5 w-3.5 mr-2" />
-                                  Export as Markdown
+                                  <Download className="h-3.5 w-3.5 mr-2 text-emerald-500" />
+                                  Export Markdown
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={(e) => {
@@ -719,8 +746,8 @@ export function ChatSidebar() {
                                     handleExport(conv.id, "json");
                                   }}
                                 >
-                                  <Download className="h-3.5 w-3.5 mr-2" />
-                                  Export as JSON
+                                  <Download className="h-3.5 w-3.5 mr-2 text-emerald-500" />
+                                  Export JSON
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
@@ -795,7 +822,7 @@ export function ChatSidebar() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6 opacity-0 group-hover:opacity-100 shrink-0"
+                            className="h-7 w-7 shrink-0"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <MoreHorizontal className="h-3.5 w-3.5" />
@@ -881,7 +908,7 @@ export function ChatSidebar() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6 opacity-0 group-hover:opacity-100 shrink-0"
+                            className="h-7 w-7 shrink-0"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <MoreHorizontal className="h-3.5 w-3.5" />
@@ -931,6 +958,16 @@ export function ChatSidebar() {
               <KnowledgePanel />
             </TabsContent>
 
+            {/* ── TERMINAL TAB ── */}
+            <TabsContent value="terminal" className="mt-3 h-[calc(100vh-170px)]">
+              <TerminalPanel />
+            </TabsContent>
+
+            {/* ── FILES TAB ── */}
+            <TabsContent value="files" className="mt-3 h-[calc(100vh-170px)]">
+              <FileBrowser />
+            </TabsContent>
+
           </Tabs>
         </div>
       </div>
@@ -952,6 +989,7 @@ export function ChatSidebar() {
               onClick={async () => {
                 if (deleteDialogId) {
                   const targetId = deleteDialogId;
+                  const conv = useChatStore.getState().conversations.find((c) => c.id === targetId);
                   removeConversation(targetId);
                   try {
                     await fetch(`/api/conversations/${targetId}`, {
@@ -960,6 +998,7 @@ export function ChatSidebar() {
                     toast.success("Conversation deleted");
                   } catch (error) {
                     console.error("Failed to delete conversation:", error);
+                    if (conv) useChatStore.getState().addConversation(conv);
                     toast.error("Failed to delete conversation");
                   }
                 }
@@ -1008,6 +1047,7 @@ export function ChatSidebar() {
               onClick={async () => {
                 if (deleteAgentId) {
                   const targetId = deleteAgentId;
+                  const agent = useAgentStore.getState().agents.find((a) => a.id === targetId);
                   removeAgent(targetId);
                   try {
                     await fetch(`/api/agents/${targetId}`, {
@@ -1016,6 +1056,7 @@ export function ChatSidebar() {
                     toast.success("Agent deleted");
                   } catch (error) {
                     console.error("Failed to delete agent:", error);
+                    if (agent) useAgentStore.getState().addAgent(agent);
                     toast.error("Failed to delete agent");
                   }
                 }
@@ -1106,6 +1147,7 @@ export function ChatSidebar() {
               onClick={async () => {
                 if (deleteSkillId) {
                   const targetId = deleteSkillId;
+                  const skill = useSkillStore.getState().skills.find((s) => s.id === targetId);
                   removeSkill(targetId);
                   try {
                     await fetch(`/api/skills/${targetId}`, {
@@ -1114,6 +1156,7 @@ export function ChatSidebar() {
                     toast.success("Skill deleted");
                   } catch (error) {
                     console.error("Failed to delete skill:", error);
+                    if (skill) useSkillStore.getState().addSkill(skill);
                     toast.error("Failed to delete skill");
                   }
                 }

@@ -1,0 +1,106 @@
+
+    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset='utf-8'>
+        <title>Export</title>
+        <style>
+          /* STRICT A4 PAGE LAYOUT - 0.95cm margins for perfect one-page fit */
+          @page {
+              size: 21cm 29.7cm;
+              margin: 0.95cm 0.95cm 0.95cm 0.95cm; 
+              mso-page-orientation: portrait;
+          }
+          @page WordSection1 {
+              size: 21cm 29.7cm;
+              margin: 0.95cm 0.95cm 0.95cm 0.95cm;
+          }
+          div.WordSection1 {
+              page: WordSection1;
+          }
+          /* Global Resets - COMPACT LAYOUT */
+          body { 
+            font-family: 'Times New Roman', serif; 
+            font-size: 12.0pt; 
+            line-height: 1.10; 
+            color: #000000; 
+            background: #ffffff;
+            margin: 0;
+            padding: 0;
+          }
+          /* Force Single Column Flow */
+          div, p, ul, li, h1, h2, h3, h4 {
+            display: block !important;
+            width: 100% !important;
+            float: none !important;
+            clear: both !important;
+          }
+          /* Header: Name AND Section Titles - SAME STYLE */
+          h1 { 
+            font-size: 12pt; 
+            font-weight: bold; 
+            text-align: left; 
+            text-transform: uppercase;
+            color: #000000;
+            margin: 0 0 2pt 0; 
+            padding: 0;
+          }
+          /* Header: Contact - LEFT ALIGNED */
+          p.contact {
+            text-align: left; 
+            font-size: 11pt; 
+            margin: 0 0 6pt 0; 
+            color: #000000;
+          }
+          /* Section Headers - SAME AS H1 STYLE */
+          h3 { 
+            font-size: 12pt; 
+            font-weight: bold; 
+            text-transform: uppercase; 
+            text-align: left; 
+            border: none !important;
+            text-decoration: none !important;
+            margin-top: 6pt; 
+            margin-bottom: 2pt;
+            color: #000000;
+          }
+          /* Job Titles - JUSTIFIED */
+          h4 {
+            font-size: 12pt;
+            margin-top: 2pt;
+            margin-bottom: 0;
+            color: #000000;
+            font-weight: bold;
+            text-align: justify;
+          }
+          /* Body Text - JUSTIFIED */
+          p { 
+            margin: 0;
+            text-align: justify;
+            margin-bottom: 2pt; 
+          }
+          /* Bullets - JUSTIFIED, ULTRA TIGHT spacing */
+          ul { 
+            margin: 0 !important;
+            padding-left: 12pt; 
+            list-style-type: disc;
+          }
+          li { 
+            margin: 0 !important;
+            padding-left: 0;
+            list-style-type: disc;
+            text-align: justify;
+          }
+          /* Clean Bold */
+          strong, b {
+            color: #000000;
+            font-weight: bold;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="WordSection1">
+          <h1>AYA EL MASOUDI</h1><p class="contact">Rabat, Morocco | +212 610 095006 | elmasoudi.aya6@gmail.com</p><h3>PROFESSIONAL SUMMARY</h3><p style="text-align: justify;">Ambitious professional leveraging international airport operations experience and specialized retail sales expertise to deliver exceptional customer service. Proven ability to maximize sales opportunities through effective F.A.B. techniques and suggestive selling, resulting in a 15% increase in revenue. Skilled in handling POS transactions with 100% accuracy while adhering to strict aviation safety and security protocols including Security Tamper Evident Bag compliance. Committed to providing seamless airport services and customer service to enhance passenger experience. Expertise in CRM and understanding of aviation industry standards. Seeking a customer-facing role with Emirates Airport Services or dnata to contribute to providing consistent service aligning with Emirates Group high standards. Eager to apply conflict resolution and decision-making skills in a fast-paced environment with opportunities for career progression.</p><h3>EXPERIENCE</h3><h4><strong>Customer Service Agent Intern</strong> | <strong>Rabat International Airport</strong>, Rabat, Morocco | <strong>Jul 2025 – Oct 2025</strong></h4><ul><li style="text-align: justify;">Delivered frontline customer service to international passengers, resolving inquiries regarding airport amenities and schedules professionally, assisting 75+ passengers daily.</li><li style="text-align: justify;">Adhered strictly to airport safety and security protocols, maintaining full compliance in a high-traffic aviation environment, ensuring zero security breaches.</li><li style="text-align: justify;">Managed passenger flow effectively during peak hours, maintaining composure and business-like manner under pressure, reducing wait times by 10%.</li><li style="text-align: justify;">Gained practical knowledge of airport-specific retail security, including STEB compliance procedures, preventing potential security incidents.</li><li style="text-align: justify;">Applied conflict resolution skills to address passenger concerns, achieving a 90% satisfaction rate in resolving complex issues related to flight delays.</li></ul><h4><strong>Sales Assistant (Beauty &amp; Cosmetics)</strong> | <strong>Flory Makeup Shop</strong>, Morocco | <strong>Apr 2024 – Mar 2025</strong></h4><ul><li style="text-align: justify;">Maximized sales opportunities by acknowledging customers and performing detailed needs assessments for beauty products, increasing sales by 20%.</li><li style="text-align: justify;">Utilized the F.A.B. method to present product value effectively, upselling premium makeup lines and complimentary items, contributing to a 25% increase in revenue.</li><li style="text-align: justify;">Managed the POS system and processed all cash/card transactions with 100% accuracy and financial Integrity, ensuring smooth checkout operations.</li><li style="text-align: justify;">Maintained impeccable visual merchandising standards, ensuring shelves were fully stocked, tidy, and organized to drive interest, boosting foot traffic by 15%.</li><li style="text-align: justify;">Provided exceptional customer service and support, resolving customer complaints and queries efficiently, leading to a 95% customer satisfaction rating.</li><li style="text-align: justify;">Demonstrated suggestive selling techniques, improving average transaction value by 10%, contributing to overall sales targets.</li></ul><h3>EDUCATION</h3><h4><strong>Hospitality and Aviation Accredited Diploma</strong> | <strong>INFOHAS</strong>, Rabat, Morocco | <strong>2024 – 2025</strong></h4><ul><li style="text-align: justify;">Customer Service Excellence</li><li style="text-align: justify;">CRM</li><li style="text-align: justify;">Aviation Security Protocols (STEB)</li><li style="text-align: justify;">Sales Techniques</li></ul><h4><strong>High School Degree</strong> | <strong>Morocco</strong> | <strong>2022 – 2023</strong></h4><ul><li style="text-align: justify;">Mathematics</li><li style="text-align: justify;">Science</li><li style="text-align: justify;">Languages</li></ul><h3>SKILLS</h3><ul><li style="text-align: justify;"><strong>Technical:</strong> POS Systems, STEB Compliance, Aviation Security, Airport Operations, Retail Sales, Customer Relationship Management (CRM).</li><li style="text-align: justify;"><strong>Soft Skills:</strong> Customer Service, Interpersonal Communication, Conflict Resolution, Problem-Solving, Adaptability, Teamwork.</li><li style="text-align: justify;"><strong>Languages:</strong> English (Fluent), French (Fluent), Arabic (Native).</li></ul>
+        </div>
+      </body>
+    </html>
+  

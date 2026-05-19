@@ -22,12 +22,13 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { Download, Upload, RotateCcw, Key, Palette, MessageSquare, Sparkles, Plus, Trash2, ExternalLink, ShieldCheck, Server, Users, UserPlus, Check, Pencil, PlugZap } from "lucide-react";
+import { Download, Upload, RotateCcw, Key, Palette, MessageSquare, Sparkles, Plus, Trash2, ExternalLink, ShieldCheck, Server, Users, UserPlus, Check, Pencil, PlugZap, RefreshCw, GitMerge, ArrowUpCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Provider, Agent } from "@/lib/types";
-import { useAgentStore, useUIStore, useSettingsStore } from "@/lib/stores";
+import { useAgentStore, useUIStore, useSettingsStore, useUpdateStore } from "@/lib/stores";
 import { useTheme } from "@/components/ThemeProvider";
 import { MCPServerPanel } from "@/components/MCPServerPanel";
+import { checkForUpdates, applyUpdate } from "@/lib/updater";
 import { cn } from "@/lib/utils";
 
 const KNOWN_PROVIDERS = [
@@ -46,6 +47,156 @@ const KNOWN_PROVIDERS = [
   { name: "OpenAI", baseUrl: "https://api.openai.com/v1" },
   { name: "Perplexity", baseUrl: "https://api.perplexity.ai" },
 ];
+
+function UpdatesSection() {
+  const { updateAvailable, currentCommit, latestCommit, commits, checking, applying, updateApplied, setUpdateState } = useUpdateStore();
+
+  const handleCheck = async () => {
+    setUpdateState({ checking: true });
+    try {
+      const info = await checkForUpdates();
+      if (info.hasUpdate) {
+        setUpdateState({
+          updateAvailable: true,
+          currentCommit: info.currentCommit || "",
+          latestCommit: info.latestCommit || "",
+          commits: info.commits || [],
+        });
+        toast.success(`${info.commits?.length || "New"} update(s) available`);
+      } else {
+        toast.info("Already up to date");
+        setUpdateState({ updateAvailable: false });
+      }
+    } catch {
+      toast.error("Failed to check for updates");
+    } finally {
+      setUpdateState({ checking: false });
+    }
+  };
+
+  const handleApply = async () => {
+    setUpdateState({ applying: true });
+    try {
+      const result = await applyUpdate();
+      if (result.success) {
+        setUpdateState({ updateApplied: true, updateAvailable: false });
+        toast.success("Update applied! Restarting...");
+        setTimeout(() => window.location.reload(), 3000);
+      } else {
+        toast.error(result.message || "Update failed");
+      }
+    } catch {
+      toast.error("Update failed");
+    } finally {
+      setUpdateState({ applying: false });
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between p-4 rounded-xl border bg-card/50">
+        <div>
+          <p className="text-sm font-bold">Check for Updates</p>
+          <p className="text-[11px] text-muted-foreground">
+            Checks the GitHub repository for new commits.
+          </p>
+          {currentCommit && (
+            <code className="text-[10px] font-mono text-muted-foreground mt-1 block">
+              {currentCommit.slice(0, 7)}
+            </code>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleCheck}
+          disabled={checking}
+          className="h-8"
+        >
+          <RefreshCw className={checking ? "h-3.5 w-3.5 mr-2 animate-spin" : "h-3.5 w-3.5 mr-2"} />
+          {checking ? "Checking..." : "Check Now"}
+        </Button>
+      </div>
+
+      {updateAvailable && !updateApplied && (
+        <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-3">
+          <div className="flex items-center gap-2">
+            <GitMerge className="h-4 w-4 text-amber-500" />
+            <p className="text-sm font-bold text-amber-500">Update Available</p>
+          </div>
+          <div className="space-y-1.5 bg-background/50 rounded-lg p-3">
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Current commit</span>
+              <code className="font-mono text-[11px]">{currentCommit?.slice(0, 7) || "..."}</code>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Latest commit</span>
+              <code className="font-mono text-[11px] text-primary">{latestCommit?.slice(0, 7) || "..."}</code>
+            </div>
+          </div>
+          {commits.length > 0 && (
+            <div className="max-h-32 overflow-y-auto space-y-1">
+              {commits.slice(0, 5).map((c, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs">
+                  <code className="font-mono text-[10px] text-muted-foreground mt-0.5">{c.sha.slice(0, 7)}</code>
+                  <span className="leading-tight">{c.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <Button
+            size="sm"
+            onClick={handleApply}
+            disabled={applying}
+            className="w-full h-8"
+          >
+            {applying ? (
+              <>
+                <RefreshCw className="h-3.5 w-3.5 mr-2 animate-spin" />
+                Updating...
+              </>
+            ) : (
+              <>
+                <ArrowUpCircle className="h-3.5 w-3.5 mr-2" />
+                Update & Restart
+              </>
+            )}
+          </Button>
+        </div>
+      )}
+
+      {updateApplied && (
+        <div className="p-4 rounded-xl border border-green-500/30 bg-green-500/5 space-y-3">
+          <div className="flex items-center gap-2">
+            <Check className="h-4 w-4 text-green-500" />
+            <p className="text-sm font-bold text-green-500">Update Applied</p>
+          </div>
+          <p className="text-xs text-muted-foreground">The update has been installed. Restart to apply changes.</p>
+          <Button size="sm" onClick={() => window.location.reload()} className="w-full h-8">
+            <RefreshCw className="h-3.5 w-3.5 mr-2" />
+            Restart Now
+          </Button>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between p-4 rounded-xl border bg-card/50">
+        <div>
+          <p className="text-sm font-bold">Repository</p>
+          <p className="text-[11px] text-muted-foreground">View the project source code and commit history.</p>
+        </div>
+        <a
+          href="https://github.com/rachidSabah/INFOHASCLAWHUB"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 h-8 px-3 text-xs rounded-md border hover:bg-accent transition-colors"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          GitHub
+        </a>
+      </div>
+    </div>
+  );
+}
 
 export function SettingsPanel() {
   const { settingsOpen, setSettingsOpen } = useUIStore();
@@ -354,6 +505,7 @@ export function SettingsPanel() {
                 { id: "agents", label: "Agents", icon: Users },
                 { id: "providers", label: "Providers", icon: ShieldCheck },
                 { id: "mcp", label: "MCP", icon: PlugZap },
+                { id: "updates", label: "Updates", icon: ArrowUpCircle },
                 { id: "data", label: "Data", icon: Download },
               ].map((tab) => (
                 <TabsTrigger
@@ -497,18 +649,125 @@ export function SettingsPanel() {
               <TabsContent value="agents" className="space-y-4 mt-0 border-0 p-0 focus-visible:ring-0">
                 <div className="flex items-center justify-between mb-4">
                   <Label className="text-sm font-semibold">Custom Agents</Label>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 px-3 text-xs"
-                    onClick={() => {
-                      setIsAddingAgent(!isAddingAgent);
-                      setEditingAgent(null);
-                      setAgentForm({ name: "", role: "", systemPrompt: "", avatar: "🤖", skills: "[]" });
-                    }}
-                  >
-                    {isAddingAgent ? "Cancel" : <><Plus className="h-3.5 w-3.5 mr-1.5" /> Create Agent</>}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3 text-xs"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch("/api/agents/seed", { method: "POST" });
+                          const data = await res.json();
+                          if (data.success) {
+                            toast.success(`Imported ${data.created} new and updated ${data.updated} agents`);
+                            const agentsRes = await fetch("/api/agents");
+                            const agentsData = await agentsRes.json();
+                            setAgents(agentsData);
+                          } else {
+                            toast.error("Import failed");
+                          }
+                        } catch {
+                          toast.error("Failed to import agents");
+                        }
+                      }}
+                    >
+                      <Download className="h-3.5 w-3.5 mr-1.5" />
+                      Import Agent Library
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3 text-xs"
+                      onClick={() => {
+                        setIsAddingAgent(!isAddingAgent);
+                        setEditingAgent(null);
+                        setAgentForm({ name: "", role: "", systemPrompt: "", avatar: "🤖", skills: "[]" });
+                      }}
+                    >
+                      {isAddingAgent ? "Cancel" : <><Plus className="h-3.5 w-3.5 mr-1.5" /> Create Agent</>}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* GitHub Import */}
+                <div className="p-4 rounded-xl border bg-card/50 space-y-3">
+                  <p className="text-xs font-semibold flex items-center gap-1.5">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Import Agents from GitHub
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Paste a GitHub repo URL containing SOUL.md or agent definitions.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { label: "OpenClaw Agents", url: "https://github.com/mergisi/awesome-openclaw-agents" },
+                      { label: "Built-in Library", url: "__seed__" },
+                    ].map((preset) => (
+                      <button
+                        key={preset.url}
+                        onClick={async () => {
+                          if (preset.url === "__seed__") {
+                            try {
+                              const res = await fetch("/api/agents/seed", { method: "POST" });
+                              const data = await res.json();
+                              if (data.success) {
+                                toast.success(`Imported ${data.created} agents`);
+                                const agentsRes = await fetch("/api/agents");
+                                setAgents(await agentsRes.json());
+                              }
+                            } catch { toast.error("Import failed"); }
+                            return;
+                          }
+                          const input = document.getElementById("github-import-url") as HTMLInputElement;
+                          if (input) input.value = preset.url;
+                        }}
+                        className="text-[10px] px-2 py-0.5 rounded-full border border-border hover:bg-accent transition-colors"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="https://github.com/owner/repo"
+                      className="h-8 text-xs flex-1"
+                      id="github-import-url"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3 text-xs shrink-0"
+                      onClick={async () => {
+                        const input = document.getElementById("github-import-url") as HTMLInputElement;
+                        const url = input?.value?.trim();
+                        if (!url) { toast.error("Please enter a GitHub URL"); return; }
+                        const tid = toast.loading("Importing agents...");
+                        try {
+                          const res = await fetch("/api/agents/import", {
+                            method: "POST", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ url }),
+                          });
+                          const data = await res.json();
+                          toast.dismiss(tid);
+                          if (data.success) {
+                            toast.success(`${data.imported} agents imported from ${data.source}`);
+                            if (data.errors) toast.warning(`${data.errors.length} files had errors`);
+                            const agentsRes = await fetch("/api/agents");
+                            setAgents(await agentsRes.json());
+                            input.value = "";
+                          } else {
+                            toast.error(data.error || "Import failed. Try the Built-in Library button instead.");
+                          }
+                        } catch {
+                          toast.dismiss(tid);
+                          toast.error("Failed to import. GitHub API may be rate-limited.");
+                        }
+                      }}
+                    >
+                      <Download className="h-3.5 w-3.5 mr-1.5" />
+                      Import
+                    </Button>
+                  </div>
                 </div>
 
                 {(isAddingAgent || editingAgent) && (
@@ -831,6 +1090,10 @@ export function SettingsPanel() {
                 <MCPServerPanel />
               </TabsContent>
 
+              <TabsContent value="updates" className="space-y-4 mt-0 border-0 p-0 focus-visible:ring-0">
+                <UpdatesSection />
+              </TabsContent>
+
               <TabsContent value="data" className="space-y-4 mt-0 border-0 p-0 focus-visible:ring-0">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-4 rounded-xl border bg-card/50">
@@ -865,6 +1128,32 @@ export function SettingsPanel() {
                       className="hidden"
                       onChange={handleImport}
                     />
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 rounded-xl border bg-card/50">
+                    <div>
+                      <p className="text-sm font-bold">Clear Cache</p>
+                      <p className="text-[11px] text-muted-foreground">Clear browser cache, Next.js build cache, and reload the app.</p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (typeof window !== "undefined") {
+                          localStorage.clear();
+                          sessionStorage.clear();
+                          if ("caches" in window) {
+                            caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
+                          }
+                          toast.success("Cache cleared. Reloading...");
+                          setTimeout(() => window.location.reload(), 1000);
+                        }
+                      }}
+                      className="h-8"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5 mr-2" />
+                      Clear & Reload
+                    </Button>
                   </div>
 
                   <Separator />

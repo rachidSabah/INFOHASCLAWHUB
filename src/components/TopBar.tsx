@@ -1,15 +1,16 @@
 "use client";
 
-import { useUIStore, useSettingsStore, useAgentStore, useSkillStore, useChatStore } from "@/lib/stores";
+import { useUIStore, useSettingsStore, useAgentStore, useSkillStore, useChatStore, useUpdateStore } from "@/lib/stores";
 import { cn } from "@/lib/utils";
 import { ClawHubLogo, ClawHubText } from "./ClawHubLogo";
 import {
-  PanelLeft, Settings, Bot, Zap, ChevronDown, Check, BarChart3, Activity,
+  PanelLeft, Settings, Bot, Zap, ChevronDown, Check, BarChart3, Activity, ArrowUpCircle, HeartPulse,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { TokenDashboard } from "./TokenDashboard";
 import { SystemMonitor } from "./SystemMonitor";
+import { DoctorPanel } from "./DoctorPanel";
 
 export function TopBar() {
   const { toggleSidebar, setSettingsOpen } = useUIStore();
@@ -17,21 +18,33 @@ export function TopBar() {
   const { agents, activeAgentId, setActiveAgentId } = useAgentStore();
   const { skills, activeSkillId, setActiveSkillId } = useSkillStore();
   const { activeConversationId, getActiveConversation, updateConversation } = useChatStore();
+  const { updateAvailable, setUpdateState } = useUpdateStore();
 
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
   const [skillDropdownOpen, setSkillDropdownOpen] = useState(false);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [tokenDashboardOpen, setTokenDashboardOpen] = useState(false);
   const [systemMonitorOpen, setSystemMonitorOpen] = useState(false);
+  const [doctorOpen, setDoctorOpen] = useState(false);
 
   const agentRef = useRef<HTMLDivElement>(null);
   const skillRef = useRef<HTMLDivElement>(null);
   const modelRef = useRef<HTMLDivElement>(null);
 
-  // Load models from store on mount
+  // Load models on mount + periodic refresh
   useEffect(() => {
     fetchModels().catch(() => {});
+    const interval = setInterval(() => fetchModels().catch(() => {}), 30000);
+    return () => clearInterval(interval);
   }, [fetchModels]);
+
+  // Re-fetch models when providers change (via settings store)
+  const providerCount = useSettingsStore((s) => 
+    s.settings?.providers ? Object.keys(s.settings.providers).length : 0
+  );
+  useEffect(() => {
+    fetchModels().catch(() => {});
+  }, [providerCount, fetchModels]);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -94,6 +107,19 @@ export function TopBar() {
       <div className="flex items-center gap-1.5 mr-2">
         <ClawHubLogo size={22} />
         <ClawHubText className="text-sm" />
+        {updateAvailable && (
+          <button
+            onClick={() => setUpdateState({ updateDialogOpen: true })}
+            className="relative flex items-center"
+            title="Update available"
+          >
+            <ArrowUpCircle className="h-4 w-4 text-primary animate-pulse" />
+            <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-primary opacity-75 animate-ping" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Agent selector */}
@@ -180,7 +206,12 @@ export function TopBar() {
       {/* Model selector */}
       <div ref={modelRef} className="relative">
         <button
-          onClick={() => { setModelDropdownOpen(!modelDropdownOpen); setAgentDropdownOpen(false); setSkillDropdownOpen(false); }}
+          onClick={() => {
+            setModelDropdownOpen(!modelDropdownOpen);
+            setAgentDropdownOpen(false);
+            setSkillDropdownOpen(false);
+            if (!modelDropdownOpen) fetchModels().catch(() => {});
+          }}
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-border hover:border-primary/20 hover:bg-muted/30 text-muted-foreground hover:text-foreground transition-colors"
         >
           <span className="max-w-[150px] truncate">{activeModel?.name || currentModelId}</span>
@@ -223,6 +254,15 @@ export function TopBar() {
       {/* Spacer */}
       <div className="flex-1" />
 
+      {/* Doctor */}
+      <button
+        onClick={() => setDoctorOpen(true)}
+        className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+        title="ClawHub Doctor"
+      >
+        <HeartPulse className="h-4 w-4" />
+      </button>
+
       {/* System Monitor */}
       <button
         onClick={() => setSystemMonitorOpen(true)}
@@ -248,6 +288,7 @@ export function TopBar() {
 
       <TokenDashboard open={tokenDashboardOpen} onOpenChange={setTokenDashboardOpen} />
       <SystemMonitor open={systemMonitorOpen} onOpenChange={setSystemMonitorOpen} />
+      <DoctorPanel open={doctorOpen} onOpenChange={setDoctorOpen} />
     </div>
   );
 }

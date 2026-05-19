@@ -116,20 +116,25 @@ export function SystemMonitor({ open, onOpenChange }: SystemMonitorProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md h-[560px] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col p-0 overflow-hidden">
+        <DialogHeader className="px-6 pt-6 pb-3 border-b shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Monitor className="h-5 w-5 text-primary" />
             System Monitor
+            {stats && (
+              <span className="ml-auto text-[10px] font-normal text-muted-foreground">
+                Auto-refresh 3s
+              </span>
+            )}
           </DialogTitle>
         </DialogHeader>
 
         {error && (
-          <p className="text-sm text-red-500 text-center py-4">{error}</p>
+          <p className="text-sm text-red-500 text-center py-4 px-6">{error}</p>
         )}
 
         {stats && (
-          <ScrollArea className="flex-1 pr-1">
+          <ScrollArea className="flex-1 min-h-0 px-6 py-4">
             <div className="space-y-4">
               {/* CPU Section */}
               <div className="flex items-center gap-4 p-3 bg-muted/30 rounded-xl">
@@ -141,6 +146,14 @@ export function SystemMonitor({ open, onOpenChange }: SystemMonitorProps) {
                   </div>
                   <p className="text-sm font-medium truncate">{stats.cpu.model}</p>
                   <p className="text-[10px] text-muted-foreground">{stats.cpu.cores.length} cores</p>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {stats.cpu.cores.map((pct, i) => (
+                      <div key={i} className="flex items-center gap-1">
+                        <div className={cn("w-2 h-2 rounded-full", usageColor(pct))} />
+                        <span className="text-[9px] text-muted-foreground tabular-nums">C{i}:{pct}%</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -200,7 +213,7 @@ export function SystemMonitor({ open, onOpenChange }: SystemMonitorProps) {
                   <Server className="h-3.5 w-3.5 text-muted-foreground" />
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">System</p>
                 </div>
-                <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
                   <Globe className="h-3 w-3 text-muted-foreground mt-0.5" />
                   <span className="truncate">{stats.system.os}</span>
                   <Terminal className="h-3 w-3 text-muted-foreground mt-0.5" />
@@ -235,6 +248,9 @@ export function SystemMonitor({ open, onOpenChange }: SystemMonitorProps) {
             </div>
           </ScrollArea>
         )}
+        <div className="shrink-0 p-3 border-t bg-muted/10 text-center text-[10px] text-muted-foreground">
+          ClawHub System Monitor &middot; Refresh every 3 seconds
+        </div>
       </DialogContent>
     </Dialog>
   );

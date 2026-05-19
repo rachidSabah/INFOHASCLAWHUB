@@ -2,6 +2,36 @@ import { create } from "zustand";
 import type { Conversation, Message, AppSettings, Agent, ModelGroup, Skill, Prompt } from "@/lib/types";
 import { DEFAULT_SETTINGS, AVAILABLE_MODEL_GROUPS } from "@/lib/types";
 
+export interface UpdateCommitInfo {
+  sha: string;
+  message: string;
+  date: string;
+}
+
+interface UpdateStoreState {
+  updateAvailable: boolean;
+  updateDialogOpen: boolean;
+  currentCommit: string;
+  latestCommit: string;
+  commits: UpdateCommitInfo[];
+  checking: boolean;
+  applying: boolean;
+  updateApplied: boolean;
+  setUpdateState: (state: Partial<Omit<UpdateStoreState, "setUpdateState">>) => void;
+}
+
+export const useUpdateStore = create<UpdateStoreState>((set) => ({
+  updateAvailable: false,
+  updateDialogOpen: false,
+  currentCommit: "",
+  latestCommit: "",
+  commits: [],
+  checking: false,
+  applying: false,
+  updateApplied: false,
+  setUpdateState: (state) => set(state),
+}));
+
 interface UIState {
   sidebarOpen: boolean;
   settingsOpen: boolean;

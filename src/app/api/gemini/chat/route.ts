@@ -363,22 +363,104 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const {
-      prompt,
       model = "gemini-2.0-flash",
       systemPrompt: manualSystemPrompt,
       agentId,
       conversationHistory = [],
-      files = [],
+      files: rawFiles = [],
       jsonMode = false,
       apiKey,
       workspacePath,
     } = body;
+    let { prompt } = body;
+    const files = rawFiles;
 
     console.log(`[${requestId}] Model: ${model}`);
     console.log(`[${requestId}] Prompt Length: ${prompt?.length || 0}`);
 
     if (!prompt && files.length === 0) {
       return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
+    }
+
+    // Read attached file contents and prepend to prompt
+    let fileContents = "";
+    const textExtensions = ["txt", "md", "csv", "json", "js", "ts", "jsx", "tsx", "html", "css", "xml", "yaml", "yml", "toml", "env", "gitignore", "py", "rs", "go", "java", "c", "cpp", "h", "hpp", "sql", "sh", "bat", "ps1", "log", "svg", "tex", "r", "rb", "php", "swift", "kt", "scala", "lua", "pl", "cfg", "ini", "conf", "vue", "svelte"];
+    const binaryReadExtensions = ["pdf", "docx", "xlsx", "pptx", "doc", "xls", "ppt", "odt", "ods", "odp"];
+
+    if (files.length > 0) {
+      console.log(`[${requestId}] Processing ${files.length} attached file(s)`);
+      for (const file of files) {
+        try {
+          const filePath = path.isAbsolute(file.path) ? file.path : path.join(process.cwd(), "uploads", file.path);
+          const ext = path.extname(file.name || file.path).toLowerCase().replace(".", "");
+          
+          if (!fs.existsSync(filePath)) {
+            console.warn(`[${requestId}] File not found: ${filePath}. Trying uploads dir...`);
+            // Try alternate path
+            const altPath = path.join(process.cwd(), "uploads", path.basename(file.path || ""));
+            if (fs.existsSync(altPath)) {
+              // Use alt path - will be handled below
+            } else {
+              fileContents += `\n\n[Attached: ${file.name} (${file.size} bytes, ${file.mimeType})]\n[File not accessible on disk - path: ${filePath}]\n`;
+              continue;
+            }
+          }
+
+          const actualPath = fs.existsSync(filePath) ? filePath : path.join(process.cwd(), "uploads", path.basename(file.path || ""));
+
+          if (textExtensions.includes(ext)) {
+            // Text files - read as UTF-8
+            const content = fs.readFileSync(actualPath, "utf-8");
+            fileContents += `\n\n[File: ${file.name}]\n\`\`\`${ext}\n${content.slice(0, 15000)}\n\`\`\`\n`;
+            console.log(`[${requestId}] Read text file: ${file.name} (${content.length} chars)`);
+          } else if (binaryReadExtensions.includes(ext)) {
+            // Office/binary documents - read as base64 and pass to agent
+            const buffer = fs.readFileSync(actualPath);
+            const base64 = buffer.toString("base64");
+            fileContents += `\n\n[Attached File: ${file.name}]\nType: ${file.mimeType || ext}\nSize: ${file.size} bytes\n\nThis is a ${ext.toUpperCase()} document. The file content is available as base64 (${(buffer.length / 1024).toFixed(1)} KB). Use the appropriate tool to read its contents:\n`;
+            if (ext === "pdf") {
+              fileContents += `- For PDF: Use Python with PyPDF2 or pdfplumber to extract text\n`;
+              fileContents += `- Or use the system 'type' command if available\n`;
+            } else if (ext === "docx") {
+              fileContents += `- For DOCX: Use Python with python-docx library to read text\n`;
+              fileContents += `- The file is a ZIP containing XML documents\n`;
+            } else if (ext === "xlsx" || ext === "xls") {
+              fileContents += `- For Excel: Use Python with openpyxl or pandas to read data\n`;
+            }
+            fileContents += `\nBase64 content (first 8KB): ${base64.slice(0, 8192)}...\n`;
+            console.log(`[${requestId}] Read binary file: ${file.name} (${buffer.length} bytes, base64)`);
+          } else if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"].includes(ext)) {
+            // Images - pass as base64 data URL
+            const buffer = fs.readFileSync(actualPath);
+            const mime = file.mimeType || `image/${ext === "jpg" ? "jpeg" : ext}`;
+            const base64 = buffer.toString("base64");
+            fileContents += `\n\n[Attached Image: ${file.name}]\nType: ${mime}\nSize: ${file.size} bytes\nDimensions: (image file attached)\n\n![${file.name}](data:${mime};base64,${base64.slice(0, 50000)})\n`;
+            console.log(`[${requestId}] Read image: ${file.name} (${buffer.length} bytes)`);
+          } else {
+            // Unknown type - try UTF-8 first, fall back to base64
+            try {
+              const content = fs.readFileSync(actualPath, "utf-8");
+              if (content.length > 0 && !content.includes("\ufffd")) {
+                fileContents += `\n\n[File: ${file.name}]\n\`\`\`${ext || "text"}\n${content.slice(0, 15000)}\n\`\`\`\n`;
+              } else {
+                throw new Error("Binary content detected");
+              }
+            } catch {
+              const buffer = fs.readFileSync(actualPath);
+              const base64 = buffer.toString("base64");
+              fileContents += `\n\n[Attached File: ${file.name}]\nType: ${file.mimeType || "unknown"}\nSize: ${file.size} bytes\nContent (base64, first 4KB): ${base64.slice(0, 4096)}...\n`;
+            }
+            console.log(`[${requestId}] Read unknown file: ${file.name}`);
+          }
+        } catch (err: any) {
+          console.error(`[${requestId}] Failed to read file ${file.name}: ${err.message}`);
+          fileContents += `\n\n[Attached: ${file.name}]\nError reading file: ${err.message}\n`;
+        }
+      }
+      // Prepend file contents to prompt
+      if (fileContents) {
+        prompt = `${fileContents}\n\n${prompt || "Please analyze the attached file(s)."}`;
+      }
     }
 
     // Agent lookup

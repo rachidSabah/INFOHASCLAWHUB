@@ -21,12 +21,20 @@ import {
   ChevronRight,
   Play,
   Globe,
+  CalendarClock,
+  GitCompare,
+  MessageCircle,
+  Zap,
 } from "lucide-react";
 import { SearchPanel } from "@/components/SearchPanel";
 import { cn } from "@/lib/utils";
 import type { Attachment } from "@/lib/types";
 import { VoiceInput } from "@/components/VoiceInput";
 import { CodeRunner } from "@/components/CodeRunner";
+import { SchedulerPanel } from "@/components/SchedulerPanel";
+import { ModelConsensus } from "@/components/ModelConsensus";
+import { WhatsAppPanel } from "@/components/WhatsAppPanel";
+import { AgentRunnerPanel } from "@/components/AgentRunnerPanel";
 
 const STANDARD_PROMPTS = [
   { title: "💡 Explain Code", content: "Can you explain this code in detail and break down how it works?" },
@@ -42,10 +50,14 @@ export function ChatInput() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [codeRunnerOpen, setCodeRunnerOpen] = useState(false);
+  const [consensusOpen, setConsensusOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [schedulerOpen, setSchedulerOpen] = useState(false);
+  const [whatsappOpen, setWhatsappOpen] = useState(false);
+  const [runnerOpen, setRunnerOpen] = useState(false);
 
   const {
     activeConversationId,
@@ -111,12 +123,15 @@ export function ChatInput() {
       }
     }
 
-    // Save user message
+    // Save user message (include file references in content for display)
+    const fileNames = attachments.map(a => a.name).join(", ");
+    const displayContent = trimmed || (fileNames ? `[Attached: ${fileNames}]` : "");
+    
     const userMessage = {
       id: crypto.randomUUID(),
       conversationId: convId!,
       role: "user" as const,
-      content: trimmed,
+      content: displayContent,
       attachments: attachments.length > 0 ? JSON.stringify(attachments) : null,
       metadata: null,
       edited: false,
@@ -129,7 +144,7 @@ export function ChatInput() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           role: "user",
-          content: trimmed,
+          content: displayContent,
           agentId: activeAgentId,
           attachments: attachments.length > 0 ? attachments : undefined,
         }),
@@ -148,8 +163,7 @@ export function ChatInput() {
     abortRef.current = false;
 
     try {
-      // Build conversation history for context
-      const history = messages.map((m) => ({
+      const history = useChatStore.getState().messages.map((m) => ({
         role: m.role,
         content: m.content,
       }));
@@ -449,6 +463,61 @@ export function ChatInput() {
               <TooltipContent side="top">Search web</TooltipContent>
             </Tooltip>
 
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn("h-9 w-9 shrink-0", consensusOpen && "text-primary")}
+                  onClick={() => setConsensusOpen(true)}
+                >
+                  <GitCompare className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Compare models</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn("h-9 w-9 shrink-0", schedulerOpen && "text-primary")}
+                  onClick={() => setSchedulerOpen(true)}
+                >
+                  <CalendarClock className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Scheduled tasks</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn("h-9 w-9 shrink-0", whatsappOpen && "text-primary")}
+                  onClick={() => setWhatsappOpen(true)}
+                >
+                  <MessageCircle className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">WhatsApp</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn("h-9 w-9 shrink-0", runnerOpen && "text-primary")}
+                  onClick={() => setRunnerOpen(true)}
+                >
+                  <Zap className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Agent runner</TooltipContent>
+            </Tooltip>
+
             <div className="flex-1 relative">
               <Textarea
                 ref={textareaRef}
@@ -503,6 +572,27 @@ export function ChatInput() {
         <SearchPanel
           open={searchOpen}
           onClose={() => setSearchOpen(false)}
+        />
+
+        <SchedulerPanel
+          open={schedulerOpen}
+          onOpenChange={setSchedulerOpen}
+        />
+
+        <AgentRunnerPanel
+          open={runnerOpen}
+          onOpenChange={setRunnerOpen}
+          prefillAgentId={activeAgentId}
+        />
+
+        <ModelConsensus
+          open={consensusOpen}
+          onOpenChange={setConsensusOpen}
+        />
+
+        <WhatsAppPanel
+          open={whatsappOpen}
+          onOpenChange={setWhatsappOpen}
         />
 
         <CodeRunner open={codeRunnerOpen} onOpenChange={setCodeRunnerOpen} />
