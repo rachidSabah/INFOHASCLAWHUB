@@ -84,6 +84,13 @@ class WhatsAppService {
   private activeQR: string | undefined;
   private qrResolve: ((qr: string) => void) | null = null;
   private botEnabled = false;
+  // Auto-load bot state from global
+  constructor() {
+    if (typeof globalThis !== "undefined") {
+      const saved = (globalThis as any).__whatsapp_bot_enabled;
+      if (typeof saved === "boolean") this.botEnabled = saved;
+    }
+  }
   private userContexts = new Map<string, { role: string; content: string }[]>();
   private botModel = "gemini-2.5-flash";
   private botSystemPrompt = "You are a helpful WhatsApp AI assistant. Keep responses concise and friendly. You can help with questions, tasks, and general conversation.";
@@ -271,7 +278,11 @@ class WhatsAppService {
   }
 
   // Bot methods
-  setBotEnabled(enabled: boolean) { this.botEnabled = enabled; }
+  setBotEnabled(enabled: boolean) { 
+    this.botEnabled = enabled; 
+    (globalThis as any).__whatsapp_bot_enabled = enabled;
+    console.log(`[WhatsApp Bot] ${enabled ? "ENABLED" : "DISABLED"}`);
+  }
   isBotEnabled(): boolean { return this.botEnabled; }
   setBotConfig(config: { model?: string; systemPrompt?: string }) {
     if (config.model) this.botModel = config.model;

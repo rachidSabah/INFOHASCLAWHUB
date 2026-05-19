@@ -31,7 +31,7 @@ import {
   Brain,
   Terminal,
 } from "lucide-react";
-import { ChatActionMenu } from "@/components/ChatActionMenu";
+import { ActionMenu } from "@/components/ActionMenu";
 import { GenericActionMenu } from "@/components/GenericActionMenu";
 import {
   Dialog,
@@ -532,9 +532,9 @@ export function ChatSidebar() {
 
                         {/* Action buttons - ALWAYS VISIBLE dropdown menu */}
                         {!selectMode && editingId !== conv.id && (
-                          <ChatActionMenu
+                          <ActionMenu
                             isFavorite={true}
-                            onToggleFavorite={(e) => toggleFavorite(conv.id, true, e)}
+                            onToggleFavorite={() => toggleFavorite(conv.id, true, new MouseEvent("click") as any)}
                             onRename={() => { setEditingId(conv.id); setEditTitle(conv.title || ""); }}
                             onExportMarkdown={() => handleExport(conv.id, "markdown")}
                             onExportJSON={() => handleExport(conv.id, "json")}
@@ -640,9 +640,9 @@ export function ChatSidebar() {
 
                         {/* Action buttons - ALWAYS VISIBLE dropdown menu */}
                         {!selectMode && editingId !== conv.id && (
-                          <ChatActionMenu
+                          <ActionMenu
                             isFavorite={false}
-                            onToggleFavorite={(e) => toggleFavorite(conv.id, false, e)}
+                            onToggleFavorite={() => toggleFavorite(conv.id, false, new MouseEvent("click") as any)}
                             onRename={() => { setEditingId(conv.id); setEditTitle(conv.title || ""); }}
                             onExportMarkdown={() => handleExport(conv.id, "markdown")}
                             onExportJSON={() => handleExport(conv.id, "json")}
