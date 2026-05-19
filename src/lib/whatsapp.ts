@@ -1,8 +1,50 @@
 let makeWASocket: any;
 let useMultiFileAuthState: any;
 let DisconnectReason: any;
+let jidDecode: ((jid: string | undefined) => { user: string; server: string; device?: number; domainType?: number } | undefined) | null = null;
+let jidEncode: ((user: string | number | null, server: string, device?: number, agent?: number) => string) | null = null;
 
 let serviceInitialized = false;
+
+/**
+ * Normalize a JID to ensure it has the proper WhatsApp format.
+ * If the JID doesn't contain '@', append '@s.whatsapp.net'.
+ * Also handles phone numbers without the JID suffix.
+ */
+function normalizeJid(rawJid: string): string {
+  if (!rawJid || typeof rawJid !== 'string') {
+    throw new Error('Invalid JID: JID must be a non-empty string');
+  }
+  
+  const trimmed = rawJid.trim();
+  if (!trimmed) {
+    throw new Error('Invalid JID: JID cannot be empty or whitespace');
+  }
+  
+  // If already contains @, validate it has proper format
+  if (trimmed.includes('@')) {
+    const parts = trimmed.split('@');
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+      throw new Error(`Invalid JID format: "${trimmed}". Expected format: user@server (e.g., 1234567890@s.whatsapp.net)`);
+    }
+    // Try to decode using Baileys jidDecode for validation
+    if (jidDecode) {
+      const decoded = jidDecode(trimmed);
+      if (!decoded || !decoded.user) {
+        throw new Error(`Invalid JID: "${trimmed}" could not be decoded. Ensure it follows the format user@server`);
+      }
+    }
+    return trimmed;
+  }
+  
+  // No @ sign - treat as a phone number and append @s.whatsapp.net
+  const phoneRegex = /^\d{5,15}$/;
+  if (!phoneRegex.test(trimmed)) {
+    throw new Error(`Invalid phone number: "${trimmed}". Phone numbers should contain 5-15 digits only. For group JIDs use format: groupId@g.us`);
+  }
+  
+  return `${trimmed}@s.whatsapp.net`;
+}
 
 function generateQRDataURL(text: string): string {
   // Generate QR code as inline SVG - no external API needed
@@ -16,6 +58,15 @@ async function loadBaileysModules() {
     makeWASocket = baileys.makeWASocket;
     useMultiFileAuthState = baileys.useMultiFileAuthState;
     DisconnectReason = baileys.DisconnectReason;
+    // Also load jid utilities for validation
+    try {
+      const jidUtils = await import("@whiskeysockets/baileys/lib/WABinary/jid-utils.js");
+      jidDecode = jidUtils.jidDecode;
+      jidEncode = jidUtils.jidEncode;
+    } catch {
+      // jid utils not available, will use basic validation
+      console.warn('[WhatsApp] jid-utils not available, using basic JID validation');
+    }
     serviceInitialized = true;
   }
 }
@@ -141,7 +192,12 @@ class WhatsAppService {
 
           // Auto-reply bot
           if (this.botEnabled && this.sock && this.state.connected) {
-            this.handleBotReply(msg.key.remoteJid, text).catch(console.error);
+            const remoteJid = msg.key.remoteJid;
+            if (remoteJid && remoteJid.includes('@')) {
+              this.handleBotReply(remoteJid, text).catch(console.error);
+            } else {
+              console.warn('[WhatsApp] Skipping bot reply - invalid remoteJid:', remoteJid);
+            }
           }
         }
       });
@@ -186,10 +242,27 @@ class WhatsAppService {
     return { ...this.state };
   }
 
-  async sendMessage(jid: string, text: string): Promise<void> {
+  async sendMessage(rawJid: string, text: string): Promise<void> {
     if (!this.sock || !this.state.connected) {
       throw new Error("WhatsApp not connected");
     }
+    
+    // Normalize and validate JID to prevent jidDecode crash
+    let jid: string;
+    try {
+      jid = normalizeJid(rawJid);
+    } catch (err: any) {
+      throw new Error(err.message || 'Invalid recipient JID');
+    }
+    
+    // Double-check with Baileys' own jidDecode if available
+    if (jidDecode) {
+      const decoded = jidDecode(jid);
+      if (!decoded || !decoded.user) {
+        throw new Error(`Invalid JID "${jid}": could not decode user. Use format: 1234567890@s.whatsapp.net`);
+      }
+    }
+    
     await this.sock.sendMessage(jid, { text });
   }
 

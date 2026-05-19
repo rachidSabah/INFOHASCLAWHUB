@@ -26,7 +26,7 @@ import {
   Circle,
   Sparkles,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatTime } from "@/lib/utils";
 
 function generateQRSVG(text: string): string {
   // Use api.qrserver.com which is more reliable
@@ -178,10 +178,16 @@ export function WhatsAppPanel({
     if (!inputJid.trim() || !inputText.trim()) return;
     setSending(true);
     try {
+      // Auto-normalize: if input looks like a phone number (digits only), append @s.whatsapp.net
+      let normalizedJid = inputJid.trim();
+      if (/^\d{5,15}$/.test(normalizedJid)) {
+        normalizedJid = `${normalizedJid}@s.whatsapp.net`;
+      }
+      
       const res = await fetch("/api/whatsapp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jid: inputJid.trim(), text: inputText.trim() }),
+        body: JSON.stringify({ jid: normalizedJid, text: inputText.trim() }),
       });
       if (res.ok) {
         setInputText("");
@@ -356,7 +362,7 @@ export function WhatsAppPanel({
                 <h4 className="text-sm font-semibold mb-2">Send Message</h4>
                 <div className="space-y-2">
                   <Input
-                    placeholder="Recipient JID (e.g. 1234567890@s.whatsapp.net)"
+                    placeholder="Phone number or JID (e.g. 1234567890 or 1234567890@s.whatsapp.net)"
                     value={inputJid}
                     onChange={(e) => setInputJid(e.target.value)}
                     className="h-9 text-xs"
