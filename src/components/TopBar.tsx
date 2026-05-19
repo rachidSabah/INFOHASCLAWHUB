@@ -5,12 +5,31 @@ import { cn } from "@/lib/utils";
 import { ClawHubLogo, ClawHubText } from "./ClawHubLogo";
 import {
   PanelLeft, Settings, Bot, Zap, ChevronDown, Check, BarChart3, Activity, ArrowUpCircle, HeartPulse,
+  Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { TokenDashboard } from "./TokenDashboard";
 import { SystemMonitor } from "./SystemMonitor";
 import { DoctorPanel } from "./DoctorPanel";
+
+// 16 Enhancement Panels
+import { AgentOrchestrationPanel } from "./enhancements/AgentOrchestrationPanel";
+import { AutonomousCodingPanel } from "./enhancements/AutonomousCodingPanel";
+import { ModelRouterPanel } from "./enhancements/ModelRouterPanel";
+import { CodebaseIntelligencePanel } from "./enhancements/CodebaseIntelligencePanel";
+import { AIPairTerminalPanel } from "./enhancements/AIPairTerminalPanel";
+import { CommsHubPanel } from "./enhancements/CommsHubPanel";
+import { UIBuilderPanel } from "./enhancements/UIBuilderPanel";
+import { DatabaseStudioPanel } from "./enhancements/DatabaseStudioPanel";
+import { DeployPipelinePanel } from "./enhancements/DeployPipelinePanel";
+import { SecurityVaultPanel } from "./enhancements/SecurityVaultPanel";
+import { AnalyticsPanel } from "./enhancements/AnalyticsPanel";
+import { PluginMarketplacePanel } from "./enhancements/PluginMarketplacePanel";
+import { QuickActionsPanel } from "./enhancements/QuickActionsPanel";
+import { VoiceCodingPanel } from "./enhancements/VoiceCodingPanel";
+import { GitIntelligencePanel } from "./enhancements/GitIntelligencePanel";
+import { MobileCompanionPanel } from "./enhancements/MobileCompanionPanel";
 
 export function TopBar() {
   const { toggleSidebar, setSettingsOpen } = useUIStore();
@@ -26,10 +45,30 @@ export function TopBar() {
   const [tokenDashboardOpen, setTokenDashboardOpen] = useState(false);
   const [systemMonitorOpen, setSystemMonitorOpen] = useState(false);
   const [doctorOpen, setDoctorOpen] = useState(false);
+  const [powerToolsOpen, setPowerToolsOpen] = useState(false);
+
+  // 16 Enhancement panel open states
+  const [orchestrationOpen, setOrchestrationOpen] = useState(false);
+  const [codingLoopOpen, setCodingLoopOpen] = useState(false);
+  const [modelRouterOpen, setModelRouterOpen] = useState(false);
+  const [codebaseIntelOpen, setCodebaseIntelOpen] = useState(false);
+  const [aiTerminalOpen, setAiTerminalOpen] = useState(false);
+  const [commsHubOpen, setCommsHubOpen] = useState(false);
+  const [uiBuilderOpen, setUiBuilderOpen] = useState(false);
+  const [dbStudioOpen, setDbStudioOpen] = useState(false);
+  const [deployOpen, setDeployOpen] = useState(false);
+  const [securityVaultOpen, setSecurityVaultOpen] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [pluginsOpen, setPluginsOpen] = useState(false);
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false);
+  const [voiceCodingOpen, setVoiceCodingOpen] = useState(false);
+  const [gitIntelOpen, setGitIntelOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const agentRef = useRef<HTMLDivElement>(null);
   const skillRef = useRef<HTMLDivElement>(null);
   const modelRef = useRef<HTMLDivElement>(null);
+  const powerToolsRef = useRef<HTMLDivElement>(null);
 
   // Load models on mount + periodic refresh
   useEffect(() => {
@@ -52,6 +91,7 @@ export function TopBar() {
       if (agentRef.current && !agentRef.current.contains(e.target as Node)) setAgentDropdownOpen(false);
       if (skillRef.current && !skillRef.current.contains(e.target as Node)) setSkillDropdownOpen(false);
       if (modelRef.current && !modelRef.current.contains(e.target as Node)) setModelDropdownOpen(false);
+      if (powerToolsRef.current && !powerToolsRef.current.contains(e.target as Node)) setPowerToolsOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -254,6 +294,84 @@ export function TopBar() {
       {/* Spacer */}
       <div className="flex-1" />
 
+      {/* Power Tools Dropdown */}
+      <div ref={powerToolsRef} className="relative">
+        <button
+          onClick={() => setPowerToolsOpen(!powerToolsOpen)}
+          className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border",
+            powerToolsOpen ? "border-primary/30 bg-primary/5 text-primary" : "border-border hover:border-primary/20 hover:bg-muted/30 text-muted-foreground"
+          )}
+          title="Power Tools — 16 AI Enhancement Features"
+        >
+          <Rocket className="h-3.5 w-3.5" />
+          <span>Power Tools</span>
+          <ChevronDown className={cn("h-3 w-3 opacity-60 transition-transform", powerToolsOpen && "rotate-180")} />
+        </button>
+        {powerToolsOpen && (
+          <div className="absolute top-full right-0 mt-1 w-72 bg-popover border border-border rounded-xl shadow-xl z-50 animate-fade-in overflow-hidden">
+            <div className="p-1.5 border-b border-border">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1">Tier 1: Game-Changers</p>
+            </div>
+            <div className="p-1.5 space-y-0.5 max-h-[70vh] overflow-y-auto">
+              <button onClick={() => { setOrchestrationOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <Workflow className="h-3.5 w-3.5 text-violet-500" /><div><span className="font-medium">Agent Orchestration</span><p className="text-[10px] text-muted-foreground">Visual pipeline builder</p></div>
+              </button>
+              <button onClick={() => { setCodingLoopOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <Code2 className="h-3.5 w-3.5 text-blue-500" /><div><span className="font-medium">Autonomous Coding</span><p className="text-[10px] text-muted-foreground">Plan→Code→Test→Fix→Commit</p></div>
+              </button>
+              <button onClick={() => { setModelRouterOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <Cpu className="h-3.5 w-3.5 text-emerald-500" /><div><span className="font-medium">Model Router</span><p className="text-[10px] text-muted-foreground">Smart AI model switching</p></div>
+              </button>
+              <button onClick={() => { setCodebaseIntelOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <Search className="h-3.5 w-3.5 text-cyan-500" /><div><span className="font-medium">Codebase Intelligence</span><p className="text-[10px] text-muted-foreground">Semantic search & security</p></div>
+              </button>
+              <button onClick={() => { setAiTerminalOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <Terminal className="h-3.5 w-3.5 text-amber-500" /><div><span className="font-medium">AI Pair Terminal</span><p className="text-[10px] text-muted-foreground">AI watches your terminal</p></div>
+              </button>
+              <div className="border-t border-border my-1" />
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1">Tier 2: Power Features</p>
+              <button onClick={() => { setCommsHubOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <Radio className="h-3.5 w-3.5 text-green-500" /><div><span className="font-medium">Comms Hub</span><p className="text-[10px] text-muted-foreground">WhatsApp/Telegram/Discord/Slack</p></div>
+              </button>
+              <button onClick={() => { setUiBuilderOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <Paintbrush className="h-3.5 w-3.5 text-pink-500" /><div><span className="font-medium">Visual UI Builder</span><p className="text-[10px] text-muted-foreground">Screenshot → Component</p></div>
+              </button>
+              <button onClick={() => { setDbStudioOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <Database className="h-3.5 w-3.5 text-orange-500" /><div><span className="font-medium">Database Studio</span><p className="text-[10px] text-muted-foreground">AI-powered DB management</p></div>
+              </button>
+              <div className="border-t border-border my-1" />
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1">Tier 3: Pro Features</p>
+              <button onClick={() => { setDeployOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <Rocket className="h-3.5 w-3.5 text-indigo-500" /><div><span className="font-medium">Deploy Pipeline</span><p className="text-[10px] text-muted-foreground">One-click deploy & CI/CD</p></div>
+              </button>
+              <button onClick={() => { setSecurityVaultOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <Shield className="h-3.5 w-3.5 text-red-500" /><div><span className="font-medium">Security Vault</span><p className="text-[10px] text-muted-foreground">Secret scanner & compliance</p></div>
+              </button>
+              <button onClick={() => { setAnalyticsOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <BarChart3 className="h-3.5 w-3.5 text-teal-500" /><div><span className="font-medium">Analytics & Insights</span><p className="text-[10px] text-muted-foreground">Token usage & AI metrics</p></div>
+              </button>
+              <button onClick={() => { setPluginsOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <Puzzle className="h-3.5 w-3.5 text-purple-500" /><div><span className="font-medium">Plugin Marketplace</span><p className="text-[10px] text-muted-foreground">Community extensions</p></div>
+              </button>
+              <div className="border-t border-border my-1" />
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1">Tier 4: Differentiators</p>
+              <button onClick={() => { setQuickActionsOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <MousePointerClick className="h-3.5 w-3.5 text-lime-500" /><div><span className="font-medium">Quick Actions</span><p className="text-[10px] text-muted-foreground">Right-click AI actions</p></div>
+              </button>
+              <button onClick={() => { setVoiceCodingOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <Mic className="h-3.5 w-3.5 text-rose-500" /><div><span className="font-medium">Voice Coding</span><p className="text-[10px] text-muted-foreground">Speak your code changes</p></div>
+              </button>
+              <button onClick={() => { setGitIntelOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <GitBranch className="h-3.5 w-3.5 text-sky-500" /><div><span className="font-medium">Git Intelligence</span><p className="text-[10px] text-muted-foreground">AI commits & PR reviews</p></div>
+              </button>
+              <button onClick={() => { setMobileOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <Smartphone className="h-3.5 w-3.5 text-fuchsia-500" /><div><span className="font-medium">Mobile Companion</span><p className="text-[10px] text-muted-foreground">Monitor from your phone</p></div>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Doctor */}
       <button
         onClick={() => setDoctorOpen(true)}
@@ -289,6 +407,24 @@ export function TopBar() {
       <TokenDashboard open={tokenDashboardOpen} onOpenChange={setTokenDashboardOpen} />
       <SystemMonitor open={systemMonitorOpen} onOpenChange={setSystemMonitorOpen} />
       <DoctorPanel open={doctorOpen} onOpenChange={setDoctorOpen} />
+
+      {/* 16 Enhancement Panels */}
+      <AgentOrchestrationPanel open={orchestrationOpen} onOpenChange={setOrchestrationOpen} />
+      <AutonomousCodingPanel open={codingLoopOpen} onOpenChange={setCodingLoopOpen} />
+      <ModelRouterPanel open={modelRouterOpen} onOpenChange={setModelRouterOpen} />
+      <CodebaseIntelligencePanel open={codebaseIntelOpen} onOpenChange={setCodebaseIntelOpen} />
+      <AIPairTerminalPanel open={aiTerminalOpen} onOpenChange={setAiTerminalOpen} />
+      <CommsHubPanel open={commsHubOpen} onOpenChange={setCommsHubOpen} />
+      <UIBuilderPanel open={uiBuilderOpen} onOpenChange={setUiBuilderOpen} />
+      <DatabaseStudioPanel open={dbStudioOpen} onOpenChange={setDbStudioOpen} />
+      <DeployPipelinePanel open={deployOpen} onOpenChange={setDeployOpen} />
+      <SecurityVaultPanel open={securityVaultOpen} onOpenChange={setSecurityVaultOpen} />
+      <AnalyticsPanel open={analyticsOpen} onOpenChange={setAnalyticsOpen} />
+      <PluginMarketplacePanel open={pluginsOpen} onOpenChange={setPluginsOpen} />
+      <QuickActionsPanel open={quickActionsOpen} onOpenChange={setQuickActionsOpen} />
+      <VoiceCodingPanel open={voiceCodingOpen} onOpenChange={setVoiceCodingOpen} />
+      <GitIntelligencePanel open={gitIntelOpen} onOpenChange={setGitIntelOpen} />
+      <MobileCompanionPanel open={mobileOpen} onOpenChange={setMobileOpen} />
     </div>
   );
 }

@@ -1,0 +1,28 @@
+import { db } from "@/lib/db";
+import { NextRequest, NextResponse } from 'next/server';
+
+
+
+
+export async function POST(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const connection = await db.botConnection.findUnique({ where: { id } });
+    if (!connection) {
+      return NextResponse.json({ error: 'Bot connection not found' }, { status: 404 });
+    }
+    if (!connection.isConnected) {
+      return NextResponse.json({ error: 'Bot is already disconnected' }, { status: 400 });
+    }
+    const updated = await db.botConnection.update({
+      where: { id },
+      data: { isConnected: false, lastActivity: new Date() },
+    });
+    return NextResponse.json(updated);
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

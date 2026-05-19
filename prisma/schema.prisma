@@ -109,3 +109,200 @@ model KnowledgeChunk {
   createdAt  DateTime          @default(now())
   document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
 }
+
+// === NEW MODELS FOR 16 FEATURE ENHANCEMENTS ===
+
+// Feature 1: Multi-Agent Orchestration
+model AgentPipeline {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  steps       String   // JSON: { agentId, order, approvalRequired, inputMapping, outputMapping }[]
+  status      String   @default("draft") // "draft" | "running" | "completed" | "failed" | "paused"
+  currentStep Int      @default(0)
+  results     String?  // JSON: { step, output, status, duration }[]
+  parallelGroups String? // JSON: [[0,1], [2]] - which steps run in parallel
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Feature 2: Autonomous Coding Loop
+model CodingSession {
+  id            String   @id @default(cuid())
+  title         String
+  workspacePath String
+  task          String   // The coding task description
+  status        String   @default("idle") // "idle" | "planning" | "coding" | "testing" | "fixing" | "committed" | "failed"
+  approvalMode  String   @default("suggest") // "auto" | "suggest" | "ask"
+  iterations    Int      @default(0)
+  maxIterations Int      @default(10)
+  plan          String?  // JSON: { steps: string[] }
+  checkpoints   String?  // JSON: { id, timestamp, commitHash, description }[]
+  diffLog       String?  // JSON: { timestamp, file, diff }[]
+  testResults   String?  // JSON: { passed, failed, output }[]
+  result        String?  // Final result summary
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// Feature 3: Multi-Model Router
+model ModelRoute {
+  id          String   @id @default(cuid())
+  name        String
+  taskType    String   // "code" | "analysis" | "creative" | "quick" | "reasoning" | "embedding"
+  modelId     String   // The model to route to
+  priority    Int      @default(0) // Higher = preferred
+  fallbackIds String   @default("[]") // JSON: string[] of fallback model IDs
+  costPerToken Float?  // Cost tracking
+  avgLatency  Float?   // Average response time in ms
+  successRate Float?   // 0-1 success rate
+  isEnabled   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Feature 4: Codebase Intelligence
+model CodeIndex {
+  id          String   @id @default(cuid())
+  projectPath String
+  filePath    String
+  symbolName  String
+  symbolType  String   // "function" | "class" | "variable" | "import" | "export"
+  lineStart   Int
+  lineEnd     Int?
+  content     String?  // Snippet
+  embedding   String?  // JSON vector
+  updatedAt   DateTime @updatedAt
+}
+
+model SecurityVulnerability {
+  id          String   @id @default(cuid())
+  filePath    String
+  line        Int
+  severity    String   // "critical" | "high" | "medium" | "low" | "info"
+  ruleId      String   // e.g., "SQL_INJECTION", "EXPOSED_SECRET"
+  message     String
+  suggestion  String?
+  isResolved  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Feature 6: Multi-Platform Comms Hub
+model BotConnection {
+  id              String    @id @default(cuid())
+  platform        String    // "whatsapp" | "telegram" | "discord" | "slack"
+  name            String
+  token           String?   // Bot token for Telegram/Discord/Slack
+  isConnected     Boolean   @default(false)
+  config          String?   // JSON: platform-specific config
+  botEnabled      Boolean   @default(true)
+  connectedNumber String?
+  personality     String?   // JSON: { tone, style, rules } - channel-specific personality
+  lastActivity    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// Feature 7: Visual UI Builder
+model UIBuilderProject {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  framework     String   @default("react") // "react" | "vue" | "html"
+  components    String   @default("[]") // JSON: { id, type, props, children, styles }[]
+  generatedCode String?
+  previewUrl    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// Feature 8: Database Studio
+model DatabaseConnection {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   // "sqlite" | "postgresql" | "mysql" | "mongodb"
+  connectionString String
+  schemaSnapshot String? // JSON: last known schema
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Feature 9: Deploy Pipeline
+model DeployEnvironment {
+  id          String   @id @default(cuid())
+  name        String   // "dev" | "staging" | "production"
+  projectPath String
+  type        String   // "docker" | "serverless" | "vps" | "static"
+  config      String   // JSON: environment-specific config
+  lastDeploy  DateTime?
+  deployCount Int      @default(0)
+  status      String   @default("idle") // "idle" | "deploying" | "running" | "failed"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Feature 10: Security Vault
+model SecurityAuditLog {
+  id          String   @id @default(cuid())
+  agentId     String?
+  action      String   // What was done
+  resource    String?  // What was accessed
+  reasoning   String?  // Why it was done
+  risk        String   @default("low") // "low" | "medium" | "high" | "critical"
+  metadata    String?  // JSON: additional context
+  createdAt   DateTime @default(now())
+}
+
+model ExposedSecret {
+  id          String   @id @default(cuid())
+  filePath    String
+  line        Int
+  secretType  String   // "api_key" | "password" | "token" | "private_key" | "connection_string"
+  maskedValue String   // Show first/last 2 chars only
+  isRevoked   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Feature 11: Analytics
+model AnalyticsEvent {
+  id          String   @id @default(cuid())
+  eventType   String   // "chat" | "agent_run" | "model_call" | "deploy" | "code_gen"
+  model       String?
+  agentId     String?
+  tokensUsed  Int?
+  cost        Float?
+  duration    Float?   // ms
+  success     Boolean?
+  metadata    String?  // JSON
+  createdAt   DateTime @default(now())
+}
+
+// Feature 12: Plugin Marketplace
+model Plugin {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  author      String
+  version     String
+  category    String   // "integration" | "tool" | "agent" | "theme" | "utility"
+  manifest    String   // JSON: plugin manifest
+  isEnabled   Boolean  @default(false)
+  isInstalled Boolean  @default(false)
+  rating      Float    @default(0)
+  installs    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Feature 15: Git Intelligence
+model GitAnalysis {
+  id          String   @id @default(cuid())
+  projectPath String
+  commitHash  String
+  analysis    String   // JSON: { summary, risk, suggestions }
+  type        String   // "commit" | "pr" | "conflict" | "review"
+  createdAt   DateTime @default(now())
+}

@@ -1,0 +1,36 @@
+import { db } from "@/lib/db";
+import { NextRequest, NextResponse } from 'next/server';
+
+
+
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const projectPath = searchParams.get('projectPath');
+    const severity = searchParams.get('severity');
+
+    const where: any = {};
+    if (projectPath) where.filePath = { startsWith: projectPath };
+    if (severity) where.severity = severity;
+
+    const vulnerabilities = await db.securityVulnerability.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const summary = {
+      critical: vulnerabilities.filter(v => v.severity === 'critical').length,
+      high: vulnerabilities.filter(v => v.severity === 'high').length,
+      medium: vulnerabilities.filter(v => v.severity === 'medium').length,
+      low: vulnerabilities.filter(v => v.severity === 'low').length,
+      info: vulnerabilities.filter(v => v.severity === 'info').length,
+      total: vulnerabilities.length,
+      resolved: vulnerabilities.filter(v => v.isResolved).length,
+    };
+
+    return NextResponse.json({ summary, vulnerabilities });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
