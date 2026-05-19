@@ -415,30 +415,25 @@ export function ChatSidebar() {
                       <div
                         key={conv.id}
                         className={cn(
-                          "relative group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer text-sm transition-all duration-200",
+                          "group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer text-sm transition-all duration-200",
                           selectMode && selectedIds.has(conv.id)
                             ? "bg-primary/10 border border-primary/30"
                             : activeConversationId === conv.id
-                            ? "bg-accent text-accent-foreground font-medium pl-4"
+                            ? "bg-accent text-accent-foreground font-medium"
                             : "hover:bg-accent/50 text-muted-foreground"
                         )}
+                        onClick={(e) => {
+                          if (selectMode) {
+                            toggleSelect(conv.id, e);
+                          } else {
+                            setActiveConversationId(conv.id);
+                          }
+                        }}
                       >
                         {/* Active indicator bar */}
                         {activeConversationId === conv.id && (
-                          <div className="absolute left-1.5 top-1/2 -translate-y-1/2 w-1 h-5 bg-primary rounded-full z-20" />
+                          <div className="w-1 h-5 bg-primary rounded-full shrink-0" />
                         )}
-
-                        {/* Row selection click target */}
-                        <div
-                          className="absolute inset-0 z-0 rounded-lg"
-                          onClick={(e) => {
-                            if (selectMode) {
-                              toggleSelect(conv.id, e);
-                            } else {
-                              setActiveConversationId(conv.id);
-                            }
-                          }}
-                        />
 
                         {/* Checkbox in select mode, icon otherwise */}
                         {selectMode ? (
@@ -453,14 +448,14 @@ export function ChatSidebar() {
                               });
                             }}
                             onClick={(e) => e.stopPropagation()}
-                            className="shrink-0 z-10"
+                            className="shrink-0"
                           />
                         ) : (
-                          <Star className="h-4 w-4 shrink-0 fill-amber-400 text-amber-400 z-10" />
+                          <Star className="h-4 w-4 shrink-0 fill-amber-400 text-amber-400" />
                         )}
 
                         {editingId === conv.id ? (
-                          <div className="flex-1 flex items-center gap-1 z-10">
+                          <div className="flex-1 flex items-center gap-1">
                             <Input
                               ref={inputRef}
                               value={editTitle}
@@ -497,38 +492,27 @@ export function ChatSidebar() {
                             </Button>
                           </div>
                         ) : (
-                          <span className="flex-1 truncate text-xs z-10 pointer-events-none select-none">
+                          <span className="flex-1 truncate text-xs select-none">
                             {conv.title}
                           </span>
                         )}
 
+                        {/* Action buttons - shown on hover */}
                         {!selectMode && editingId !== conv.id && (
-                          <div className="flex items-center gap-1 shrink-0 ml-2 z-10">
+                          <div className="flex items-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="icon"
-                              className="h-7 w-7 border-amber-500/50 text-amber-500 hover:bg-amber-500/10"
+                              className="h-6 w-6 text-amber-500 hover:bg-amber-500/10"
                               title="Unfavorite"
                               onClick={(e) => toggleFavorite(conv.id, true, e)}
                             >
                               <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
                             </Button>
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="icon"
-                              className="h-7 w-7 border-muted-foreground/30 text-muted-foreground hover:bg-emerald-500/10 hover:text-emerald-500 hover:border-emerald-500/50"
-                              title="Export"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleExport(conv.id, "markdown");
-                              }}
-                            >
-                              <Download className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-7 w-7 border-muted-foreground/30 text-muted-foreground hover:bg-primary/10 hover:text-primary hover:border-primary/50"
+                              className="h-6 w-6 text-muted-foreground hover:bg-primary/10 hover:text-primary"
                               title="Rename"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -538,18 +522,50 @@ export function ChatSidebar() {
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-7 w-7 border-muted-foreground/30 text-muted-foreground hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50"
-                              title="Delete"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDeleteDialogId(conv.id);
-                              }}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-muted-foreground hover:bg-accent/80"
+                                  title="More options"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <MoreHorizontal className="h-3.5 w-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-44">
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleExport(conv.id, "markdown");
+                                  }}
+                                >
+                                  <Download className="h-3.5 w-3.5 mr-2" />
+                                  Export as Markdown
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleExport(conv.id, "json");
+                                  }}
+                                >
+                                  <Download className="h-3.5 w-3.5 mr-2" />
+                                  Export as JSON
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDeleteDialogId(conv.id);
+                                  }}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         )}
                       </div>
@@ -567,30 +583,25 @@ export function ChatSidebar() {
                       <div
                         key={conv.id}
                         className={cn(
-                          "relative group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer text-sm transition-all duration-200",
+                          "group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer text-sm transition-all duration-200",
                           selectMode && selectedIds.has(conv.id)
                             ? "bg-primary/10 border border-primary/30"
                             : activeConversationId === conv.id
-                            ? "bg-accent text-accent-foreground font-medium pl-4"
+                            ? "bg-accent text-accent-foreground font-medium"
                             : "hover:bg-accent/50 text-muted-foreground"
                         )}
+                        onClick={(e) => {
+                          if (selectMode) {
+                            toggleSelect(conv.id, e);
+                          } else {
+                            setActiveConversationId(conv.id);
+                          }
+                        }}
                       >
                         {/* Active indicator bar */}
                         {activeConversationId === conv.id && (
-                          <div className="absolute left-1.5 top-1/2 -translate-y-1/2 w-1 h-5 bg-primary rounded-full z-20" />
+                          <div className="w-1 h-5 bg-primary rounded-full shrink-0" />
                         )}
-
-                        {/* Row selection click target */}
-                        <div
-                          className="absolute inset-0 z-0 rounded-lg"
-                          onClick={(e) => {
-                            if (selectMode) {
-                              toggleSelect(conv.id, e);
-                            } else {
-                              setActiveConversationId(conv.id);
-                            }
-                          }}
-                        />
 
                         {/* Checkbox in select mode, icon otherwise */}
                         {selectMode ? (
@@ -605,14 +616,14 @@ export function ChatSidebar() {
                               });
                             }}
                             onClick={(e) => e.stopPropagation()}
-                            className="shrink-0 z-10"
+                            className="shrink-0"
                           />
                         ) : (
-                          <MessageSquare className="h-4 w-4 shrink-0 z-10" />
+                          <MessageSquare className="h-4 w-4 shrink-0" />
                         )}
 
                         {editingId === conv.id ? (
-                          <div className="flex-1 flex items-center gap-1 z-10">
+                          <div className="flex-1 flex items-center gap-1">
                             <Input
                               ref={inputRef}
                               value={editTitle}
@@ -649,38 +660,27 @@ export function ChatSidebar() {
                             </Button>
                           </div>
                         ) : (
-                          <span className="flex-1 truncate text-xs z-10 pointer-events-none select-none">
+                          <span className="flex-1 truncate text-xs select-none">
                             {conv.title}
                           </span>
                         )}
 
+                        {/* Action buttons - shown on hover */}
                         {!selectMode && editingId !== conv.id && (
-                          <div className="flex items-center gap-1 shrink-0 ml-2 z-10">
+                          <div className="flex items-center shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="icon"
-                              className="h-7 w-7 border-amber-500/30 text-amber-500/70 hover:bg-amber-500/10 hover:text-amber-500 hover:border-amber-500/50"
+                              className="h-6 w-6 text-amber-500/70 hover:bg-amber-500/10 hover:text-amber-500"
                               title="Favorite"
                               onClick={(e) => toggleFavorite(conv.id, false, e)}
                             >
                               <Star className="h-3.5 w-3.5" />
                             </Button>
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="icon"
-                              className="h-7 w-7 border-muted-foreground/30 text-muted-foreground hover:bg-emerald-500/10 hover:text-emerald-500 hover:border-emerald-500/50"
-                              title="Export"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleExport(conv.id, "markdown");
-                              }}
-                            >
-                              <Download className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-7 w-7 border-muted-foreground/30 text-muted-foreground hover:bg-primary/10 hover:text-primary hover:border-primary/50"
+                              className="h-6 w-6 text-muted-foreground hover:bg-primary/10 hover:text-primary"
                               title="Rename"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -690,18 +690,50 @@ export function ChatSidebar() {
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-7 w-7 border-muted-foreground/30 text-muted-foreground hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50"
-                              title="Delete"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDeleteDialogId(conv.id);
-                              }}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-muted-foreground hover:bg-accent/80"
+                                  title="More options"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <MoreHorizontal className="h-3.5 w-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-44">
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleExport(conv.id, "markdown");
+                                  }}
+                                >
+                                  <Download className="h-3.5 w-3.5 mr-2" />
+                                  Export as Markdown
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleExport(conv.id, "json");
+                                  }}
+                                >
+                                  <Download className="h-3.5 w-3.5 mr-2" />
+                                  Export as JSON
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDeleteDialogId(conv.id);
+                                  }}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         )}
                       </div>
@@ -943,11 +975,11 @@ export function ChatSidebar() {
       <Dialog open={bulkDeleteOpen} onOpenChange={(open) => !open && setBulkDeleteOpen(false)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete {selectedIds.size} Conversation{selectedIds.size !== 1 ? "s" : ""}</DialogTitle>
-            <DialogDescription>Permanently delete selected conversations. This cannot be undone.</DialogDescription>
+            <DialogTitle>Delete Conversations</DialogTitle>
+            <DialogDescription>This action cannot be undone.</DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            This will permanently delete {selectedIds.size} selected conversation{selectedIds.size !== 1 ? "s" : ""}. This cannot be undone.
+            Are you sure you want to delete {selectedIds.size} conversation{selectedIds.size !== 1 ? "s" : ""}? This action cannot be undone.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBulkDeleteOpen(false)}>Cancel</Button>
@@ -963,10 +995,10 @@ export function ChatSidebar() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Delete Agent</DialogTitle>
-            <DialogDescription>This will not delete any conversations.</DialogDescription>
+            <DialogDescription>This action cannot be undone.</DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Are you sure you want to delete this agent? This will not delete any conversations.
+            Are you sure you want to delete this agent? Its configuration and settings will be permanently removed.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteAgentId(null)}>Cancel</Button>
@@ -974,11 +1006,15 @@ export function ChatSidebar() {
               variant="destructive"
               onClick={async () => {
                 if (deleteAgentId) {
+                  const targetId = deleteAgentId;
+                  removeAgent(targetId);
                   try {
-                    await fetch(`/api/agents/${deleteAgentId}`, { method: "DELETE" });
-                    removeAgent(deleteAgentId);
-                    toast.success("Agent deleted successfully");
-                  } catch (e) {
+                    await fetch(`/api/agents/${targetId}`, {
+                      method: "DELETE",
+                    });
+                    toast.success("Agent deleted");
+                  } catch (error) {
+                    console.error("Failed to delete agent:", error);
                     toast.error("Failed to delete agent");
                   }
                 }
@@ -991,18 +1027,18 @@ export function ChatSidebar() {
         </DialogContent>
       </Dialog>
 
-      {/* Add New Skill Dialog */}
+      {/* Add Skill Dialog */}
       <Dialog open={addSkillOpen} onOpenChange={(open) => !open && setAddSkillOpen(false)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Add New Skill</DialogTitle>
-            <DialogDescription>Create a new skill folder and SKILL.md template.</DialogDescription>
+            <DialogDescription>Create a custom skill for your agents.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Skill Name</label>
+              <label className="text-sm font-medium">Name</label>
               <Input
-                placeholder="e.g. Data Analysis"
+                placeholder="Skill name..."
                 value={newSkillName}
                 onChange={(e) => setNewSkillName(e.target.value)}
               />
@@ -1010,7 +1046,7 @@ export function ChatSidebar() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Description</label>
               <Input
-                placeholder="What this skill does..."
+                placeholder="What does this skill do?"
                 value={newSkillDesc}
                 onChange={(e) => setNewSkillDesc(e.target.value)}
               />
@@ -1019,7 +1055,7 @@ export function ChatSidebar() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddSkillOpen(false)}>Cancel</Button>
             <Button
-              disabled={!newSkillName || isAddingSkill}
+              disabled={isAddingSkill || !newSkillName.trim()}
               onClick={async () => {
                 setIsAddingSkill(true);
                 try {
@@ -1031,22 +1067,22 @@ export function ChatSidebar() {
                   if (res.ok) {
                     const skill = await res.json();
                     addSkill(skill);
-                    setAddSkillOpen(false);
+                    toast.success("Skill created");
                     setNewSkillName("");
                     setNewSkillDesc("");
-                    toast.success("Skill created successfully");
+                    setAddSkillOpen(false);
                   } else {
                     toast.error("Failed to create skill");
                   }
                 } catch (error) {
-                  console.error("Failed to add skill:", error);
+                  console.error("Failed to create skill:", error);
                   toast.error("Failed to create skill");
                 } finally {
                   setIsAddingSkill(false);
                 }
               }}
             >
-              {isAddingSkill ? "Adding..." : "Add Skill"}
+              {isAddingSkill ? "Creating..." : "Create Skill"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1057,10 +1093,10 @@ export function ChatSidebar() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Delete Skill</DialogTitle>
-            <DialogDescription>This will delete the skill folder and all its contents.</DialogDescription>
+            <DialogDescription>This action cannot be undone.</DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Are you sure you want to delete this skill? This action cannot be undone.
+            Are you sure you want to delete this skill?
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteSkillId(null)}>Cancel</Button>
@@ -1068,12 +1104,15 @@ export function ChatSidebar() {
               variant="destructive"
               onClick={async () => {
                 if (deleteSkillId) {
+                  const targetId = deleteSkillId;
+                  removeSkill(targetId);
                   try {
-                    // We need a DELETE API for skills too
-                    await fetch(`/api/skills/${deleteSkillId}`, { method: "DELETE" });
-                    removeSkill(deleteSkillId);
-                    toast.success("Skill deleted successfully");
-                  } catch (e) {
+                    await fetch(`/api/skills/${targetId}`, {
+                      method: "DELETE",
+                    });
+                    toast.success("Skill deleted");
+                  } catch (error) {
+                    console.error("Failed to delete skill:", error);
                     toast.error("Failed to delete skill");
                   }
                 }
@@ -1088,4 +1127,3 @@ export function ChatSidebar() {
     </>
   );
 }
-
