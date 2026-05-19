@@ -31,8 +31,11 @@ class WhatsAppService {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private connecting = false;
   private activeQR: string | undefined;
-
   private qrResolve: ((qr: string) => void) | null = null;
+  private botEnabled = false;
+  private userContexts = new Map<string, { role: string; content: string }[]>();
+  private botModel = "gemini-2.5-flash";
+  private botSystemPrompt = "You are a helpful WhatsApp AI assistant. Keep responses concise and friendly. You can help with questions, tasks, and general conversation.";
 
   connect(): Promise<string> {
     return new Promise<string>(async (resolve, reject) => {
@@ -135,6 +138,11 @@ class WhatsAppService {
           }
 
           this.emit("whatsapp_message", messageData);
+
+          // Auto-reply bot
+          if (this.botEnabled && this.sock && this.state.connected) {
+            this.handleBotReply(msg.key.remoteJid, text).catch(console.error);
+          }
         }
       });
 
@@ -187,6 +195,92 @@ class WhatsAppService {
 
   onMessage(callback: (msg: { from: string; text: string; timestamp: number }) => void) {
     MESSAGE_CALLBACKS.push(callback);
+  }
+
+  // Bot methods
+  setBotEnabled(enabled: boolean) { this.botEnabled = enabled; }
+  isBotEnabled(): boolean { return this.botEnabled; }
+  setBotConfig(config: { model?: string; systemPrompt?: string }) {
+    if (config.model) this.botModel = config.model;
+    if (config.systemPrompt) this.botSystemPrompt = config.systemPrompt;
+  }
+  getBotConfig() { return { model: this.botModel, systemPrompt: this.botSystemPrompt, enabled: this.botEnabled }; }
+
+  private async handleBotReply(jid: string, userMessage: string) {
+    try {
+      // Send typing indicator
+      await this.sock.sendPresenceUpdate("composing", jid);
+      
+      // Get or create conversation context
+      let context = this.userContexts.get(jid) || [];
+      context.push({ role: "user", content: userMessage });
+      
+      // Keep context manageable (last 10 messages)
+      if (context.length > 20) context = context.slice(-20);
+
+      // Build API URL using environment-relative path
+      const apiUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 60000);
+
+      const res = await fetch(`${apiUrl}/api/gemini/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: userMessage,
+          model: this.botModel,
+          systemPrompt: this.botSystemPrompt,
+          conversationHistory: context.slice(0, -1),
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) throw new Error(`Chat API error: ${res.status}`);
+
+      // Read SSE stream
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullResponse = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const text = decoder.decode(value, { stream: true });
+          const lines = text.split("\n");
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (data.type === "chunk") fullResponse += data.content;
+                if (data.type === "done") fullResponse = data.content || fullResponse;
+              } catch {}
+            }
+          }
+        }
+      }
+
+      if (fullResponse) {
+        // Clean response for WhatsApp
+        const cleanResponse = fullResponse
+          .replace(/\*\*(.+?)\*\*/g, "*$1*")
+          .replace(/```[\s\S]*?```/g, "[code]")
+          .trim();
+
+        context.push({ role: "assistant", content: cleanResponse });
+        this.userContexts.set(jid, context);
+        await this.sock.sendMessage(jid, { text: cleanResponse });
+        this.emit("whatsapp_message", { from: "bot", text: cleanResponse, timestamp: Date.now() });
+      }
+
+      // Stop typing
+      await this.sock.sendPresenceUpdate("paused", jid);
+    } catch (error: any) {
+      console.error("[WhatsApp Bot] Reply error:", error.message);
+      try {
+        await this.sock.sendMessage(jid, { text: "Sorry, I encountered an error processing your message. Please try again." });
+      } catch {}
+    }
   }
 
   private emit(event: string, data: any) {

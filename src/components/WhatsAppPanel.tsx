@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,7 @@ import {
   CheckCircle2,
   XCircle,
   Circle,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -56,6 +58,8 @@ export function WhatsAppPanel({
   const [inputText, setInputText] = useState("");
   const [inputJid, setInputJid] = useState("");
   const [sending, setSending] = useState(false);
+  const [botEnabled, setBotEnabled] = useState(false);
+  const [botModel, setBotModel] = useState("gemini-2.5-flash");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -120,26 +124,42 @@ export function WhatsAppPanel({
         toast.error(data.error);
         setConnecting(false);
       }
-      // Start polling for QR if not yet received
       const pollForQR = setInterval(async () => {
         try {
           const sRes = await fetch("/api/whatsapp/status");
           const sData = await sRes.json();
-          if (sData.qr) {
-            setStatus(sData);
-            clearInterval(pollForQR);
-          }
-          if (sData.connected) {
-            setStatus(sData);
-            setConnecting(false);
-            clearInterval(pollForQR);
-          }
+          if (sData.qr) { setStatus(sData); clearInterval(pollForQR); }
+          if (sData.connected) { setStatus(sData); setConnecting(false); clearInterval(pollForQR); }
         } catch {}
       }, 2000);
       setTimeout(() => clearInterval(pollForQR), 45000);
     } catch {
-      toast.error("Failed to start WhatsApp connection. Make sure Baileys is installed.");
+      toast.error("Failed to start WhatsApp connection.");
       setConnecting(false);
+    }
+  };
+
+  // Load bot config
+  useEffect(() => {
+    if (!open || !status.connected) return;
+    fetch("/api/whatsapp/bot").then(r => r.json()).then(d => {
+      setBotEnabled(d.enabled || false);
+      if (d.model) setBotModel(d.model);
+    }).catch(() => {});
+  }, [open, status.connected]);
+
+  const handleBotToggle = async (enabled: boolean) => {
+    setBotEnabled(enabled);
+    try {
+      await fetch("/api/whatsapp/bot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled, model: botModel }),
+      });
+      toast.success(enabled ? "Bot enabled - AI will auto-reply" : "Bot disabled");
+    } catch {
+      setBotEnabled(!enabled);
+      toast.error("Failed to toggle bot");
     }
   };
 
@@ -277,6 +297,27 @@ export function WhatsAppPanel({
               </Button>
             )}
           </div>
+
+          {/* Bot Controls */}
+          {status.connected && (
+            <div className="mb-4 p-3 rounded-xl bg-primary/5 border border-primary/10 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <span className="text-xs font-semibold">AI Auto-Reply Bot</span>
+                </div>
+                <Switch
+                  checked={botEnabled}
+                  onCheckedChange={handleBotToggle}
+                />
+              </div>
+              {botEnabled && (
+                <p className="text-[10px] text-muted-foreground">
+                  Agent will automatically reply to WhatsApp messages using {botModel || "AI"}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Messages List */}
           {status.connected && (
