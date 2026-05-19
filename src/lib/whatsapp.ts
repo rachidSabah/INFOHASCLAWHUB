@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { spawn } from "child_process";
 
 let makeWASocket: any;
 let useMultiFileAuthState: any;
@@ -436,10 +437,19 @@ class WhatsAppService {
             } catch (apiErr: any) {
               console.warn(`[WhatsApp Bot] Local chat API failed: ${apiErr.message}`);
 
-              // STRATEGY 4: Simple fallback response
-              cleanResponse = this.generateFallbackResponse(userMessage);
-              strategyUsed = "fallback";
-              console.log(`[WhatsApp Bot] All AI strategies failed. Using fallback response.`);
+              // STRATEGY 4 (ULTIMATE): Try Gemini CLI directly via child_process
+              try {
+                cleanResponse = await this.callGeminiCLI(userMessage);
+                strategyUsed = "Gemini CLI";
+                console.log(`[WhatsApp Bot] Got response from Gemini CLI: "${cleanResponse.slice(0, 60)}..."`);
+              } catch (cliErr: any) {
+                console.warn(`[WhatsApp Bot] Gemini CLI failed: ${cliErr.message}`);
+
+                // STRATEGY 5: Simple fallback response
+                cleanResponse = this.generateFallbackResponse(userMessage);
+                strategyUsed = "fallback";
+                console.log(`[WhatsApp Bot] All AI strategies failed. Using fallback response.`);
+              }
             }
           }
         }
@@ -484,6 +494,50 @@ class WhatsAppService {
    * This SDK is built into the platform and doesn't require any API key configuration.
    * It uses the platform's built-in AI model access.
    */
+  /**
+   * STRATEGY 4: Ultimate fallback - call Gemini CLI directly via child_process
+   * This uses the same gemini CLI that the main chat works with.
+   */
+  private async callGeminiCLI(userMessage: string): Promise<string> {
+    console.log('[WhatsApp Bot] Trying Gemini CLI...');
+    
+    return new Promise((resolve, reject) => {
+      const proc = spawn("gemini", ["--model", this.botModel, "--no-stream"], {
+        env: { ...process.env, TERM: "xterm-256color" },
+        shell: true,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+
+      let output = "";
+      let errOutput = "";
+
+      proc.stdout.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+      proc.stderr.on("data", (chunk: Buffer) => { errOutput += chunk.toString(); });
+
+      const timeout = setTimeout(() => {
+        proc.kill();
+        reject(new Error("Gemini CLI timed out (30s)"));
+      }, 30000);
+
+      proc.on("close", (code) => {
+        clearTimeout(timeout);
+        if (code === 0 && output.trim()) {
+          resolve(output.trim());
+        } else {
+          reject(new Error(`Gemini CLI exit ${code}: ${errOutput.slice(0, 100)}`));
+        }
+      });
+
+      proc.on("error", (err) => {
+        clearTimeout(timeout);
+        reject(new Error(`Gemini CLI not found: ${err.message}`));
+      });
+
+      proc.stdin?.write(`${this.botSystemPrompt}\n\nUser: ${userMessage}\nAssistant:`);
+      proc.stdin?.end();
+    });
+  }
+
   private async callZAISdk(userMessage: string, context: { role: string; content: string }[]): Promise<string> {
     console.log('[WhatsApp Bot] Trying z-ai-web-dev-sdk...');
 
