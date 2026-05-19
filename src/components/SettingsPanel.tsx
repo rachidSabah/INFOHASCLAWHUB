@@ -22,11 +22,12 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { Download, Upload, RotateCcw, Key, Palette, MessageSquare, Sparkles, Plus, Trash2, ExternalLink, ShieldCheck, Server, Users, UserPlus, Check, Pencil } from "lucide-react";
+import { Download, Upload, RotateCcw, Key, Palette, MessageSquare, Sparkles, Plus, Trash2, ExternalLink, ShieldCheck, Server, Users, UserPlus, Check, Pencil, PlugZap } from "lucide-react";
 import { toast } from "sonner";
 import { Provider, Agent } from "@/lib/types";
 import { useAgentStore, useUIStore, useSettingsStore } from "@/lib/stores";
 import { useTheme } from "@/components/ThemeProvider";
+import { MCPServerPanel } from "@/components/MCPServerPanel";
 import { cn } from "@/lib/utils";
 
 const KNOWN_PROVIDERS = [
@@ -352,6 +353,7 @@ export function SettingsPanel() {
                 { id: "appearance", label: "Appearance", icon: Palette },
                 { id: "agents", label: "Agents", icon: Users },
                 { id: "providers", label: "Providers", icon: ShieldCheck },
+                { id: "mcp", label: "MCP", icon: PlugZap },
                 { id: "data", label: "Data", icon: Download },
               ].map((tab) => (
                 <TabsTrigger
@@ -823,6 +825,10 @@ export function SettingsPanel() {
                     ))
                   )}
                 </div>
+              </TabsContent>
+
+              <TabsContent value="mcp" className="space-y-4 mt-0 border-0 p-0 focus-visible:ring-0">
+                <MCPServerPanel />
               </TabsContent>
 
               <TabsContent value="data" className="space-y-4 mt-0 border-0 p-0 focus-visible:ring-0">

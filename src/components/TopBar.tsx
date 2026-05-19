@@ -4,11 +4,12 @@ import { useUIStore, useSettingsStore, useAgentStore, useSkillStore, useChatStor
 import { cn } from "@/lib/utils";
 import { ClawHubLogo, ClawHubText } from "./ClawHubLogo";
 import {
-  PanelLeft, Settings, Bot, Zap, ChevronDown, Check, BarChart3,
+  PanelLeft, Settings, Bot, Zap, ChevronDown, Check, BarChart3, Activity,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { TokenDashboard } from "./TokenDashboard";
+import { SystemMonitor } from "./SystemMonitor";
 
 export function TopBar() {
   const { toggleSidebar, setSettingsOpen } = useUIStore();
@@ -21,6 +22,7 @@ export function TopBar() {
   const [skillDropdownOpen, setSkillDropdownOpen] = useState(false);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [tokenDashboardOpen, setTokenDashboardOpen] = useState(false);
+  const [systemMonitorOpen, setSystemMonitorOpen] = useState(false);
 
   const agentRef = useRef<HTMLDivElement>(null);
   const skillRef = useRef<HTMLDivElement>(null);
@@ -221,6 +223,15 @@ export function TopBar() {
       {/* Spacer */}
       <div className="flex-1" />
 
+      {/* System Monitor */}
+      <button
+        onClick={() => setSystemMonitorOpen(true)}
+        className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+        title="System Monitor"
+      >
+        <Activity className="h-4 w-4" />
+      </button>
+
       {/* Token Dashboard */}
       <button
         onClick={() => setTokenDashboardOpen(true)}
@@ -236,6 +247,7 @@ export function TopBar() {
       </button>
 
       <TokenDashboard open={tokenDashboardOpen} onOpenChange={setTokenDashboardOpen} />
+      <SystemMonitor open={systemMonitorOpen} onOpenChange={setSystemMonitorOpen} />
     </div>
   );
 }

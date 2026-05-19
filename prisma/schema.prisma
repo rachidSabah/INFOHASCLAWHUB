@@ -89,3 +89,23 @@ model Prompt {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+model KnowledgeDocument {
+  id         String            @id @default(cuid())
+  title      String
+  content    String
+  chunkCount Int               @default(0)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  chunks     KnowledgeChunk[]
+}
+
+model KnowledgeChunk {
+  id         String            @id @default(cuid())
+  documentId String
+  content    String
+  embedding  String
+  index      Int
+  createdAt  DateTime          @default(now())
+  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}

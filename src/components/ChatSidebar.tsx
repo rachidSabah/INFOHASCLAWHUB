@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { MemoryPanel } from "@/components/MemoryPanel";
+import { KnowledgePanel } from "@/components/KnowledgePanel";
 import {
   Plus,
   MessageSquare,
@@ -320,6 +321,10 @@ export function ChatSidebar() {
               <TabsTrigger value="memory" className="flex-1 text-[10px] px-1 gap-1 justify-center">
                 <Brain className="h-3 w-3 shrink-0" />
                 <span>Memory</span>
+              </TabsTrigger>
+              <TabsTrigger value="knowledge" className="flex-1 text-[10px] px-1 gap-1 justify-center">
+                <BookOpen className="h-3 w-3 shrink-0" />
+                <span>Knowledge</span>
               </TabsTrigger>
 
             </TabsList>
@@ -886,6 +891,11 @@ export function ChatSidebar() {
             {/* ── MEMORY TAB ── */}
             <TabsContent value="memory" className="mt-3">
               <MemoryPanel />
+            </TabsContent>
+
+            {/* ── KNOWLEDGE TAB ── */}
+            <TabsContent value="knowledge" className="mt-3">
+              <KnowledgePanel />
             </TabsContent>
 
           </Tabs>

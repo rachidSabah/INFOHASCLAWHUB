@@ -4,7 +4,7 @@ import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { parseToolCalls, executeToolCall, getToolsPrompt, type ToolCallResult } from "@/lib/tools";
+import { parseToolCalls, executeToolCall, getToolsPrompt, getMcpTools, type ToolCallResult } from "@/lib/tools";
 import { countTokens, estimateCost } from "@/lib/tokens";
 
 async function extractMemoriesFromText(
@@ -103,13 +103,33 @@ ${assistantText.slice(0, 4000)}`;
 
 export const maxDuration = 120;
 
-const TOOLS_DESCRIPTION = getToolsPrompt();
+async function getToolsDescription(): Promise<string> {
+  const baseTools = getToolsPrompt();
+  let mcpSection = "";
+  try {
+    const mcpTools = await getMcpTools();
+    if (mcpTools.length > 0) {
+      const mcpLines = mcpTools.map((tool) => {
+        const params = Object.entries(tool.parameters)
+          .map(([k, v]) => `  - ${k} (${v.type}): ${v.description}`)
+          .join("\n");
+        return `- **${tool.name}**: ${tool.description}\n${params}`;
+      });
+      mcpSection = `\n[MCP (Model Context Protocol) TOOLS]\n${mcpLines.join("\n")}`;
+    }
+  } catch (e) {
+    console.error("[MCP] Failed to enumerate MCP tools for prompt:", e);
+  }
+  return `${baseTools}\n${mcpSection}`;
+}
 
-const LOCAL_SYSTEM_INSTRUCTIONS = `
+async function buildLocalSystemInstructions(): Promise<string> {
+  const toolsDescription = await getToolsDescription();
+  return `
 [LOCAL AGENT CAPABILITIES]
 You are a highly capable Local AI Assistant with direct access to the user's local operating system, files, and terminal. You can autonomously execute commands, read/write files, and list directories.
 
-${TOOLS_DESCRIPTION}
+${toolsDescription}
 
 You can also use XML tool tags for backward compatibility:
 
@@ -127,6 +147,7 @@ You can also use XML tool tags for backward compatibility:
 
 When you call a tool, the system will automatically execute it, append the result to the conversation, and trigger your next turn.
 `;
+}
 
 async function parseAndExecuteTools(
   text: string,
@@ -468,7 +489,8 @@ export async function POST(req: NextRequest) {
             iteration++;
             console.log(`[${requestId}] Agent Loop Iteration ${iteration}`);
 
-            const enhancedSystemPrompt = `${basePromptWithSkills}\n\n${LOCAL_SYSTEM_INSTRUCTIONS}`;
+            const localInstructions = await buildLocalSystemInstructions();
+            const enhancedSystemPrompt = `${basePromptWithSkills}\n\n${localInstructions}`;
 
             const responseText = await queryLLM(
               model,
@@ -514,7 +536,7 @@ export async function POST(req: NextRequest) {
 
           const promptContext = [
             basePromptWithSkills,
-            LOCAL_SYSTEM_INSTRUCTIONS,
+            getToolsPrompt(),
             ...conversationHistory.map((m: any) => m.content),
             prompt,
           ].join(" ");

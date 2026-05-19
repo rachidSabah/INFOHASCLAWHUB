@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { MCPClient, getMcpServerConfigs } from "@/lib/mcp";
 
 export interface ToolParameter {
   type: string;
@@ -217,6 +218,52 @@ export function getToolByName(name: string): ToolDefinition | undefined {
   return availableTools.find((t) => t.name === name);
 }
 
+export async function getMcpTools(): Promise<ToolDefinition[]> {
+  const configs = await getMcpServerConfigs();
+  const mcpTools: ToolDefinition[] = [];
+
+  for (const config of configs) {
+    const client = new MCPClient(config);
+    try {
+      await client.connect();
+      const tools = await client.listTools();
+      for (const tool of tools) {
+        const toolName = `mcp_${config.name}_${tool.name}`;
+        const paramKeys = Object.keys(tool.inputSchema?.properties || {});
+        const parameters: Record<string, ToolParameter> = {};
+        for (const key of paramKeys) {
+          const prop = tool.inputSchema.properties[key];
+          parameters[key] = {
+            type: prop.type || "string",
+            description: prop.description || "",
+          };
+        }
+        mcpTools.push({
+          name: toolName,
+          description: `[MCP:${config.name}] ${tool.description}`,
+          parameters,
+          execute: async (args: Record<string, any>) => {
+            const mcpClient = new MCPClient(config);
+            try {
+              await mcpClient.connect();
+              const result = await mcpClient.callTool(tool.name, args);
+              return result;
+            } finally {
+              mcpClient.disconnect();
+            }
+          },
+        });
+      }
+    } catch (e: any) {
+      console.error(`[MCP] Failed to connect to "${config.name}":`, e.message);
+    } finally {
+      client.disconnect();
+    }
+  }
+
+  return mcpTools;
+}
+
 export function getToolsPrompt(): string {
   const lines = availableTools.map((tool) => {
     const params = Object.entries(tool.parameters)
@@ -318,6 +365,20 @@ export async function executeToolCall(
       return { name: "local_cmd", arguments: call.arguments, result, status: "success", timestamp };
     } catch (e: any) {
       return { name: "local_cmd", arguments: call.arguments, result: JSON.stringify({ error: e.message }), status: "error", timestamp };
+    }
+  }
+
+  if (call.name.startsWith("mcp_")) {
+    try {
+      const mcpTools = await getMcpTools();
+      const mcpTool = mcpTools.find((t) => t.name === call.name);
+      if (!mcpTool) {
+        return { name: call.name, arguments: call.arguments, result: JSON.stringify({ error: `Unknown MCP tool: ${call.name}` }), status: "error", timestamp };
+      }
+      const result = await mcpTool.execute(call.arguments, workspacePath);
+      return { name: call.name, arguments: call.arguments, result, status: "success", timestamp };
+    } catch (e: any) {
+      return { name: call.name, arguments: call.arguments, result: JSON.stringify({ error: e.message }), status: "error", timestamp };
     }
   }
 
