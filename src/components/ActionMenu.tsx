@@ -29,10 +29,10 @@ export function ActionMenu({
   }, [open]);
 
   return (
-    <div ref={ref} className="relative shrink-0 flex items-center" onClick={(e) => e.stopPropagation()}>
+    <div ref={ref} className="relative shrink-0 flex items-center ml-auto" onClick={(e) => e.stopPropagation()}>
       <button
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors mr-1"
+        className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
         title="Actions"
       >
         <MoreHorizontal className="h-4 w-4" />
