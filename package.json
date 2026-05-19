@@ -68,6 +68,7 @@
     "tailwindcss-animate": "^1.0.7",
     "tiktoken": "^1.0.21",
     "uuid": "^11.1.0",
+    "z-ai-web-dev-sdk": "^0.0.18",
     "zustand": "^5.0.13"
   },
   "devDependencies": {

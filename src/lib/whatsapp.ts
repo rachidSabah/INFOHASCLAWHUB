@@ -5,7 +5,7 @@ let makeWASocket: any;
 let useMultiFileAuthState: any;
 let DisconnectReason: any;
 let jidDecode: ((jid: string | undefined) => { user: string; server: string; device?: number; domainType?: number } | undefined) | null = null;
-let jidEncode: ((user: string | number | null, server: string, device?: number, agent?: number) => string) | null = null;
+let jidEncode: ((user: string | number | null, server: any, device?: number, agent?: number) => string) | null = null;
 
 let serviceInitialized = false;
 
@@ -18,12 +18,12 @@ function normalizeJid(rawJid: string): string {
   if (!rawJid || typeof rawJid !== 'string') {
     throw new Error('Invalid JID: JID must be a non-empty string');
   }
-  
+
   const trimmed = rawJid.trim();
   if (!trimmed) {
     throw new Error('Invalid JID: JID cannot be empty or whitespace');
   }
-  
+
   // If already contains @, validate it has proper format
   if (trimmed.includes('@')) {
     const parts = trimmed.split('@');
@@ -39,13 +39,13 @@ function normalizeJid(rawJid: string): string {
     }
     return trimmed;
   }
-  
+
   // No @ sign - treat as a phone number and append @s.whatsapp.net
   const phoneRegex = /^\d{5,15}$/;
   if (!phoneRegex.test(trimmed)) {
     throw new Error(`Invalid phone number: "${trimmed}". Phone numbers should contain 5-15 digits only. For group JIDs use format: groupId@g.us`);
   }
-  
+
   return `${trimmed}@s.whatsapp.net`;
 }
 
@@ -73,12 +73,24 @@ async function loadBaileysModules() {
 
 const MESSAGE_CALLBACKS: Array<(msg: { from: string; text: string; timestamp: number }) => void> = [];
 
+/**
+ * Check if a Baileys disconnect status code is non-retryable.
+ * Based on insights from openclaw/openclaw#75773:
+ * - 440 (session conflict) is non-retryable — requires operator resolution
+ * - 428 (connectionClosed) is TRANSIENT and MUST stay on the retry path
+ * - 401 (loggedOut) requires re-authentication (delete auth + fresh QR)
+ * Only 440 should permanently stop reconnects.
+ */
+function isNonRetryableDisconnect(statusCode: number | undefined): boolean {
+  return statusCode === 440; // Session conflict — only this is truly non-retryable
+}
+
 class WhatsAppService {
   private sock: any = null;
   private state: { connected: boolean; qr?: string } = { connected: false };
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10;
-  private reconnectBaseDelay = 5000;
+  private reconnectBaseDelay = 3000; // Reduced from 5s for faster recovery
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private connecting = false;
   private activeQR: string | undefined;
@@ -96,6 +108,7 @@ class WhatsAppService {
   private botSystemPrompt = "You are a helpful WhatsApp AI assistant. Keep responses concise and friendly. You can help with questions, tasks, and general conversation. Respond in the same language the user writes in.";
   private connectedNumber: string | null = null; // The WhatsApp number that's connected
   private authFolderPath = ".baileys_auth";
+  private zaiInstance: any = null; // Cached z-ai-web-dev-sdk instance
 
   connect(): Promise<string> {
     return new Promise<string>(async (resolve, reject) => {
@@ -126,7 +139,7 @@ class WhatsAppService {
         this.qrResolve = resolve;
 
         this.sock.ev.on("connection.update", async (update: any) => {
-          const { connection, qr } = update;
+          const { connection, qr, lastDisconnect } = update;
 
           if (qr) {
             try {
@@ -169,9 +182,10 @@ class WhatsAppService {
           }
 
           if (connection === "close") {
-            const shouldReconnect =
-              update.lastDisconnect?.error?.output?.statusCode !==
-              (DisconnectReason?.loggedOut ?? 401);
+            const disconnectCode = lastDisconnect?.error?.output?.statusCode;
+            const disconnectReason = lastDisconnect?.error?.output?.payload?.message || "unknown";
+
+            console.log(`[WhatsApp] Connection closed. Status: ${disconnectCode}, Reason: ${disconnectReason}`);
 
             this.sock = null;
             this.state = { connected: false };
@@ -180,18 +194,30 @@ class WhatsAppService {
             this.qrResolve = null;
             this.emit("whatsapp_status", this.state);
 
-            // If logged out, delete auth so next connect gets a fresh QR
+            // 401 = logged out → must delete auth and get fresh QR
             const loggedOutCode = DisconnectReason?.loggedOut ?? 401;
-            const disconnectCode = update.lastDisconnect?.error?.output?.statusCode;
             if (disconnectCode === loggedOutCode) {
-              console.log('[WhatsApp] Session logged out. Clearing auth for fresh QR on next connect.');
+              console.log('[WhatsApp] Session logged out (401). Clearing auth for fresh QR on next connect.');
               this.deleteAuthFolder();
             }
+
+            // 428 = connectionClosed (transient) — retry with reconnect policy
+            // Based on openclaw/openclaw#75773: 428 must stay on the retry path
+            if (disconnectCode === 428) {
+              console.log(`[WhatsApp] Transient close (428). Will retry reconnect (attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts}).`);
+            }
+
+            // Only 440 (session conflict) is non-retryable
+            const shouldReconnect = !isNonRetryableDisconnect(disconnectCode);
 
             if (shouldReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
               this.reconnectAttempts++;
               const delay = Math.min(this.reconnectBaseDelay * this.reconnectAttempts, 60000);
+              console.log(`[WhatsApp] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
               this.reconnectTimer = setTimeout(() => this.connect(), delay);
+            } else if (!shouldReconnect) {
+              console.log(`[WhatsApp] Non-retryable disconnect (${disconnectCode}). Clearing auth for fresh QR.`);
+              this.deleteAuthFolder();
             }
           }
         });
@@ -271,7 +297,7 @@ class WhatsAppService {
     } catch (err) {
       console.error('[WhatsApp] Failed to delete auth folder:', err);
     }
-    // Reset so modules get reloaded fresh
+    // Reset so modules get reloaded fresh on next connect
     serviceInitialized = false;
   }
 
@@ -308,7 +334,7 @@ class WhatsAppService {
     if (!this.sock || !this.state.connected) {
       throw new Error("WhatsApp not connected");
     }
-    
+
     // Normalize and validate JID to prevent jidDecode crash
     let jid: string;
     try {
@@ -316,7 +342,7 @@ class WhatsAppService {
     } catch (err: any) {
       throw new Error(err.message || 'Invalid recipient JID');
     }
-    
+
     // Double-check with Baileys' own jidDecode if available
     if (jidDecode) {
       const decoded = jidDecode(jid);
@@ -324,7 +350,7 @@ class WhatsAppService {
         throw new Error(`Invalid JID "${jid}": could not decode user. Use format: 1234567890@s.whatsapp.net`);
       }
     }
-    
+
     await this.sock.sendMessage(jid, { text });
   }
 
@@ -347,59 +373,84 @@ class WhatsAppService {
 
   private async handleBotReply(jid: string, userMessage: string) {
     console.log(`[WhatsApp Bot] >>> Incoming message from ${jid}: "${userMessage.slice(0, 80)}"`);
-    
+
     try {
       // Validate jid before any operations
       if (!jid || !jid.includes('@')) {
         console.error('[WhatsApp Bot] Invalid JID for bot reply:', jid);
         return;
       }
-      
+
       // Skip group messages by default
       if (jid.endsWith('@g.us')) {
         console.log(`[WhatsApp Bot] Skipping group message from ${jid}`);
         return;
       }
-      
+
       // Send typing indicator
       try {
         await this.sock.sendPresenceUpdate("composing", jid);
       } catch (e) {
         console.warn('[WhatsApp Bot] Could not send typing indicator:', e);
       }
-      
+
       // Get or create conversation context
       let context = this.userContexts.get(jid) || [];
       context.push({ role: "user", content: userMessage });
-      
+
       // Keep context manageable (last 20 messages)
       if (context.length > 20) context = context.slice(-20);
 
       let cleanResponse = "";
+      let strategyUsed = "";
 
-      // STRATEGY 1: Try local /api/gemini/chat endpoint
+      // STRATEGY 0: z-ai-web-dev-sdk (most reliable, no API key configuration needed)
       try {
-        cleanResponse = await this.callLocalChatAPI(userMessage, context);
-        console.log(`[WhatsApp Bot] Got response from local chat API: "${cleanResponse.slice(0, 60)}..."`);
-      } catch (apiErr: any) {
-        console.warn(`[WhatsApp Bot] Local chat API failed: ${apiErr.message}`);
-        
-        // STRATEGY 2: Try Google Gemini REST API directly
+        cleanResponse = await this.callZAISdk(userMessage, context);
+        strategyUsed = "z-ai-web-dev-sdk";
+        console.log(`[WhatsApp Bot] Got response from z-ai-web-dev-sdk: "${cleanResponse.slice(0, 60)}..."`);
+      } catch (err: any) {
+        console.warn(`[WhatsApp Bot] z-ai-web-dev-sdk failed: ${err.message}`);
+
+        // STRATEGY 1: Try Google Gemini REST API directly
         try {
           cleanResponse = await this.callGeminiDirectAPI(userMessage, context);
-          console.log(`[WhatsApp Bot] Got response from Gemini direct API: "${cleanResponse.slice(0, 60)}..."`);
+          strategyUsed = "Gemini REST API";
+          console.log(`[WhatsApp Bot] Got response from Gemini REST API: "${cleanResponse.slice(0, 60)}..."`);
         } catch (directErr: any) {
-          console.warn(`[WhatsApp Bot] Gemini direct API failed: ${directErr.message}`);
-          
-          // STRATEGY 3: Simple fallback response
-          cleanResponse = this.generateFallbackResponse(userMessage);
-          console.log(`[WhatsApp Bot] Using fallback response`);
+          console.warn(`[WhatsApp Bot] Gemini REST API failed: ${directErr.message}`);
+
+          // STRATEGY 2: Try OpenAI-compatible providers from the database
+          try {
+            cleanResponse = await this.callOpenAIProvider(userMessage, context);
+            strategyUsed = "OpenAI-compatible provider";
+            console.log(`[WhatsApp Bot] Got response from provider: "${cleanResponse.slice(0, 60)}..."`);
+          } catch (providerErr: any) {
+            console.warn(`[WhatsApp Bot] OpenAI provider failed: ${providerErr.message}`);
+
+            // STRATEGY 3: Try local /api/gemini/chat endpoint
+            try {
+              cleanResponse = await this.callLocalChatAPI(userMessage, context);
+              strategyUsed = "Local chat API";
+              console.log(`[WhatsApp Bot] Got response from local chat API: "${cleanResponse.slice(0, 60)}..."`);
+            } catch (apiErr: any) {
+              console.warn(`[WhatsApp Bot] Local chat API failed: ${apiErr.message}`);
+
+              // STRATEGY 4: Simple fallback response
+              cleanResponse = this.generateFallbackResponse(userMessage);
+              strategyUsed = "fallback";
+              console.log(`[WhatsApp Bot] All AI strategies failed. Using fallback response.`);
+            }
+          }
         }
       }
 
       if (!cleanResponse || cleanResponse.trim().length === 0) {
         cleanResponse = "Thanks for your message! I'm currently experiencing issues with my AI backend. Please try again later.";
+        strategyUsed = "empty-fallback";
       }
+
+      console.log(`[WhatsApp Bot] Strategy used: ${strategyUsed}`);
 
       // Clean response for WhatsApp formatting
       cleanResponse = cleanResponse
@@ -410,11 +461,11 @@ class WhatsAppService {
 
       context.push({ role: "assistant", content: cleanResponse });
       this.userContexts.set(jid, context);
-      
+
       await this.sock.sendMessage(jid, { text: cleanResponse });
       this.emit("whatsapp_message", { from: "bot", text: cleanResponse, timestamp: Date.now() });
-      
-      console.log(`[WhatsApp Bot] <<< Reply sent to ${jid}: "${cleanResponse.slice(0, 80)}..."`);
+
+      console.log(`[WhatsApp Bot] <<< Reply sent to ${jid} (via ${strategyUsed}): "${cleanResponse.slice(0, 80)}..."`);
 
       // Stop typing indicator
       try {
@@ -429,11 +480,227 @@ class WhatsAppService {
   }
 
   /**
-   * STRATEGY 1: Call the local /api/gemini/chat endpoint
+   * STRATEGY 0: z-ai-web-dev-sdk — the most reliable strategy
+   * This SDK is built into the platform and doesn't require any API key configuration.
+   * It uses the platform's built-in AI model access.
+   */
+  private async callZAISdk(userMessage: string, context: { role: string; content: string }[]): Promise<string> {
+    console.log('[WhatsApp Bot] Trying z-ai-web-dev-sdk...');
+
+    try {
+      const ZAI = (await import('z-ai-web-dev-sdk')).default;
+
+      // Create or reuse instance
+      if (!this.zaiInstance) {
+        this.zaiInstance = await ZAI.create();
+        console.log('[WhatsApp Bot] z-ai-web-dev-sdk instance created');
+      }
+
+      const messages = [
+        { role: "system" as const, content: this.botSystemPrompt },
+        ...context.slice(-10).map((msg) => ({
+          role: (msg.role === "user" ? "user" : "assistant") as "user" | "assistant",
+          content: msg.content,
+        })),
+      ];
+
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 30000);
+
+      const completion = await this.zaiInstance.chat.completions.create({
+        messages,
+        temperature: 0.7,
+        max_tokens: 1024,
+      });
+
+      const content = completion.choices?.[0]?.message?.content;
+      if (!content || content.trim().length === 0) {
+        throw new Error('Empty response from z-ai-web-dev-sdk');
+      }
+
+      return content;
+    } catch (err: any) {
+      // Reset instance on error so it's recreated next time
+      this.zaiInstance = null;
+      throw err;
+    }
+  }
+
+  /**
+   * STRATEGY 1: Call Google Gemini REST API directly
+   * Works as long as GEMINI_API_KEY is set in env or a Gemini provider exists in the DB.
+   */
+  private async callGeminiDirectAPI(userMessage: string, context: { role: string; content: string }[]): Promise<string> {
+    // Try to get API key from: env var → database providers → settings
+    let apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+
+    if (!apiKey) {
+      try {
+        const { db } = await import("@/lib/db");
+        const providers = await db.provider.findMany({ where: { isActive: true } });
+        const geminiProvider = providers.find((p: any) =>
+          p.name?.toLowerCase().includes('gemini') ||
+          p.name?.toLowerCase().includes('google') ||
+          p.baseUrl?.includes('generativelanguage.googleapis.com')
+        );
+        if (geminiProvider?.apiKey) {
+          apiKey = geminiProvider.apiKey;
+          console.log('[WhatsApp Bot] Found Gemini API key from provider:', geminiProvider.name);
+        }
+      } catch (dbErr) {
+        console.warn('[WhatsApp Bot] Could not check providers DB for API key:', dbErr);
+      }
+    } else {
+      console.log('[WhatsApp Bot] Using GEMINI_API_KEY from env var');
+    }
+
+    if (!apiKey) {
+      throw new Error('No Gemini API key found. Set GEMINI_API_KEY env var or add a Gemini provider in Settings.');
+    }
+
+    // Map our model names to Gemini API model names
+    const modelMap: Record<string, string> = {
+      "gemini-2.5-flash": "gemini-2.0-flash",
+      "gemini-2.0-flash": "gemini-2.0-flash",
+      "gemini-1.5-flash": "gemini-1.5-flash",
+      "gemini-1.5-pro": "gemini-1.5-pro",
+      "gemini-pro": "gemini-pro",
+    };
+    const apiModel = modelMap[this.botModel] || "gemini-2.0-flash";
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${apiModel}:generateContent?key=${apiKey}`;
+
+    // Build the contents array for Gemini API
+    const contents = context.slice(-10).map((msg) => ({
+      role: msg.role === "user" ? "user" : "model",
+      parts: [{ text: msg.content }],
+    }));
+
+    const body = {
+      contents,
+      systemInstruction: {
+        parts: [{ text: this.botSystemPrompt }],
+      },
+      generationConfig: {
+        maxOutputTokens: 1024,
+        temperature: 0.7,
+      },
+    };
+
+    console.log(`[WhatsApp Bot] Calling Gemini direct API with model: ${apiModel}`);
+
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 30000);
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      throw new Error(`Gemini API error: ${res.status} ${errText.slice(0, 200)}`);
+    }
+
+    const data = await res.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!text) {
+      throw new Error('No text in Gemini API response');
+    }
+
+    return text;
+  }
+
+  /**
+   * STRATEGY 2: Call an OpenAI-compatible provider from the database
+   * This covers any custom provider (OpenAI, DeepSeek, etc.) configured in Settings.
+   */
+  private async callOpenAIProvider(userMessage: string, context: { role: string; content: string }[]): Promise<string> {
+    let providerData: { name: string; baseUrl: string; apiKey: string } | null = null;
+
+    try {
+      const { db } = await import("@/lib/db");
+      const providers = await db.provider.findMany({ where: { isActive: true } });
+
+      // Skip Gemini providers (already tried in Strategy 1)
+      const openAiProvider = providers.find((p: any) =>
+        !p.name?.toLowerCase().includes('gemini') &&
+        !p.name?.toLowerCase().includes('google') &&
+        !p.baseUrl?.includes('generativelanguage.googleapis.com') &&
+        p.apiKey &&
+        p.baseUrl
+      );
+
+      if (openAiProvider) {
+        providerData = {
+          name: openAiProvider.name,
+          baseUrl: (openAiProvider.baseUrl || "").replace(/\/$/, ""),
+          apiKey: openAiProvider.apiKey || "",
+        };
+        console.log(`[WhatsApp Bot] Found OpenAI-compatible provider: ${providerData.name}`);
+      }
+    } catch (dbErr: any) {
+      throw new Error(`DB lookup failed: ${dbErr.message}`);
+    }
+
+    if (!providerData) {
+      throw new Error('No OpenAI-compatible provider found in database');
+    }
+
+    const url = `${providerData.baseUrl}/chat/completions`;
+    const messages = [
+      { role: "system", content: this.botSystemPrompt },
+      ...context.slice(-10).map((msg) => ({
+        role: msg.role === "user" ? "user" : "assistant",
+        content: msg.content,
+      })),
+    ];
+
+    console.log(`[WhatsApp Bot] Calling provider ${providerData.name} at ${url}`);
+
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 30000);
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${providerData.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: this.botModel.includes('/') ? this.botModel.split('/')[1] : this.botModel,
+        messages,
+        max_tokens: 1024,
+        temperature: 0.7,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      throw new Error(`Provider API error: ${res.status} ${errText.slice(0, 200)}`);
+    }
+
+    const data = await res.json();
+    const text = data?.choices?.[0]?.message?.content;
+
+    if (!text) {
+      throw new Error('No text in provider API response');
+    }
+
+    return text;
+  }
+
+  /**
+   * STRATEGY 3: Call the local /api/gemini/chat endpoint
+   * This is the dashboard's own chat API — complex, uses SSE streaming and gemini CLI.
+   * Kept as a late fallback since it may not always be available.
    */
   private async callLocalChatAPI(userMessage: string, context: { role: string; content: string }[]): Promise<string> {
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 60000);
+    setTimeout(() => controller.abort(), 30000); // Reduced from 60s
 
     const ports = [3000, 3001, 3002, 3003, 3004, 3005];
     
@@ -508,111 +775,21 @@ class WhatsAppService {
   }
 
   /**
-   * STRATEGY 2: Call Google Gemini REST API directly
-   * This works even when the local gemini CLI isn't installed,
-   * as long as GEMINI_API_KEY is set in the environment.
-   */
-  private async callGeminiDirectAPI(userMessage: string, context: { role: string; content: string }[]): Promise<string> {
-    // Try to get API key from: env var → database providers → settings
-    let apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-    
-    if (!apiKey) {
-      try {
-        const { db } = await import("@/lib/db");
-        // Look for any provider that might have a Gemini/Google API key
-        const providers = await db.provider.findMany({ where: { isActive: true } });
-        const geminiProvider = providers.find((p: any) => 
-          p.name?.toLowerCase().includes('gemini') || 
-          p.name?.toLowerCase().includes('google') ||
-          p.baseUrl?.includes('generativelanguage.googleapis.com')
-        );
-        if (geminiProvider?.apiKey) {
-          apiKey = geminiProvider.apiKey;
-          console.log('[WhatsApp Bot] Found Gemini API key from provider:', geminiProvider.name);
-        } else if (providers.length > 0 && providers[0].apiKey) {
-          // Fallback: use the first active provider's key
-          apiKey = providers[0].apiKey;
-        }
-      } catch (dbErr) {
-        console.warn('[WhatsApp Bot] Could not check providers DB for API key:', dbErr);
-      }
-    }
-
-    if (!apiKey) {
-      throw new Error('No Gemini API key found. Set GEMINI_API_KEY env var or add a Gemini provider in Settings.');
-    }
-
-    // Map our model names to Gemini API model names
-    const modelMap: Record<string, string> = {
-      "gemini-2.5-flash": "gemini-2.0-flash",
-      "gemini-2.0-flash": "gemini-2.0-flash",
-      "gemini-1.5-flash": "gemini-1.5-flash",
-      "gemini-1.5-pro": "gemini-1.5-pro",
-      "gemini-pro": "gemini-pro",
-    };
-    const apiModel = modelMap[this.botModel] || "gemini-2.0-flash";
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${apiModel}:generateContent?key=${apiKey}`;
-
-    // Build the contents array for Gemini API
-    const contents = context.slice(-10).map((msg) => ({
-      role: msg.role === "user" ? "user" : "model",
-      parts: [{ text: msg.content }],
-    }));
-
-    const body = {
-      contents,
-      systemInstruction: {
-        parts: [{ text: this.botSystemPrompt }],
-      },
-      generationConfig: {
-        maxOutputTokens: 1024,
-        temperature: 0.7,
-      },
-    };
-
-    console.log(`[WhatsApp Bot] Calling Gemini direct API with model: ${apiModel}`);
-
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(), 30000);
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      throw new Error(`Gemini API error: ${res.status} ${errText.slice(0, 200)}`);
-    }
-
-    const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    
-    if (!text) {
-      throw new Error('No text in Gemini API response');
-    }
-
-    return text;
-  }
-
-  /**
-   * STRATEGY 3: Simple fallback response when all AI APIs fail
+   * STRATEGY 4: Simple fallback response when all AI APIs fail
    */
   private generateFallbackResponse(userMessage: string): string {
     const lowerMsg = userMessage.toLowerCase().trim();
-    
+
     // Greeting patterns
-    if (/^(hi|hello|hey|salut|bonjour|bonsoir|coucou|hola|ciao|مرحب|سلا|سلام)/i.test(lowerMsg)) {
-      return "Hello! 👋 I'm an AI assistant connected to this WhatsApp number. I'm currently having trouble connecting to my AI backend, but I've received your message. Please try again in a moment!";
+    if (/^(hi|hello|hey|salut|bonjour|bonsoir|coucou|hola|ciao)/i.test(lowerMsg)) {
+      return "Hello! I'm an AI assistant on this WhatsApp number. I received your message but my AI backend is temporarily unavailable. Please try again shortly!";
     }
-    
+
     // Question patterns
     if (lowerMsg.includes('?') || lowerMsg.startsWith('what') || lowerMsg.startsWith('how') || lowerMsg.startsWith('why') || lowerMsg.startsWith('when') || lowerMsg.startsWith('where') || lowerMsg.startsWith('who')) {
-      return "Thanks for your question! I'm currently experiencing connectivity issues with my AI backend. Your message has been received and I'll be able to respond properly once the connection is restored.";
+      return "Thanks for your question! I'm experiencing temporary connectivity issues with my AI backend. Your message has been received and I'll be able to respond properly once the connection is restored.";
     }
-    
+
     // Default
     return "Thanks for your message! I'm currently experiencing connectivity issues with my AI backend. Please try again in a moment and I'll be happy to help!";
   }

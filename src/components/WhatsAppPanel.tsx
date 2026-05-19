@@ -25,6 +25,7 @@ import {
   XCircle,
   Circle,
   Sparkles,
+  QrCode,
 } from "lucide-react";
 import { cn, formatTime } from "@/lib/utils";
 
@@ -62,6 +63,7 @@ export function WhatsAppPanel({
   const [sending, setSending] = useState(false);
   const [botEnabled, setBotEnabled] = useState(true); // Bot is enabled by default now
   const [botModel, setBotModel] = useState("gemini-2.5-flash");
+  const [disconnected, setDisconnected] = useState(false); // Track manual disconnect for fresh QR
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -77,6 +79,7 @@ export function WhatsAppPanel({
         });
         if (data.connected) {
           setConnecting(false);
+          setDisconnected(false);
           // Sync bot enabled state from server
           if (data.botEnabled !== undefined) {
             setBotEnabled(data.botEnabled);
@@ -110,7 +113,7 @@ export function WhatsAppPanel({
   // Auto-refresh status when connecting
   useEffect(() => {
     if (!connecting) return;
-    pollRef.current = setInterval(fetchStatus, 5000);
+    pollRef.current = setInterval(fetchStatus, 2000);
     return () => {
       if (pollRef.current) {
         clearInterval(pollRef.current);
@@ -121,24 +124,36 @@ export function WhatsAppPanel({
 
   const handleConnect = async () => {
     setConnecting(true);
+    setDisconnected(false);
     try {
       const res = await fetch("/api/whatsapp/connect", { method: "POST" });
       const data = await res.json();
       if (data.qr) {
-        setStatus((prev) => ({ ...prev, qr: data.qr }));
+        setStatus((prev) => ({ ...prev, qr: data.qr, connected: false }));
       } else if (data.error) {
         toast.error(data.error);
         setConnecting(false);
       }
+      // Poll for QR or connection
       const pollForQR = setInterval(async () => {
         try {
           const sRes = await fetch("/api/whatsapp/status");
           const sData = await sRes.json();
-          if (sData.qr) { setStatus(sData); clearInterval(pollForQR); }
-          if (sData.connected) { setStatus(sData); setConnecting(false); clearInterval(pollForQR); }
+          if (sData.qr) {
+            setStatus(sData);
+            // Don't clear interval — keep polling until connected
+          }
+          if (sData.connected) {
+            setStatus(sData);
+            setConnecting(false);
+            clearInterval(pollForQR);
+          }
         } catch {}
       }, 2000);
-      setTimeout(() => clearInterval(pollForQR), 45000);
+      setTimeout(() => {
+        clearInterval(pollForQR);
+        setConnecting(false);
+      }, 60000); // Extended timeout for QR scan
     } catch {
       toast.error("Failed to start WhatsApp connection.");
       setConnecting(false);
@@ -182,8 +197,10 @@ export function WhatsAppPanel({
     try {
       await fetch("/api/whatsapp/disconnect", { method: "POST" });
       setConnecting(false);
-      await fetchStatus();
-      toast.success("Disconnected from WhatsApp");
+      // Reset state completely so QR area shows fresh on next connect
+      setStatus({ connected: false });
+      setDisconnected(true);
+      toast.success("Disconnected. Click Connect to get a new QR code.");
     } catch {
       toast.error("Failed to disconnect");
     }
@@ -198,7 +215,7 @@ export function WhatsAppPanel({
       if (/^\d{5,15}$/.test(normalizedJid)) {
         normalizedJid = `${normalizedJid}@s.whatsapp.net`;
       }
-      
+
       const res = await fetch("/api/whatsapp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -218,6 +235,8 @@ export function WhatsAppPanel({
     }
   };
 
+  const showQR = !status.connected && status.qr;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[480px] max-h-[85vh] flex flex-col p-0 gap-0">
@@ -234,6 +253,8 @@ export function WhatsAppPanel({
                     ? "Connected"
                     : connecting
                     ? "Connecting..."
+                    : disconnected
+                    ? "Disconnected — click Connect to get new QR"
                     : "Disconnected"}
                 </DialogDescription>
               </div>
@@ -261,7 +282,7 @@ export function WhatsAppPanel({
 
         <ScrollArea className="flex-1 px-6 py-4 min-h-0">
           {/* QR Code Area */}
-          {!status.connected && status.qr && (
+          {showQR && (
             <div className="flex flex-col items-center gap-3 mb-4 p-4 bg-muted/30 rounded-xl border border-border">
               <p className="text-sm text-muted-foreground text-center">
                 Scan this QR code with WhatsApp on your phone
@@ -296,14 +317,14 @@ export function WhatsAppPanel({
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700"
                 onClick={handleConnect}
               >
-                <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-                Connect
+                <QrCode className="h-3.5 w-3.5 mr-1.5" />
+                {disconnected ? "Reconnect" : "Connect"}
               </Button>
             )}
-            {connecting && (
+            {connecting && !status.connected && (
               <Button variant="default" size="sm" className="flex-1" disabled>
                 <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                Waiting for scan...
+                Waiting for QR scan...
               </Button>
             )}
             {(status.connected || connecting) && (
@@ -454,13 +475,20 @@ export function WhatsAppPanel({
             </>
           )}
 
+          {/* Disconnected state — prompt to reconnect */}
           {!status.connected && !status.qr && !connecting && (
             <div className="flex flex-col items-center justify-center py-10 text-center">
               <div className="w-14 h-14 rounded-full bg-muted/40 flex items-center justify-center mb-3">
-                <Circle className="h-6 w-6 text-muted-foreground/40" />
+                {disconnected ? (
+                  <QrCode className="h-6 w-6 text-muted-foreground/60" />
+                ) : (
+                  <Circle className="h-6 w-6 text-muted-foreground/40" />
+                )}
               </div>
               <p className="text-sm text-muted-foreground">
-                Click Connect to start the WhatsApp integration
+                {disconnected
+                  ? "Session cleared. Click Reconnect to get a fresh QR code."
+                  : "Click Connect to start the WhatsApp integration"}
               </p>
             </div>
           )}
