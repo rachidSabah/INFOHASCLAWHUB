@@ -13,18 +13,19 @@ export async function GET() {
 
     let currentCommit = "";
 
-    if (existsSync(commitFilePath)) {
-      currentCommit = readFileSync(commitFilePath, "utf-8").trim();
+    // Always use actual HEAD commit - don't trust cached file
+    try {
+      currentCommit = execSync("git rev-parse HEAD", {
+        cwd: projectRoot, encoding: "utf-8", windowsHide: true,
+      }).trim();
+    } catch {
+      if (existsSync(commitFilePath)) {
+        currentCommit = readFileSync(commitFilePath, "utf-8").trim();
+      }
     }
 
-    if (!currentCommit) {
-      try {
-        currentCommit = execSync("git rev-parse HEAD", {
-          cwd: projectRoot, encoding: "utf-8", windowsHide: true,
-        }).trim();
-      } catch {
-        currentCommit = "unknown";
-      }
+    if (!currentCommit || currentCommit === "unknown") {
+      return Response.json({ hasUpdate: false, error: "Cannot determine current version" });
     }
 
     // Try GitHub API first, fall back to comparing with local git
@@ -79,17 +80,13 @@ export async function GET() {
       }
     }
 
-    const hasUpdate =
-      currentCommit !== "unknown" &&
-      latestCommit !== "" &&
-      !latestCommit.startsWith(currentCommit) &&
-      currentCommit !== latestCommit;
+    const hasUpdate = latestCommit !== "" && currentCommit !== latestCommit;
 
     return Response.json({
       hasUpdate,
       currentCommit: currentCommit.substring(0, 7),
       latestCommit: latestCommit.substring(0, 7),
-      commits: commitList.slice(0, 5),
+      commits: hasUpdate ? commitList.slice(0, 5) : [],
     });
   } catch (error: any) {
     return Response.json({

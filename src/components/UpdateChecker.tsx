@@ -81,6 +81,13 @@ export function UpdateChecker() {
       if (result.success) {
         setUpdateState({ updateApplied: true, updateAvailable: false, applying: false });
         toast.success("Update applied! Please restart the application.");
+        // Re-check to verify update was applied
+        setTimeout(async () => {
+          const info = await checkForUpdates();
+          if (!info.hasUpdate) {
+            setUpdateState({ updateAvailable: false, updateDialogOpen: false });
+          }
+        }, 2000);
       } else {
         setUpdateState({ applying: false });
         toast.error(result.message || "Update failed");
