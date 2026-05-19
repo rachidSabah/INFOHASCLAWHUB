@@ -5,11 +5,23 @@ import { join } from "path";
 export async function POST() {
   try {
     const projectRoot = process.cwd();
+    const gitEnv = {
+      ...process.env,
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_ASKPASS: "echo",
+    };
 
-    // Fetch latest changes using git remote
+    // Ensure remote uses public URL (no auth needed for public repos)
+    try {
+      execSync("git remote set-url origin https://github.com/rachidSabah/INFOHASCLAWHUB.git", {
+        cwd: projectRoot, encoding: "utf-8", timeout: 10000, windowsHide: true, env: gitEnv,
+      });
+    } catch {}
+
+    // Fetch latest changes
     console.log("[Updater] Fetching latest changes...");
-    execSync("git fetch origin main", {
-      cwd: projectRoot, encoding: "utf-8", timeout: 60000, windowsHide: true,
+    execSync("git fetch origin main --depth=50", {
+      cwd: projectRoot, encoding: "utf-8", timeout: 60000, windowsHide: true, env: gitEnv,
     });
 
     // Check if we're behind
