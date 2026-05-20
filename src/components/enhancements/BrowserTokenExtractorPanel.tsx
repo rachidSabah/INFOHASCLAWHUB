@@ -132,17 +132,32 @@ export function BrowserTokenExtractorPanel({ open, onOpenChange }: Props) {
 
           <ScrollArea className="flex-1 min-h-0">
             {tokens.length === 0 && !loading && (
-              <div className="text-center py-8 text-muted-foreground">
+              <div className="text-center py-8 text-muted-foreground space-y-3">
                 <Globe className="h-8 w-8 mx-auto mb-2 opacity-30" />
                 <p className="text-sm">Click "Scan for Tokens" to extract DeepSeek cookies</p>
-                <p className="text-[11px] mt-1">Log into chat.deepseek.com in your browser first</p>
+                <p className="text-[11px]">Log into chat.deepseek.com in your browser first</p>
+                <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-left">
+                  <p className="text-xs font-semibold text-amber-500 mb-1.5">⚠ For API access, you need the Bearer Token:</p>
+                  <ol className="text-[10px] text-muted-foreground space-y-1 list-decimal list-inside">
+                    <li>Open DevTools (F12) → Network tab</li>
+                    <li>Send a chat message on chat.deepseek.com</li>
+                    <li>Find the request to <code className="bg-muted px-1 rounded">deepseek.com/api</code></li>
+                    <li>Look for <code className="bg-muted px-1 rounded">Authorization: Bearer eyJ...</code></li>
+                    <li>Copy the long token after "Bearer"</li>
+                  </ol>
+                </div>
               </div>
             )}
 
             {tokens.filter((t) => t.decrypted && t.value).length > 0 && !configured && (
-              <div className="mb-3 p-3 rounded-xl bg-blue-500/5 border border-blue-500/20 space-y-2">
-                <p className="text-xs font-semibold text-blue-500 flex items-center gap-1.5">
-                  <Shield className="h-3.5 w-3.5" /> Auto-Configure ds2api Provider
+              <div className="mb-3 p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 space-y-2">
+                <p className="text-xs font-semibold text-amber-500 flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5" /> Note: Cookies ≠ API Bearer Token
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  The tokens above are website cookies. ds2api needs the <strong>Bearer token</strong> from the Network tab.
+                  Open DevTools (F12) → Network → find any <code>deepseek.com</code> API request → copy the <code>Authorization: Bearer eyJ...</code> header value.
+                  Then paste it in the API Key field below:
                 </p>
                 <div className="flex gap-2">
                   <Input
@@ -156,7 +171,7 @@ export function BrowserTokenExtractorPanel({ open, onOpenChange }: Props) {
                   </Button>
                 </div>
                 <p className="text-[10px] text-muted-foreground">
-                  This creates a provider in Settings &gt; Providers. Then use Model Router to route deepseek-chat to it.
+                  The Configure button uses the first decrypted token. For proper API access, paste the Bearer token manually.
                 </p>
               </div>
             )}
@@ -198,7 +213,15 @@ export function BrowserTokenExtractorPanel({ open, onOpenChange }: Props) {
                         <p className="text-[11px] text-muted-foreground truncate">{token.domain}</p>
                       )}
                       {token.name && (
-                        <p className="text-[10px] font-mono text-muted-foreground truncate">{token.name}</p>
+                        <p className="text-[10px] font-mono text-muted-foreground truncate">{token.name}
+                          {token.name.toLowerCase().includes("token") || token.name.toLowerCase().includes("session") || token.name.toLowerCase().includes("auth") ? (
+                            <span className="ml-1 text-amber-500 font-bold">← likely auth token</span>
+                          ) : token.name === "cf_clearance" ? (
+                            <span className="ml-1 text-blue-500">← Cloudflare clearance</span>
+                          ) : token.name.toLowerCase().includes("intercom") ? (
+                            <span className="ml-1 text-muted-foreground">← chat widget</span>
+                          ) : null}
+                        </p>
                       )}
                       {token.error && (
                         <p className="text-[10px] text-amber-600 mt-1">{token.error}</p>
