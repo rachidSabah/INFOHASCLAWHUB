@@ -14,12 +14,13 @@ import { cn } from "@/lib/utils";
 import {
   Globe, Key, Copy, Check, RefreshCw, ExternalLink, Loader2,
   AlertTriangle, CheckCircle2, XCircle, Eye, EyeOff, Play,
-  Server, Zap, Search, Shield, Wifi, WifiOff, Sparkles, Terminal
+  Server, Zap, Search, Shield, Wifi, WifiOff, Sparkles, Terminal,
+  Bookmark, Bot, Radio, BookOpen
 } from "lucide-react";
 
 interface TokenResult {
   browser: string; domain: string; name: string; value: string;
-  decrypted?: boolean; source?: "cookie" | "localStorage"; provider?: string; error?: string;
+  decrypted?: boolean; source?: "cookie" | "localStorage" | "manual" | "bookmarklet" | "playwright" | "cdp" | "submitted"; provider?: string; error?: string;
 }
 
 interface BridgeStatus {
@@ -32,12 +33,20 @@ interface ValidationResult {
   detail?: string; response?: string; model?: string;
 }
 
+interface BookmarkletInfo {
+  label: string; bookmarklet: string; instructions: string;
+}
+
+interface ExtractionMethod {
+  available: boolean; label: string; description: string;
+}
+
 interface ProviderInfo {
   name: string; baseUrl: string; tokenLabel: string; domain: string;
   loginUrl: string; localStorageKey: string;
   models: { id: string; name: string; description: string }[];
   setupGuide: string[];
-  bridgeName: string; // for matching bridge status
+  bridgeName: string;
 }
 
 const PROVIDERS: ProviderInfo[] = [
@@ -53,12 +62,10 @@ const PROVIDERS: ProviderInfo[] = [
       { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1)", description: "Free R1 reasoning through web-to-API bridge" },
     ],
     setupGuide: [
-      "Install ds2api: pip install ds2api or docker run from github.com/CJackHwang/ds2api",
-      "Start ds2api — it runs on http://localhost:8000/v1",
-      "Log into chat.deepseek.com in your browser",
-      "Click 'Scan Tokens' to auto-detect your session token, or paste it manually",
-      "Click 'Validate' to verify the token works with ds2api",
-      "Click 'Configure' to add the provider to your dashboard",
+      "METHOD 1 (Easiest): Drag the Bookmarklet to your bookmarks bar → go to chat.deepseek.com → click the bookmark → done!",
+      "METHOD 2: Click 'Auto-Extract (Playwright)' to launch a browser → log in → token captured automatically",
+      "METHOD 3: Install ds2api bridge (pip install ds2api) → start on localhost:8000",
+      "METHOD 4: F12 → Network → find Bearer token → paste manually",
     ],
     bridgeName: "DeepSeek (ds2api)",
   },
@@ -76,12 +83,10 @@ const PROVIDERS: ProviderInfo[] = [
       { id: "qwen-coder", name: "Qwen Coder", description: "Code generation specialist" },
     ],
     setupGuide: [
-      "Log into chat.qwen.ai in your browser",
-      "Open DevTools (F12) → Network → Fetch/XHR tab",
-      "Send a message — watch for requests to chat.qwen.ai/api",
-      "Find Authorization: Bearer eyJ... in Request Headers",
-      "Copy the full JWT token and paste it below",
-      "Find/create a qw2api bridge at localhost:8100",
+      "METHOD 1 (Easiest): Drag the Bookmarklet to your bookmarks bar → go to chat.qwen.ai → click the bookmark → done!",
+      "METHOD 2: Click 'Auto-Extract (Playwright)' to launch a browser → log in → token captured automatically",
+      "METHOD 3: Install qw2api bridge → start on localhost:8100",
+      "METHOD 4: F12 → Network → find Bearer token → paste manually",
     ],
     bridgeName: "Qwen (qw2api)",
   },
@@ -98,13 +103,12 @@ const PROVIDERS: ProviderInfo[] = [
       { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", description: "Fast thinking with high quality" },
     ],
     setupGuide: [
-      "Visit aistudio.google.com/apikey to get a free API key",
-      "The key starts with 'AIza...'",
-      "Paste it in the token field below",
-      "No bridge needed — direct HTTPS API",
-      "50 requests/day free tier",
+      "Visit aistudio.google.com/apikey to get a free API key (starts with AIza...)",
+      "No bridge needed — direct HTTPS API connection",
+      "50 requests/day free tier — no credit card required",
+      "Use the Bookmarklet for quick one-click key entry!",
     ],
-    bridgeName: "", // Gemini doesn't use a bridge
+    bridgeName: "",
   },
   {
     name: "Kimi (Moonshot)",
@@ -120,11 +124,10 @@ const PROVIDERS: ProviderInfo[] = [
       { id: "moonshot-v1-128k", name: "Moonshot v1 128K", description: "Ultra-long context" },
     ],
     setupGuide: [
-      "Log into kimi.moonshot.cn in your browser",
-      "Open DevTools (F12) → Network → Fetch/XHR",
-      "Send a message — find Authorization: Bearer in headers",
-      "Or scan cookies for token from kimi.moonshot.cn",
-      "Create/use a Kimi bridge at localhost:8200/v1",
+      "METHOD 1 (Easiest): Drag the Bookmarklet to your bookmarks bar → go to kimi.moonshot.cn → click the bookmark → done!",
+      "METHOD 2: Click 'Auto-Extract (Playwright)' to launch a browser → log in → token captured automatically",
+      "METHOD 3: Create Kimi bridge at localhost:8200/v1",
+      "METHOD 4: F12 → Network → find Bearer token → paste manually",
     ],
     bridgeName: "Kimi Bridge",
   },
@@ -142,15 +145,16 @@ const PROVIDERS: ProviderInfo[] = [
       { id: "glm-4-long", name: "GLM-4 Long", description: "Extended context" },
     ],
     setupGuide: [
-      "Log into chat.z.ai in your browser",
-      "Open DevTools (F12) → Network → Fetch/XHR",
-      "Send a message — find Authorization: Bearer in headers",
-      "Or scan cookies for authToken from chat.z.ai",
-      "Create/use a GLM bridge at localhost:8300/v1",
+      "METHOD 1 (Easiest): Drag the Bookmarklet to your bookmarks bar → go to chat.z.ai → click the bookmark → done!",
+      "METHOD 2: Click 'Auto-Extract (Playwright)' to launch a browser → log in → token captured automatically",
+      "METHOD 3: Create GLM bridge at localhost:8300/v1",
+      "METHOD 4: F12 → Network → find Bearer token → paste manually",
     ],
     bridgeName: "GLM/Z.AI Bridge",
   },
 ];
+
+type ExtractTab = "bookmarklet" | "playwright" | "manual";
 
 interface Props { open: boolean; onOpenChange: (open: boolean) => void; }
 
@@ -167,15 +171,22 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
   const [validating, setValidating] = useState<string | null>(null);
   const [platform, setPlatform] = useState<string>("");
   const [scannedBrowsers, setScannedBrowsers] = useState<string[]>([]);
+  const [browserInstallStatus, setBrowserInstallStatus] = useState<Record<string, string>>({});
   const [keyStatuses, setKeyStatuses] = useState<Record<string, string>>({});
-  const [clientScripts, setClientScripts] = useState<Record<string, { label: string; script: string }>>({});
-  const [showExtractScript, setShowExtractScript] = useState(false);
+  const [bookmarklets, setBookmarklets] = useState<Record<string, BookmarkletInfo>>({});
+  const [extractionMethods, setExtractionMethods] = useState<Record<string, ExtractionMethod>>({});
+  const [playwrightAvailable, setPlaywrightAvailable] = useState(false);
+  const [extractTab, setExtractTab] = useState<ExtractTab>("bookmarklet");
+  const [autograbLoading, setAutograbLoading] = useState(false);
+  const [showConsoleScript, setShowConsoleScript] = useState(false);
 
   const provider = PROVIDERS[activeProvider];
+  const providerKey = ["deepseek", "qwen", "gemini", "kimi", "z-ai"][activeProvider];
+  const isGemini = provider.name.includes("Gemini");
 
-  // Fetch bridge status from the scan results
+  // Check bridge status
   const checkBridgeStatus = useCallback(async (p: ProviderInfo) => {
-    if (!p.bridgeName) return; // Gemini doesn't use a bridge
+    if (!p.bridgeName) return;
     try {
       const res = await fetch(p.baseUrl.replace("/v1", "") + "/v1/models", {
         signal: AbortSignal.timeout(3000),
@@ -202,30 +213,63 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
       setTokens(data.tokens || []);
       setPlatform(data.platform || "unknown");
       setScannedBrowsers(data.summary?.browsersFound || []);
+      setBrowserInstallStatus(data.summary?.browsersInstalled || {});
       setKeyStatuses(data.summary?.keyStatuses || {});
-      setClientScripts(data.clientScripts || {});
+      setBookmarklets(data.bookmarklets || {});
+      setExtractionMethods(data.extractionMethods || {});
+      setPlaywrightAvailable(data.summary?.playwrightAvailable || false);
 
-      // Also get bridge status from the API
       if (data.bridgeStatus) {
         setBridgeStatus(data.bridgeStatus);
       }
 
       const validCount = data.summary?.valid || 0;
+      const submittedCount = data.summary?.submitted || 0;
       if (validCount > 0) {
-        toast.success(`${validCount} valid tokens found across ${data.summary?.browsersFound?.length || 0} browser(s)`);
-      } else if (data.summary?.total > 0) {
-        toast.info(`${data.summary.total} tokens found but all are encrypted — paste token manually`);
+        toast.success(`${validCount} valid tokens found (${submittedCount} from auto-extraction)`);
+      } else if (submittedCount > 0) {
+        toast.success(`${submittedCount} auto-extracted tokens available`);
       } else {
-        toast.info("No browser tokens found. Log into a provider in your browser first, or paste a token manually.");
+        toast.info("Use the Bookmarklet method for automatic token extraction — no F12 needed!");
       }
     } catch {
-      toast.error("Token scan failed — try pasting token manually");
+      toast.error("Token scan failed — try Bookmarklet or manual paste");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Validate a token against the provider's API
+  // Playwright auto-extract
+  const autoGrab = useCallback(async () => {
+    setAutograbLoading(true);
+    try {
+      const res = await fetch("/api/browser/tokens/autograb", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: providerKey, headless: true }),
+      });
+      const data = await res.json();
+      if (data.ok && data.tokens?.length > 0) {
+        toast.success(`${data.count} token(s) auto-extracted via Playwright!`);
+        // Auto-fill the first token
+        setApiKey(data.tokens[0].value);
+        // Re-scan to pick up the new submitted tokens
+        await scanTokens();
+      } else {
+        toast.info(data.message || data.hint || "No tokens found. Try the Bookmarklet method instead.");
+        if (data.hint) {
+          setExtractTab("bookmarklet");
+        }
+      }
+    } catch {
+      toast.error("Playwright auto-extract failed. Use the Bookmarklet method instead.");
+      setExtractTab("bookmarklet");
+    } finally {
+      setAutograbLoading(false);
+    }
+  }, [providerKey, scanTokens]);
+
+  // Validate a token
   const validateToken = useCallback(async (token: string, p: ProviderInfo) => {
     if (!token.trim()) { toast.error("Enter a token first"); return; }
     setValidating(p.name);
@@ -233,20 +277,12 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
       const res = await fetch("/api/browser/tokens/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token: token.trim(),
-          baseUrl: p.baseUrl,
-          model: p.models[0]?.id,
-        }),
+        body: JSON.stringify({ token: token.trim(), baseUrl: p.baseUrl, model: p.models[0]?.id }),
       });
       const data: ValidationResult = await res.json();
       setValidationResults(prev => ({ ...prev, [p.name]: data }));
-
-      if (data.valid) {
-        toast.success(data.message || "Token is valid!");
-      } else {
-        toast.error(data.error || "Token validation failed");
-      }
+      if (data.valid) { toast.success(data.message || "Token is valid!"); }
+      else { toast.error(data.error || "Token validation failed"); }
     } catch {
       const failResult: ValidationResult = { valid: false, error: "Validation request failed" };
       setValidationResults(prev => ({ ...prev, [p.name]: failResult }));
@@ -256,13 +292,13 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
     }
   }, []);
 
-  // Configure provider in dashboard
+  // Configure provider
   const configureProvider = useCallback(async () => {
     let token = apiKey.trim();
     if (!token) { toast.error("Paste a token first"); return; }
     token = token.replace(/^Bearer\s+/i, "").replace(/^Authorization:\s*Bearer\s+/i, "");
     if (token.length < 20) {
-      toast.error("Token too short. Copy the full Authorization header value from DevTools.");
+      toast.error("Token too short. Copy the full value.");
       return;
     }
     setApiKey(token);
@@ -275,7 +311,6 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
       setConfigured(prev => [...prev, provider.name]);
       toast.success(`"${provider.name}" configured! Models will appear in the dropdown.`);
       setApiKey("");
-      // Refresh models list
       setTimeout(async () => { try { await fetch("/api/models?t=" + Date.now()); } catch {} }, 1000);
     } catch { toast.error("Failed to configure provider"); }
   }, [apiKey, provider]);
@@ -287,13 +322,7 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
       await fetch("/api/model-routes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: `${modelId} via ${p.name}`,
-          taskType: "chat",
-          model: `${slug}/${modelId}`,
-          priority: 1,
-          fallbackChain: "[]",
-        }),
+        body: JSON.stringify({ name: `${modelId} via ${p.name}`, taskType: "chat", model: `${slug}/${modelId}`, priority: 1, fallbackChain: "[]" }),
       });
       toast.success(`Route added for ${modelId}`);
     } catch { toast.error("Failed to add route"); }
@@ -323,13 +352,12 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
 
   // Filter tokens for current provider
   const providerTokens = tokens.filter(t =>
-    t.provider === ["deepseek", "qwen", "gemini", "kimi", "z-ai"][activeProvider] || !t.provider
+    t.provider === providerKey || !t.provider
   );
 
   const bridgeInfo = bridgeStatus[provider.name];
   const validation = validationResults[provider.name];
-  const isGemini = provider.name.includes("Gemini");
-  const providerKey = ["deepseek", "qwen", "gemini", "kimi", "z-ai"][activeProvider];
+  const bookmarklet = bookmarklets[providerKey];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -340,7 +368,7 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
             Web-to-API Bridge Hub
           </DialogTitle>
           <DialogDescription>
-            Free AI via browser session tokens — no API keys, no credit card
+            Free AI via browser session tokens — no API keys, no credit card, no F12 needed!
           </DialogDescription>
         </DialogHeader>
         <PowerToolHint name="Browser Token Extractor" />
@@ -353,6 +381,11 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
           {scannedBrowsers.length > 0 && (
             <Badge variant="outline" className="text-[9px] gap-1 text-green-600">
               <CheckCircle2 className="h-3 w-3" /> {scannedBrowsers.join(", ")}
+            </Badge>
+          )}
+          {playwrightAvailable && (
+            <Badge variant="outline" className="text-[9px] gap-1 text-blue-600">
+              <Bot className="h-3 w-3" /> Playwright ready
             </Badge>
           )}
           <div className="flex-1" />
@@ -377,6 +410,7 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
           {PROVIDERS.map((p, i) => (
             <TabsContent key={i} value={String(i)} className="flex-1 flex flex-col min-h-0 mt-2 data-[state=inactive]:hidden overflow-y-auto">
               <div className="flex-1 flex flex-col min-h-0 gap-2">
+
                 {/* Bridge Status */}
                 {!isGemini && (
                   <div className="flex items-center gap-2 shrink-0">
@@ -396,20 +430,174 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                       </span>
                     )}
                     {!bridgeInfo?.running && (
-                      <>
-                        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => checkBridgeStatus(p)}>
-                          <RefreshCw className="h-3 w-3 mr-1" /> Recheck
-                        </Button>
-                        <span className="text-[10px] text-amber-600">
-                          Start the bridge service first (e.g., ds2api)
-                        </span>
-                      </>
+                      <span className="text-[10px] text-amber-600">Start the bridge service first</span>
                     )}
                     <a href={p.loginUrl} target="_blank" className="text-[10px] text-muted-foreground hover:text-foreground ml-auto flex items-center gap-1">
                       <ExternalLink className="h-3 w-3" /> Login
                     </a>
                   </div>
                 )}
+
+                {/* ═══════ AUTO-EXTRACTION SECTION ═══════ */}
+                <div className="p-3 rounded-xl bg-gradient-to-r from-violet-500/5 to-blue-500/5 border border-violet-500/20 space-y-2 shrink-0">
+                  <p className="text-[11px] font-semibold flex items-center gap-1.5">
+                    <Zap className="h-3.5 w-3.5 text-violet-500" />
+                    Token Extraction (No F12 needed!)
+                  </p>
+
+                  {/* Extraction method tabs */}
+                  <div className="flex gap-1 bg-muted/30 p-1 rounded-lg">
+                    <button
+                      className={cn("flex-1 text-[10px] py-1.5 px-2 rounded-md flex items-center justify-center gap-1 transition-colors",
+                        extractTab === "bookmarklet" ? "bg-violet-500 text-white shadow-sm" : "hover:bg-muted/50 text-muted-foreground"
+                      )}
+                      onClick={() => setExtractTab("bookmarklet")}
+                    >
+                      <Bookmark className="h-3 w-3" /> Bookmarklet
+                    </button>
+                    <button
+                      className={cn("flex-1 text-[10px] py-1.5 px-2 rounded-md flex items-center justify-center gap-1 transition-colors",
+                        extractTab === "playwright" ? "bg-blue-500 text-white shadow-sm" : "hover:bg-muted/50 text-muted-foreground",
+                        !playwrightAvailable && "opacity-50"
+                      )}
+                      onClick={() => playwrightAvailable && setExtractTab("playwright")}
+                      disabled={!playwrightAvailable}
+                    >
+                      <Bot className="h-3 w-3" /> Playwright
+                    </button>
+                    <button
+                      className={cn("flex-1 text-[10px] py-1.5 px-2 rounded-md flex items-center justify-center gap-1 transition-colors",
+                        extractTab === "manual" ? "bg-emerald-500 text-white shadow-sm" : "hover:bg-muted/50 text-muted-foreground"
+                      )}
+                      onClick={() => setExtractTab("manual")}
+                    >
+                      <Key className="h-3 w-3" /> Manual
+                    </button>
+                  </div>
+
+                  {/* ─── BOOKMARKLET TAB ─── */}
+                  {extractTab === "bookmarklet" && bookmarklet && (
+                    <div className="space-y-2">
+                      <div className="p-2.5 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                        <p className="text-[10px] text-blue-600 font-medium mb-1.5">
+                          One-click extract — drag this link to your bookmarks bar:
+                        </p>
+                        <a
+                          href={bookmarklet.bookmarklet}
+                          draggable
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-[11px] font-medium shadow-sm transition-colors cursor-grab active:cursor-grabbing"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            // If clicked directly (not dragged), show instructions
+                            toast.info("Drag this button to your bookmarks bar, then use it on the provider's site!");
+                          }}
+                        >
+                          <Bookmark className="h-3.5 w-3.5" />
+                          {bookmarklet.label}
+                        </a>
+                      </div>
+                      <ol className="text-[10px] text-muted-foreground space-y-0.5 list-decimal list-inside">
+                        {bookmarklet.instructions.split(". ").map((s, j) => (
+                          <li key={j}>{s}</li>
+                        ))}
+                      </ol>
+                      <p className="text-[9px] text-muted-foreground flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3 text-green-500" />
+                        Bookmarklet runs in the browser page — no server access to cookies needed, works on any platform!
+                      </p>
+                    </div>
+                  )}
+
+                  {/* ─── PLAYWRIGHT TAB ─── */}
+                  {extractTab === "playwright" && (
+                    <div className="space-y-2">
+                      <div className="p-2.5 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                        <p className="text-[10px] text-muted-foreground mb-1.5">
+                          Launches a Playwright browser — log into the provider, and the token is captured automatically from localStorage, cookies, and network requests.
+                        </p>
+                        <Button
+                          size="sm"
+                          className="h-8 text-[10px] gap-1.5 bg-blue-500 hover:bg-blue-600"
+                          onClick={autoGrab}
+                          disabled={autograbLoading}
+                        >
+                          {autograbLoading ? (
+                            <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Extracting...</>
+                          ) : (
+                            <><Bot className="h-3.5 w-3.5" /> Auto-Extract with Playwright</>
+                          )}
+                        </Button>
+                      </div>
+                      {!playwrightAvailable && (
+                        <p className="text-[9px] text-amber-600 flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3" />
+                          Playwright not available. Install: npx playwright install chromium
+                        </p>
+                      )}
+                      <p className="text-[9px] text-muted-foreground flex items-center gap-1">
+                        <Radio className="h-3 w-3" />
+                        Playwright intercepts network requests to capture Bearer tokens automatically.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* ─── MANUAL TAB ─── */}
+                  {extractTab === "manual" && (
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
+                        <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)}
+                          placeholder={isGemini ? "Paste API key (AIza...) here" : "Paste Bearer token (eyJ...) here"}
+                          className="h-8 text-[10px] flex-1 font-mono"
+                          type={showValues["input"] ? "text" : "password"} />
+                        <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0"
+                          onClick={() => setShowValues(prev => ({ ...prev, input: !prev.input }))}>
+                          {showValues["input"] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                        </Button>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" className="h-8 text-[10px] gap-1 flex-1"
+                          onClick={() => validateToken(apiKey, p)} disabled={!apiKey.trim() || validating === p.name}>
+                          {validating === p.name ? <Loader2 className="h-3 w-3 animate-spin" /> : <Shield className="h-3 w-3" />}
+                          Validate
+                        </Button>
+                        <Button size="sm" className={cn("h-8 text-[10px] gap-1 flex-1", configured.includes(p.name) ? "bg-green-600" : "")}
+                          onClick={configureProvider} disabled={!apiKey.trim()}>
+                          {configured.includes(p.name) ? <><CheckCircle2 className="h-3 w-3" /> Done</> : <><Play className="h-3 w-3" /> Configure</>}
+                        </Button>
+                      </div>
+
+                      {/* Validation Result */}
+                      {validation && (
+                        <div className={cn("p-2 rounded-lg border text-[10px]", validation.valid
+                          ? "bg-green-500/5 border-green-500/20 text-green-700"
+                          : "bg-red-500/5 border-red-500/20 text-red-700")}>
+                          <div className="flex items-center gap-1.5 font-semibold mb-1">
+                            {validation.valid ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                            {validation.valid ? "Valid" : "Invalid"}
+                            {validation.method && <span className="font-normal text-muted-foreground">({validation.method})</span>}
+                          </div>
+                          {validation.message && <p>{validation.message}</p>}
+                          {validation.warning && <p className="text-amber-600">{validation.warning}</p>}
+                          {validation.error && <p>{validation.error}</p>}
+                          {validation.suggestion && <p className="text-muted-foreground">{validation.suggestion}</p>}
+                          {validation.models && validation.models.length > 0 && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {validation.models.map(m => (
+                                <Badge key={m} variant="outline" className="text-[8px] h-4">{m}</Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <p className="text-[9px] text-muted-foreground">
+                        {isGemini
+                          ? "Paste your Google AI Studio API key directly — no bridge needed"
+                          : "Auto-strips 'Bearer' prefix. Validate before configuring."}
+                      </p>
+                    </div>
+                  )}
+                </div>
 
                 {/* Setup Guide */}
                 <details className="shrink-0">
@@ -420,64 +608,6 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                     {p.setupGuide.map((s, j) => <li key={j}>{s}</li>)}
                   </ol>
                 </details>
-
-                {/* Token Input + Validate + Configure */}
-                <div className="p-3 rounded-xl bg-violet-500/5 border border-violet-500/20 space-y-2 shrink-0">
-                  <p className="text-[11px] font-semibold flex items-center gap-1.5">
-                    <Zap className="h-3.5 w-3.5 text-violet-500" /> Token Input
-                  </p>
-                  <div className="flex gap-2">
-                    <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)}
-                      placeholder={isGemini ? "Paste API key (AIza...) here" : "Paste Bearer token (eyJ...) here"}
-                      className="h-8 text-[10px] flex-1 font-mono"
-                      type={showValues["input"] ? "text" : "password"} />
-                    <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0"
-                      onClick={() => setShowValues(prev => ({ ...prev, input: !prev.input }))}>
-                      {showValues["input"] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                    </Button>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" className="h-8 text-[10px] gap-1 flex-1"
-                      onClick={() => validateToken(apiKey, p)} disabled={!apiKey.trim() || validating === p.name}>
-                      {validating === p.name ? <Loader2 className="h-3 w-3 animate-spin" /> : <Shield className="h-3 w-3" />}
-                      Validate
-                    </Button>
-                    <Button size="sm" className={cn("h-8 text-[10px] gap-1 flex-1", configured.includes(p.name) ? "bg-green-600" : "")}
-                      onClick={configureProvider} disabled={!apiKey.trim()}>
-                      {configured.includes(p.name) ? <><CheckCircle2 className="h-3 w-3" /> Done</> : <><Play className="h-3 w-3" /> Configure</>}
-                    </Button>
-                  </div>
-
-                  {/* Validation Result */}
-                  {validation && (
-                    <div className={cn("p-2 rounded-lg border text-[10px]", validation.valid
-                      ? "bg-green-500/5 border-green-500/20 text-green-700"
-                      : "bg-red-500/5 border-red-500/20 text-red-700")}>
-                      <div className="flex items-center gap-1.5 font-semibold mb-1">
-                        {validation.valid ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-                        {validation.valid ? "Valid" : "Invalid"}
-                        {validation.method && <span className="font-normal text-muted-foreground">({validation.method})</span>}
-                      </div>
-                      {validation.message && <p>{validation.message}</p>}
-                      {validation.warning && <p className="text-amber-600">{validation.warning}</p>}
-                      {validation.error && <p>{validation.error}</p>}
-                      {validation.suggestion && <p className="text-muted-foreground">{validation.suggestion}</p>}
-                      {validation.models && validation.models.length > 0 && (
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {validation.models.map(m => (
-                            <Badge key={m} variant="outline" className="text-[8px] h-4">{m}</Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <p className="text-[9px] text-muted-foreground">
-                    {isGemini
-                      ? "Paste your Google AI Studio API key directly — no bridge needed"
-                      : "Auto-detect: strips 'Bearer' prefix, handles JWT format. Validate before configuring."}
-                  </p>
-                </div>
 
                 {/* Available Models */}
                 <div className="shrink-0">
@@ -495,7 +625,26 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
 
                 <Separator className="shrink-0" />
 
-                {/* Key Decryption Status */}
+                {/* Browser Install Status (replaces "Chrome locked") */}
+                {Object.keys(browserInstallStatus).length > 0 && (
+                  <details className="shrink-0">
+                    <summary className="text-[11px] font-medium text-muted-foreground cursor-pointer hover:text-foreground">
+                      Browser Status
+                    </summary>
+                    <div className="mt-1 space-y-0.5">
+                      {Object.entries(browserInstallStatus).map(([browser, status]) => (
+                        <div key={browser} className="flex items-center gap-1.5 text-[10px]">
+                          <span className="font-medium">{browser}:</span>
+                          <span className={status.includes('Installed') || status.includes('found') ? 'text-green-600' : 'text-muted-foreground'}>
+                            {status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+
+                {/* Decryption Key Status */}
                 {Object.keys(keyStatuses).length > 0 && (
                   <details className="shrink-0">
                     <summary className="text-[11px] font-medium text-muted-foreground cursor-pointer hover:text-foreground">
@@ -512,41 +661,16 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                   </details>
                 )}
 
-                {/* Client-Side Token Extractor */}
-                {!isGemini && (
-                  <div className="shrink-0">
-                    <button
-                      className="text-[11px] font-medium text-blue-500 hover:text-blue-400 flex items-center gap-1.5"
-                      onClick={() => setShowExtractScript(!showExtractScript)}
-                    >
-                      <Terminal className="h-3 w-3" />
-                      {showExtractScript ? 'Hide' : 'Show'} One-Click Token Extractor
-                    </button>
-                    {showExtractScript && clientScripts[providerKey] && (
-                      <div className="mt-1.5 p-2.5 rounded-xl bg-blue-500/5 border border-blue-500/20 space-y-2">
-                        <p className="text-[10px] text-muted-foreground">
-                          Open <a href={provider.loginUrl} target="_blank" className="text-blue-500 hover:underline">{provider.loginUrl}</a> in a new tab,
-                          then paste this script in the browser console (F12):
-                        </p>
-                        <pre className="text-[9px] bg-muted/50 p-2 rounded-lg overflow-x-auto max-h-32 overflow-y-auto font-mono whitespace-pre-wrap">
-                          {clientScripts[providerKey].script}
-                        </pre>
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1"
-                            onClick={() => {
-                              navigator.clipboard.writeText(clientScripts[providerKey].script);
-                              toast.success('Script copied! Paste it in the provider\'s browser console.');
-                            }}>
-                            <Copy className="h-3 w-3" /> Copy Script
-                          </Button>
-                          <span className="text-[9px] text-muted-foreground self-center">
-                            The script will auto-copy the token to your clipboard
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                {/* Legacy F12 Console Script */}
+                <div className="shrink-0">
+                  <button
+                    className="text-[11px] font-medium text-muted-foreground hover:text-foreground flex items-center gap-1.5"
+                    onClick={() => setShowConsoleScript(!showConsoleScript)}
+                  >
+                    <Terminal className="h-3 w-3" />
+                    {showConsoleScript ? 'Hide' : 'Show'} F12 Console Script (Legacy)
+                  </button>
+                </div>
 
                 <Separator className="shrink-0" />
 
@@ -562,28 +686,43 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                         <p className="text-xs text-muted-foreground">
                           {configured.includes(p.name)
                             ? "Provider configured. Models available in dropdown."
-                            : loading ? "Scanning..." : "No tokens auto-detected. Paste a token manually above."}
+                            : loading ? "Scanning..." : "No tokens auto-detected yet. Use the Bookmarklet above for one-click extraction!"}
                         </p>
                         {!loading && !configured.includes(p.name) && (
-                          <p className="text-[10px] text-muted-foreground mt-1">
-                            Tip: Open <a href={p.loginUrl} target="_blank" className="text-blue-500 hover:underline">{p.loginUrl}</a>,
-                            log in, then F12 → Network → copy Bearer token
-                          </p>
+                          <div className="mt-2 flex flex-col gap-1">
+                            <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 mx-auto"
+                              onClick={() => setExtractTab("bookmarklet")}>
+                              <Bookmark className="h-3 w-3" /> Try Bookmarklet (Easiest)
+                            </Button>
+                            <p className="text-[10px] text-muted-foreground">
+                              Or open <a href={p.loginUrl} target="_blank" className="text-blue-500 hover:underline">{p.loginUrl}</a>,
+                              log in, then click your bookmark
+                            </p>
+                          </div>
                         )}
                       </div>
                     )}
                     <div className="space-y-1.5">
                       {providerTokens.map((t, j) => (
                         <div key={j} className={cn("rounded-lg border p-2",
-                          t.decrypted ? (t.source === "localStorage" ? "border-blue-500/20 bg-blue-500/5" : "border-green-500/20 bg-green-500/5") : "border-amber-500/20 bg-amber-500/5"
+                          t.decrypted ? (
+                            t.source === "localStorage" || t.source === "bookmarklet" || t.source === "playwright" || t.source === "submitted"
+                              ? "border-blue-500/20 bg-blue-500/5"
+                              : "border-green-500/20 bg-green-500/5"
+                          ) : "border-amber-500/20 bg-amber-500/5"
                         )}>
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5 min-w-0">
                               <Badge className={cn("text-[9px] h-4 shrink-0",
                                 !t.decrypted ? "bg-amber-500/10 text-amber-600" :
-                                t.source === "localStorage" ? "bg-blue-500/10 text-blue-600" : "bg-green-500/10 text-green-600"
+                                (t.source === "bookmarklet" || t.source === "playwright" || t.source === "submitted") ? "bg-blue-500/10 text-blue-600" :
+                                t.source === "localStorage" ? "bg-purple-500/10 text-purple-600" : "bg-green-500/10 text-green-600"
                               )}>
-                                {!t.decrypted ? "Locked" : t.source === "localStorage" ? "Bearer" : "Cookie"}
+                                {!t.decrypted ? "Locked" :
+                                  t.source === "bookmarklet" ? "Bookmarklet" :
+                                  t.source === "playwright" ? "Playwright" :
+                                  t.source === "submitted" ? "Auto" :
+                                  t.source === "localStorage" ? "Bearer" : "Cookie"}
                               </Badge>
                               <span className="text-[10px] truncate max-w-[120px]">{t.name || t.domain}</span>
                               <span className="text-[9px] text-muted-foreground">{t.browser}</span>

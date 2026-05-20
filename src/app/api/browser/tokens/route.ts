@@ -7,7 +7,7 @@ import { NextResponse } from "next/server";
 
 interface TokenResult {
   browser: string; domain: string; name: string; value: string;
-  decrypted?: boolean; source?: "cookie" | "localStorage" | "manual"; provider?: string; error?: string;
+  decrypted?: boolean; source?: "cookie" | "localStorage" | "manual" | "bookmarklet" | "playwright" | "cdp" | "submitted"; provider?: string; error?: string;
 }
 
 const isWin = process.platform === "win32";
@@ -38,52 +38,25 @@ function dpapiDecrypt(data: Buffer): Buffer | null {
 
 // ─── Linux key derivation strategies ───
 function getLinuxChromeKey(): Buffer {
-  // Chrome on Linux (older versions) uses PBKDF2-HMAC-SHA1 with:
-  //   password = "peanuts", salt = "saltysalt", iterations = 1, keylen = 16
   return crypto.pbkdf2Sync("peanuts", "saltysalt", 1, 16, "sha1");
 }
 
 function getLinuxKeyringKey(browserName: string): Buffer | null {
-  // Chrome 80+ on Linux stores the key in the system keyring (gnome-keyring / kwallet)
-  // Access via `secret-tool` CLI (part of libsecret-tools)
   const appNames: Record<string, string> = {
-    "Chrome": "chrome",
-    "Chromium": "chromium",
-    "Brave": "brave",
-    "Edge": "microsoft-edge",
-    "Vivaldi": "vivaldi",
+    "Chrome": "chrome", "Chromium": "chromium", "Brave": "brave",
+    "Edge": "microsoft-edge", "Vivaldi": "vivaldi",
   };
   const app = appNames[browserName];
   if (!app) return null;
 
   try {
-    // Try gnome-keyring via secret-tool
     const password = execSync(
       `secret-tool lookup application ${app} 2>/dev/null || secret-tool lookup xdg:schema chrome_libsecret_os_crypt_password_v2 application ${app} 2>/dev/null`,
       { encoding: "utf-8", timeout: 5000 }
     ).trim();
 
     if (password) {
-      // Derive key using PBKDF2 (same as Chrome does)
-      // v2 schema uses: PBKDF2-HMAC-SHA1, salt="saltysalt", iterations=1, keylen=16
       return crypto.pbkdf2Sync(password, "saltysalt", 1, 16, "sha1");
-    }
-  } catch {
-    // secret-tool not available or key not found
-  }
-
-  return null;
-}
-
-// ─── Detect Chrome version ───
-function getChromeVersion(userDataPath: string): string | null {
-  // Try to read from the browser's manifest or prefs
-  try {
-    const prefsPath = join(userDataPath, "Default", "Preferences");
-    if (existsSync(prefsPath)) {
-      const prefs = JSON.parse(readFileSync(prefsPath, "utf-8"));
-      // Not always present, but worth checking
-      return prefs?.browser?.window?.placement?.bottom || null;
     }
   } catch {}
   return null;
@@ -96,7 +69,6 @@ function checkAppBoundEncryption(userDataPath: string): boolean {
     const localStatePath = join(userDataPath, "Local State");
     if (!existsSync(localStatePath)) return false;
     const localState = JSON.parse(readFileSync(localStatePath, "utf-8"));
-    // Chrome v127+ uses app-bound encryption which is NOT accessible from external processes
     return localState?.os_crypt?.app_bound_encrypted_key !== undefined;
   } catch { return false; }
 }
@@ -107,9 +79,9 @@ function decryptChromeCookieGCM(encryptedValue: Buffer, masterKey: Buffer): stri
     if (encryptedValue.length < 15) return null;
     const prefix = encryptedValue.toString("utf-8", 0, 3);
     if (prefix !== "v10" && prefix !== "v11") return null;
-    const nonce = encryptedValue.slice(3, 15);  // 12 bytes
+    const nonce = encryptedValue.slice(3, 15);
     const ciphertext = encryptedValue.slice(15);
-    const tag = ciphertext.slice(-16);           // last 16 bytes = auth tag
+    const tag = ciphertext.slice(-16);
     const encrypted = ciphertext.slice(0, -16);
     const decipher = crypto.createDecipheriv("aes-256-gcm", masterKey, nonce);
     decipher.setAuthTag(tag);
@@ -125,10 +97,10 @@ function decryptChromeCookieCBC(encryptedValue: Buffer, key: Buffer): string | n
     const prefix = encryptedValue.toString("utf-8", 0, 3);
     if (prefix !== "v10" && prefix !== "v11") return null;
     const encrypted = encryptedValue.slice(3);
-    const iv = Buffer.alloc(16, 0x20); // 16 space characters
+    const iv = Buffer.alloc(16, 0x20);
     const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
     const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
-    return decrypted.toString("utf-8").replace(/\x00+$/, ""); // strip null padding
+    return decrypted.toString("utf-8").replace(/\x00+$/, "");
   } catch { return null; }
 }
 
@@ -136,7 +108,7 @@ function decryptChromeCookieCBC(encryptedValue: Buffer, key: Buffer): string | n
 function getChromeMasterKey(userDataPath: string, browserName: string): { key: Buffer | null; reason: string } {
   const localStatePath = join(userDataPath, "Local State");
   if (!existsSync(localStatePath)) {
-    return { key: null, reason: "No Local State file found" };
+    return { key: null, reason: "No Local State file — browser not initialized (no login history)" };
   }
 
   try {
@@ -147,25 +119,19 @@ function getChromeMasterKey(userDataPath: string, browserName: string): { key: B
     }
     const encryptedKey = Buffer.from(encryptedKeyB64, "base64");
 
-    // ─── Windows ───
     if (isWin) {
-      // Check for app-bound encryption first (Chrome v127+)
       if (checkAppBoundEncryption(userDataPath)) {
-        return { key: null, reason: "Chrome v127+ app-bound encryption — cookies cannot be decrypted externally. Use DevTools (F12) to extract Bearer token manually." };
+        return { key: null, reason: "Chrome v127+ app-bound encryption — use Bookmarklet or Playwright auto-extract instead" };
       }
-
-      // Standard DPAPI: skip "DPAPI" prefix (5 bytes), then decrypt
       if (encryptedKey.length > 5 && encryptedKey.toString("utf-8", 0, 5) === "DPAPI") {
         const rawKey = encryptedKey.slice(5);
         const decrypted = dpapiDecrypt(rawKey);
         if (decrypted) return { key: decrypted, reason: "DPAPI decryption successful" };
-        return { key: null, reason: "DPAPI decryption failed — run as the same Windows user that created the cookies" };
+        return { key: null, reason: "DPAPI decryption failed — use Bookmarklet auto-extract instead" };
       }
-
       return { key: null, reason: "Unknown encryption format on Windows" };
     }
 
-    // ─── macOS ───
     if (isMac) {
       if (encryptedKey.length > 3 && encryptedKey.toString("utf-8", 0, 3) === "v10") {
         try {
@@ -176,20 +142,17 @@ function getChromeMasterKey(userDataPath: string, browserName: string): { key: B
           const key = crypto.pbkdf2Sync(keyPassword, "saltysalt", 1003, 16, "sha1");
           return { key, reason: "macOS Keychain key retrieved" };
         } catch {
-          return { key: null, reason: "macOS Keychain access denied — allow terminal access to 'Chrome Safe Storage' in Keychain Access" };
+          return { key: null, reason: "macOS Keychain access denied — use Bookmarklet auto-extract instead" };
         }
       }
     }
 
-    // ─── Linux ───
     if (isLinux) {
-      // Strategy 1: Try system keyring (gnome-keyring) — Chrome 80+ stores key there
       const keyringKey = getLinuxKeyringKey(browserName);
       if (keyringKey) {
         return { key: keyringKey, reason: "Linux keyring key retrieved via secret-tool" };
       }
 
-      // Strategy 2: Try raw base64 key (some Chrome versions)
       try {
         const rawKey = encryptedKey;
         if (rawKey.length === 32) return { key: rawKey, reason: "Raw 32-byte key found" };
@@ -197,13 +160,11 @@ function getChromeMasterKey(userDataPath: string, browserName: string): { key: B
         if (rawKey.length === 37) return { key: rawKey.slice(5), reason: "Key with 5-byte prefix" };
       } catch {}
 
-      // Strategy 3: Try DPAPI prefix (some Chromium builds)
       if (encryptedKey.length > 5 && encryptedKey.toString("utf-8", 0, 5) === "DPAPI") {
-        // Can't use DPAPI on Linux, but let's note it
-        return { key: null, reason: "Key uses Windows DPAPI format — cannot decrypt on Linux. Install libsecret-tools and run: secret-tool lookup application chrome" };
+        return { key: null, reason: "Key uses Windows DPAPI format — use Bookmarklet auto-extract instead" };
       }
 
-      return { key: null, reason: "Could not retrieve encryption key. Install libsecret-tools: sudo apt install libsecret-tools, then try again. Or use DevTools to extract Bearer token manually." };
+      return { key: null, reason: "No keyring access. Use Bookmarklet auto-extract (no F12 needed) or install: sudo apt install libsecret-tools" };
     }
 
     return { key: null, reason: "Unsupported platform" };
@@ -214,7 +175,7 @@ function getChromeMasterKey(userDataPath: string, browserName: string): { key: B
 }
 
 // ─── Browser paths (cross-platform) ───
-function getBrowserPaths(): { name: string; userDataPath: string; cookiePath: string }[] {
+function getBrowserPaths(): { name: string; userDataPath: string; cookiePath: string; installed: boolean }[] {
   const home = os.homedir();
   const browsers: { name: string; base: string }[] = [];
 
@@ -244,8 +205,10 @@ function getBrowserPaths(): { name: string; userDataPath: string; cookiePath: st
 
   return browsers.map(b => {
     let cookiePath = "";
+    let installed = false;
     try {
-      if (!existsSync(b.base)) return { name: b.name, userDataPath: b.base, cookiePath: "" };
+      if (!existsSync(b.base)) return { name: b.name, userDataPath: b.base, cookiePath: "", installed: false };
+      installed = true;
       const dirs = readdirSync(b.base, { withFileTypes: true }).filter(d => d.isDirectory());
       const profileOrder = ["Default", "Profile 1", "Profile 2", "Profile 3"];
       for (const profileName of profileOrder) {
@@ -263,26 +226,25 @@ function getBrowserPaths(): { name: string; userDataPath: string; cookiePath: st
         }
       }
     } catch {}
-    return { name: b.name, userDataPath: b.base, cookiePath };
+    return { name: b.name, userDataPath: b.base, cookiePath, installed };
   });
 }
 
-// ─── Cookie scanner (cross-platform, all strategies) ───
+// ─── Cookie scanner ───
 function scanCookies(cookiePath: string, masterKey: Buffer | null, keyReason: string, browser: string, providerDomains: string[], providerName: string): TokenResult[] {
   try {
-    // Copy the cookie DB to temp to avoid lock issues
     const tmpDbPath = join(os.tmpdir(), `ch_cookies_${Date.now()}.db`);
     try {
       copyFileSync(cookiePath, tmpDbPath);
     } catch {
-      return [{ browser, domain: "", name: "", value: "", decrypted: false, provider: providerName, error: "Cookie DB locked by browser — close browser and retry" }];
+      return [{ browser, domain: "", name: "", value: "", decrypted: false, provider: providerName, error: "Cookie DB locked — close the browser, or use Bookmarklet auto-extract" }];
     }
 
     let Database: any;
     try {
       Database = require("better-sqlite3");
     } catch {
-      return [{ browser, domain: "", name: "", value: "", decrypted: false, provider: providerName, error: "better-sqlite3 not available — cannot read cookie database" }];
+      return [{ browser, domain: "", name: "", value: "", decrypted: false, provider: providerName, error: "better-sqlite3 not available" }];
     }
 
     const db = new Database(tmpDbPath, { readonly: true });
@@ -302,40 +264,28 @@ function scanCookies(cookiePath: string, masterKey: Buffer | null, keyReason: st
 
     for (const row of rows) {
       const ev = Buffer.isBuffer(row.encrypted_value) ? row.encrypted_value : Buffer.from(row.encrypted_value || []);
+      if (ev.length === 0) continue;
 
-      if (ev.length === 0) continue; // skip empty entries
-
-      // Strategy 1: AES-256-GCM with master key (Windows DPAPI-decrypted key)
       if (masterKey && masterKey.length === 32) {
         const val = decryptChromeCookieGCM(ev, masterKey);
         if (val) { r.push({ browser, domain: row.host_key, name: row.name, value: val, decrypted: true, source: "cookie", provider: providerName }); continue; }
       }
-
-      // Strategy 2: AES-128-CBC with Linux keyring key (gnome-keyring)
       if (linuxKeyringKey) {
         const val = decryptChromeCookieCBC(ev, linuxKeyringKey);
         if (val) { r.push({ browser, domain: row.host_key, name: row.name, value: val, decrypted: true, source: "cookie", provider: providerName }); continue; }
       }
-
-      // Strategy 3: AES-128-CBC with PBKDF2 "peanuts" key (older Chrome on Linux)
       if (linuxFallbackKey) {
         const val = decryptChromeCookieCBC(ev, linuxFallbackKey);
         if (val) { r.push({ browser, domain: row.host_key, name: row.name, value: val, decrypted: true, source: "cookie", provider: providerName }); continue; }
       }
-
-      // Strategy 4: AES-128-CBC with macOS key
       if (isMac && masterKey && masterKey.length === 16) {
         const val = decryptChromeCookieCBC(ev, masterKey);
         if (val) { r.push({ browser, domain: row.host_key, name: row.name, value: val, decrypted: true, source: "cookie", provider: providerName }); continue; }
       }
-
-      // Strategy 5: DPAPI fallback (Windows)
       if (isWin && ev.length > 15) {
         const plain = dpapiDecrypt(ev.slice(15));
         if (plain) { r.push({ browser, domain: row.host_key, name: row.name, value: plain.toString("utf-8"), decrypted: true, source: "cookie", provider: providerName }); continue; }
       }
-
-      // Strategy 6: Plaintext (some Linux Chrome versions store cookies unencrypted)
       if (ev.length > 0 && ev[0] !== 0x76) {
         try {
           const plaintext = ev.toString("utf-8");
@@ -346,20 +296,7 @@ function scanCookies(cookiePath: string, masterKey: Buffer | null, keyReason: st
         } catch {}
       }
 
-      // All strategies failed — provide helpful error message
-      const isV20 = ev.length > 3 && (ev.toString("utf-8", 0, 3) === "v10" || ev.toString("utf-8", 0, 3) === "v11");
-      let lockReason = "Encrypted cookie — could not decrypt";
-      if (!masterKey && !linuxFallbackKey && !linuxKeyringKey) {
-        lockReason = keyReason || "No decryption key available";
-      } else if (isV20 && isWin) {
-        lockReason = "Chrome encrypted this cookie — DPAPI key extraction failed. Try running as the same Windows user.";
-      } else if (isV20 && isLinux) {
-        lockReason = "Chrome uses keyring encryption. Install: sudo apt install libsecret-tools. Then re-scan.";
-      } else {
-        lockReason = "Cookie encrypted with unknown scheme. Use F12 → Network → copy Bearer token manually.";
-      }
-
-      r.push({ browser, domain: row.host_key, name: row.name, value: "[locked]", decrypted: false, source: "cookie", provider: providerName, error: lockReason });
+      r.push({ browser, domain: row.host_key, name: row.name, value: "[locked]", decrypted: false, source: "cookie", provider: providerName, error: "Encrypted — use Bookmarklet or Playwright auto-extract" });
     }
 
     db.close();
@@ -403,6 +340,34 @@ function scanLocalStorage(basePath: string, browser: string, providerDomains: st
   } catch { return []; }
 }
 
+// ─── Load submitted tokens (from bookmarklets, Playwright, etc.) ───
+function loadSubmittedTokens(): TokenResult[] {
+  const tokensDir = join(process.cwd(), ".submitted-tokens");
+  if (!existsSync(tokensDir)) return [];
+
+  const results: TokenResult[] = [];
+  try {
+    const files = readdirSync(tokensDir).filter(f => f.endsWith(".json"));
+    for (const file of files) {
+      try {
+        const data = JSON.parse(readFileSync(join(tokensDir, file), "utf-8"));
+        for (const entry of data) {
+          results.push({
+            browser: entry.browser || "external",
+            domain: "auto-extracted",
+            name: entry.key || "Auto-extracted Token",
+            value: entry.token,
+            decrypted: true,
+            source: entry.source || "submitted",
+            provider: entry.provider,
+          });
+        }
+      } catch {}
+    }
+  } catch {}
+  return results;
+}
+
 // ─── Scan bridge service status ───
 function scanBridgeStatus(): Record<string, { running: boolean; url: string; models: string[] }> {
   const bridges = [
@@ -425,14 +390,46 @@ function scanBridgeStatus(): Record<string, { running: boolean; url: string; mod
   return status;
 }
 
-// ─── Client-side extraction scripts for each provider ───
+// ─── Generate bookmarklets for one-click token extraction (NO F12 NEEDED!) ───
+function getBookmarklets(): Record<string, { label: string; bookmarklet: string; instructions: string }> {
+  const dashboardUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+
+  return {
+    deepseek: {
+      label: "DeepSeek Token Extractor",
+      bookmarklet: `javascript:void(function(){var t;var ks=['userToken','token','authToken','access_token'];for(var i=0;i<ks.length;i++){var v=localStorage.getItem(ks[i]);if(v&&v.length>20){t=v;break;}}if(!t){for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);var v=localStorage.getItem(k);if(v&&v.length>50&&/^eyJ/.test(v)){t=v;break;}}}if(!t){var cs=document.cookie.split(';');for(var i=0;i<cs.length;i++){var p=cs[i].trim().split('=');if(p[1]&&p[1].length>20&&p[0].indexOf('token')>-1){t=p[1];break;}}}if(t){navigator.clipboard.writeText(t).then(function(){fetch('${dashboardUrl}/api/browser/tokens/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t,provider:'deepseek',source:'bookmarklet',browser:navigator.userAgent.split(' ').pop()})}).then(function(r){return r.json()}).then(function(d){alert('Token sent to WebBridge! '+d.message)}).catch(function(){alert('Token copied! Paste it in WebBridge manually.')})})}else{alert('No token found. Make sure you are logged in to chat.deepseek.com')}}())`,
+      instructions: "1. Drag this link to your bookmarks bar. 2. Go to chat.deepseek.com and log in. 3. Click the bookmark — token is extracted and sent to WebBridge automatically!",
+    },
+    qwen: {
+      label: "Qwen Token Extractor",
+      bookmarklet: `javascript:void(function(){var t;var ks=['token','authToken','access_token','userToken'];for(var i=0;i<ks.length;i++){var v=localStorage.getItem(ks[i]);if(v&&v.length>20){t=v;break;}}if(!t){for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);var v=localStorage.getItem(k);if(v&&v.length>50&&/^eyJ/.test(v)){t=v;break;}}}if(t){navigator.clipboard.writeText(t).then(function(){fetch('${dashboardUrl}/api/browser/tokens/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t,provider:'qwen',source:'bookmarklet',browser:navigator.userAgent.split(' ').pop()})}).then(function(r){return r.json()}).then(function(d){alert('Token sent to WebBridge! '+d.message)}).catch(function(){alert('Token copied! Paste it in WebBridge manually.')})})}else{alert('No token found. Make sure you are logged in to chat.qwen.ai')}}())`,
+      instructions: "1. Drag this link to your bookmarks bar. 2. Go to chat.qwen.ai and log in. 3. Click the bookmark — token is auto-extracted!",
+    },
+    gemini: {
+      label: "Gemini API Key Helper",
+      bookmarklet: `javascript:void(function(){var t=prompt('Paste your Gemini API key (starts with AIza...):','');if(t&&t.length>20){fetch('${dashboardUrl}/api/browser/tokens/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t,provider:'gemini',source:'bookmarklet',browser:'manual'})}).then(function(r){return r.json()}).then(function(d){alert('API key saved to WebBridge! '+d.message)}).catch(function(){alert('Copy this key and paste it in WebBridge manually.')})}else{alert('Visit aistudio.google.com/apikey to get your free API key first.')}}())`,
+      instructions: "1. Drag this link to your bookmarks bar. 2. Click it and paste your Gemini API key. 3. Key is saved to WebBridge automatically!",
+    },
+    kimi: {
+      label: "Kimi Token Extractor",
+      bookmarklet: `javascript:void(function(){var t;var ks=['token','authToken','access_token','userToken','Bearer'];for(var i=0;i<ks.length;i++){var v=localStorage.getItem(ks[i]);if(v&&v.length>20){t=v;break;}}if(!t){for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);var v=localStorage.getItem(k);if(v&&v.length>50&&/^eyJ/.test(v)){t=v;break;}}}if(t){navigator.clipboard.writeText(t).then(function(){fetch('${dashboardUrl}/api/browser/tokens/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t,provider:'kimi',source:'bookmarklet',browser:navigator.userAgent.split(' ').pop()})}).then(function(r){return r.json()}).then(function(d){alert('Token sent to WebBridge! '+d.message)}).catch(function(){alert('Token copied! Paste it in WebBridge manually.')})})}else{alert('No token found. Make sure you are logged in to kimi.moonshot.cn')}}())`,
+      instructions: "1. Drag this link to your bookmarks bar. 2. Go to kimi.moonshot.cn and log in. 3. Click the bookmark — token is auto-extracted!",
+    },
+    "z-ai": {
+      label: "Z.AI / GLM Token Extractor",
+      bookmarklet: `javascript:void(function(){var t;var ks=['authToken','token','access_token','userToken'];for(var i=0;i<ks.length;i++){var v=localStorage.getItem(ks[i]);if(v&&v.length>20){t=v;break;}}if(!t){for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);var v=localStorage.getItem(k);if(v&&v.length>50&&/^eyJ/.test(v)){t=v;break;}}}if(t){navigator.clipboard.writeText(t).then(function(){fetch('${dashboardUrl}/api/browser/tokens/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t,provider:'z-ai',source:'bookmarklet',browser:navigator.userAgent.split(' ').pop()})}).then(function(r){return r.json()}).then(function(d){alert('Token sent to WebBridge! '+d.message)}).catch(function(){alert('Token copied! Paste it in WebBridge manually.')})})}else{alert('No token found. Make sure you are logged in to chat.z.ai')}}())`,
+      instructions: "1. Drag this link to your bookmarks bar. 2. Go to chat.z.ai and log in. 3. Click the bookmark — token is auto-extracted!",
+    },
+  };
+}
+
+// ─── Client-side extraction scripts (for F12 console — legacy method) ───
 function getClientSideScripts(): Record<string, { label: string; script: string }> {
   return {
     deepseek: {
       label: "Extract DeepSeek Token",
       script: `// Run this in chat.deepseek.com browser console (F12)
 (function() {
-  // Try localStorage first
   const keys = ['userToken', 'token', 'authToken', 'access_token'];
   for (const k of keys) {
     const v = localStorage.getItem(k);
@@ -441,22 +438,12 @@ function getClientSideScripts(): Record<string, { label: string; script: string 
       return;
     }
   }
-  // Try cookies
-  const cookies = document.cookie.split(';');
-  for (const c of cookies) {
-    const [name, val] = c.trim().split('=');
-    if (val && val.length > 20 && name.includes('token')) {
-      navigator.clipboard.writeText(val).then(() => alert('Token copied! Cookie: ' + name));
-      return;
-    }
-  }
-  alert('No token found in localStorage/cookies.\\nUse F12 → Network → find Bearer token in request headers.');
+  alert('No token found. Try the Bookmarklet method instead!');
 })();`,
     },
     qwen: {
       label: "Extract Qwen Token",
-      script: `// Run this in chat.qwen.ai browser console (F12)
-(function() {
+      script: `(function() {
   const keys = ['token', 'authToken', 'access_token', 'userToken'];
   for (const k of keys) {
     const v = localStorage.getItem(k);
@@ -465,19 +452,16 @@ function getClientSideScripts(): Record<string, { label: string; script: string 
       return;
     }
   }
-  alert('No token found. Use F12 → Network → find Authorization: Bearer header.');
+  alert('No token found. Try the Bookmarklet method instead!');
 })();`,
     },
     gemini: {
       label: "Get Gemini API Key",
-      script: `// Gemini uses API keys, not session tokens.
-// Visit https://aistudio.google.com/apikey to get your free key.
-alert('Gemini uses API keys, not session tokens.\\nVisit aistudio.google.com/apikey to get yours.');`,
+      script: `alert('Gemini uses API keys, not session tokens.\\nVisit aistudio.google.com/apikey to get yours.\\nOr use the Bookmarklet for one-click setup!');`,
     },
     kimi: {
       label: "Extract Kimi Token",
-      script: `// Run this in kimi.moonshot.cn browser console (F12)
-(function() {
+      script: `(function() {
   const keys = ['token', 'authToken', 'access_token', 'userToken', 'Bearer'];
   for (const k of keys) {
     const v = localStorage.getItem(k);
@@ -486,13 +470,12 @@ alert('Gemini uses API keys, not session tokens.\\nVisit aistudio.google.com/api
       return;
     }
   }
-  alert('No token found. Use F12 → Network → find Authorization: Bearer header.');
+  alert('No token found. Try the Bookmarklet method instead!');
 })();`,
     },
     "z-ai": {
       label: "Extract GLM Token",
-      script: `// Run this in chat.z.ai browser console (F12)
-(function() {
+      script: `(function() {
   const keys = ['authToken', 'token', 'access_token', 'userToken'];
   for (const k of keys) {
     const v = localStorage.getItem(k);
@@ -501,7 +484,7 @@ alert('Gemini uses API keys, not session tokens.\\nVisit aistudio.google.com/api
       return;
     }
   }
-  alert('No token found. Use F12 → Network → find Authorization: Bearer header.');
+  alert('No token found. Try the Bookmarklet method instead!');
 })();`,
     },
   };
@@ -521,21 +504,36 @@ export async function GET() {
   const browserPaths = getBrowserPaths();
   const scannedBrowsers: string[] = [];
   const keyStatuses: Record<string, string> = {};
+  const browserInstallStatus: Record<string, string> = {};
 
   for (const b of browserPaths) {
-    if (!b.cookiePath || !existsSync(b.cookiePath)) {
-      allTokens.push({ browser: b.name, domain: "", name: "", value: "", decrypted: false, error: `${b.name} cookies not found (not installed or no login)` });
+    if (!b.installed || !b.cookiePath || !existsSync(b.cookiePath)) {
+      // Clear status message — NOT "locked"
+      const status = !b.installed
+        ? "Not installed"
+        : !b.cookiePath
+          ? "Installed but no profile found (not logged in)"
+          : "Cookie DB not found (not logged in)";
+      browserInstallStatus[b.name] = status;
+      allTokens.push({
+        browser: b.name,
+        domain: "",
+        name: "",
+        value: "",
+        decrypted: false,
+        error: `${b.name}: ${status}`,
+      });
       continue;
     }
     scannedBrowsers.push(b.name);
     const { key: masterKey, reason: keyReason } = getChromeMasterKey(b.userDataPath, b.name);
     keyStatuses[b.name] = keyReason;
+    browserInstallStatus[b.name] = "Installed, cookies found";
     console.log(`[Tokens] ${b.name}: masterKey=${!!masterKey}(${masterKey?.length || 0}B), reason=${keyReason.slice(0, 60)}`);
 
     for (const p of providers) {
       allTokens.push(...scanCookies(b.cookiePath, masterKey, keyReason, b.name, p.domains, p.name));
 
-      // Scan localStorage for JWT Bearer tokens
       const lsPath = join(b.userDataPath, "Default", "Local Storage", "leveldb");
       if (existsSync(lsPath)) {
         allTokens.push(...scanLocalStorage(lsPath, b.name, p.domains, p.name));
@@ -551,11 +549,22 @@ export async function GET() {
     }
   }
 
+  // Load submitted tokens (from bookmarklets, Playwright, etc.)
+  const submittedTokens = loadSubmittedTokens();
+  allTokens.push(...submittedTokens);
+
   // Scan bridge services
   const bridgeStatus = scanBridgeStatus();
 
   const valid = allTokens.filter(t => t.decrypted);
   const platform = isWin ? "windows" : isLinux ? "linux" : "macos";
+
+  // Check if Playwright is available
+  let playwrightAvailable = false;
+  try {
+    require.resolve("playwright");
+    playwrightAvailable = true;
+  } catch {}
 
   return NextResponse.json({
     tokens: allTokens,
@@ -563,11 +572,37 @@ export async function GET() {
       total: allTokens.length,
       valid: valid.length,
       encrypted: allTokens.filter(t => !t.decrypted && t.name).length,
+      submitted: submittedTokens.length,
       browsersFound: scannedBrowsers,
+      browsersInstalled: browserInstallStatus,
       keyStatuses,
+      playwrightAvailable,
     },
     platform,
     bridgeStatus,
     clientScripts: getClientSideScripts(),
+    bookmarklets: getBookmarklets(),
+    extractionMethods: {
+      bookmarklet: {
+        available: true,
+        label: "Bookmarklet (Recommended — No F12!)",
+        description: "Drag a link to your bookmarks bar. Click it on the provider's site to auto-extract and send the token.",
+      },
+      playwright: {
+        available: playwrightAvailable,
+        label: "Playwright Auto-Login",
+        description: "Launches a browser, you log in, token is captured automatically from localStorage and network requests.",
+      },
+      cookieScan: {
+        available: scannedBrowsers.length > 0,
+        label: "Cookie DB Scan",
+        description: "Reads browser cookie database directly. Requires decryption key (keyring/DPAPI/Keychain).",
+      },
+      manual: {
+        available: true,
+        label: "Manual Paste",
+        description: "Copy the Bearer token from F12 → Network and paste it in the input field.",
+      },
+    },
   });
 }
