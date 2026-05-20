@@ -283,7 +283,7 @@ model AnalyticsEvent {
 // Feature 12: Plugin Marketplace
 model Plugin {
   id          String   @id @default(cuid())
-  name        String
+  name        String   @unique
   description String
   author      String
   version     String
