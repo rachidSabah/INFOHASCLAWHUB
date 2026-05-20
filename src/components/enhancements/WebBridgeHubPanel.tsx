@@ -144,7 +144,11 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
         body: JSON.stringify({ name: provider.name, baseUrl: provider.baseUrl, apiKey: token, isActive: true }),
       });
       setConfigured(prev => [...prev, provider.name]);
-      toast.success(`Provider "${provider.name}" configured!`);
+      toast.success(`Provider "${provider.name}" configured! Refresh the page or click Detect to load models.`);
+      // Auto-refresh models
+      setTimeout(async () => {
+        try { await fetch("/api/models?t=" + Date.now()); } catch {}
+      }, 1000);
     } catch { toast.error("Failed to configure provider"); }
   };
 

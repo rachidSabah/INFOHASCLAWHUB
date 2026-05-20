@@ -27,6 +27,23 @@ const FALLBACK_MODELS: Record<string, { id: string; name: string; description: s
     { id: "deepseek-chat", name: "DeepSeek Chat (V3 via ds2api)", description: "Free DeepSeek V3 through web-to-API bridge" },
     { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1 via ds2api)", description: "Free DeepSeek R1 reasoning through web-to-API bridge" },
   ],
+  qwen: [
+    { id: "qwen-plus", name: "Qwen Plus", description: "Alibaba's flagship model" },
+    { id: "qwen-max", name: "Qwen Max", description: "Most capable Qwen model" },
+    { id: "qwen-turbo", name: "Qwen Turbo", description: "Fast and efficient" },
+    { id: "qwen-coder", name: "Qwen Coder", description: "Code generation specialist" },
+  ],
+  "qwen-qw2api": [
+    { id: "qwen-plus", name: "Qwen Plus (via qw2api)", description: "Free Qwen Plus through web-to-API bridge" },
+    { id: "qwen-max", name: "Qwen Max (via qw2api)", description: "Free Qwen Max through web-to-API bridge" },
+    { id: "qwen-turbo", name: "Qwen Turbo (via qw2api)", description: "Free Qwen Turbo through web-to-API bridge" },
+    { id: "qwen-coder", name: "Qwen Coder (via qw2api)", description: "Free Qwen Coder through web-to-API bridge" },
+  ],
+  "gemini-free-web": [
+    { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash (Free)", description: "Google's fast free tier model" },
+    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (Free)", description: "Google's most capable model" },
+    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (Free)", description: "Fast thinking with high quality" },
+  ],
   openrouter: [
     { id: "google/gemini-2.0-flash-thinking-exp:free", name: "Gemini 2.0 Flash Thinking (Free)", description: "Google's reasoning model via OpenRouter" },
     { id: "deepseek/deepseek-chat", name: "DeepSeek V3", description: "DeepSeek Chat via OpenRouter" },
