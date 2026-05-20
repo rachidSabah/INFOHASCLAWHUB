@@ -102,16 +102,24 @@ function scanLocalStorage(basePath: string, browser: string, providerDomains: st
     const files = readdirSync(basePath).filter(f => f.endsWith(".log") || f.endsWith(".ldb"));
     const results: TokenResult[] = [];
     const seen = new Set<string>();
-    // Build patterns that check for domain context
     const domainPattern = providerDomains.map(d => d.replace(/\./g, "\\.")).join("|");
+    
+    // Simple patterns for auth tokens
     const patterns = [
-      new RegExp(`"(?:accessToken|userToken|bearerToken|authToken|sessionToken|chat_token|deepseek_token|qwen_token)"\\s*:\\s*"((?:eyJ|ya29\\.|ya\\.)[\\w\\-\\.\\+\\/=]+)"`, "gi"),
-      new RegExp(`token["\\s:=]+((?:eyJ|ya29\\.|ya\\.)[\\w\\-\\.\\+\\/=]{50,})`, "gi"),
-      new RegExp(`\\\\\\\\?"(?:${domainPattern})[^"]*token[^"]*\\\\\\\\?"\\s*:\\s*"([^"\\\\]+)"`, "gi"),
+      /"(?:accessToken|userToken|bearerToken|authToken|sessionToken|chat_token|deepseek_token|qwen_token)"\s*:\s*"((?:eyJ|ya29\.|ya\.)[\w\-\.+\/=]+)"/gi,
+      /token["\s:=]+((?:eyJ|ya29\.|ya\.)[\w\-\.+\/=]{50,})/gi,
     ];
+    
     for (const file of files) {
       try {
         const content = readFileSync(join(basePath, file), "utf-8");
+        // Only scan files that mention this provider's domain
+        const hasProviderDomain = providerDomains.some(d => {
+          const escaped = d.replace(/\./g, "\\.");
+          return new RegExp(escaped, "i").test(content);
+        });
+        if (!hasProviderDomain) continue;
+        
         for (const p of patterns) {
           p.lastIndex = 0; let m;
           while ((m = p.exec(content)) !== null) {
