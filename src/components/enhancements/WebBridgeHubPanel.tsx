@@ -327,11 +327,12 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                             </div>
                             <div className="flex items-center gap-0.5 shrink-0">
                               {t.decrypted && t.value && t.value !== "[locked]" ? (
-                                <>
-                                  <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => { setApiKey(t.value); toast.success("Token pasted"); }}>
-                                    <Play className="h-3 w-3" />
-                                  </Button>
-                                </>
+                                <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => { 
+                                  setApiKey(t.value); 
+                                  toast.success("Token auto-filled — click Configure");
+                                }}>
+                                  <Play className="h-3 w-3 text-green-500" />
+                                </Button>
                               ) : (
                                 <span className="text-[9px] text-amber-600">{t.error || "Locked"}</span>
                               )}
