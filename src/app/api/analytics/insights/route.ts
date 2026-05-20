@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
     const since = new Date();
     since.setDate(since.getDate() - days);
 
-    const events = await db.analyticsEvent.findMany({
+    const events = await (db as any).analyticsEvent.findMany({
       where: { createdAt: { gte: since } },
       orderBy: { createdAt: 'desc' },
     });

@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
 
     let schemaContext = '';
     if (connectionId) {
-      const connection = await db.databaseConnection.findUnique({ where: { id: connectionId } });
+      const connection = await (db as any).databaseConnection.findUnique({ where: { id: connectionId } });
       if (connection?.schemaSnapshot) {
         schemaContext = `\n\nDatabase schema:\n${connection.schemaSnapshot}`;
       }

@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
 
     if (projectId) {
       try {
-        await db.uIBuilderProject.update({
+        await (db as any).uiBuilderProject.update({
           where: { id: projectId },
           data: { generatedCode },
         });

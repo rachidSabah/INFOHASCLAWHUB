@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Log as an analytics event
-    await db.analyticsEvent.create({
+    await (db as any).analyticsEvent.create({
       data: {
         eventType: 'code_gen',
         metadata: JSON.stringify({ action, params }),

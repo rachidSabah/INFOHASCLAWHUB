@@ -710,7 +710,7 @@ export function CommsHubPanel({ open, onOpenChange }: CommsHubPanelProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px] max-h-[85vh] overflow-hidden flex flex-col" showCloseButton>
+      <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-hidden flex flex-col" showCloseButton>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-500/20 to-sky-500/20 border border-emerald-500/30">

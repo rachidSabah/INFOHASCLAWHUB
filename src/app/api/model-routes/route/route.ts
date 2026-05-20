@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Find the best matching route for this task type
-    const routes = await db.modelRoute.findMany({
+    const routes = await (db as any).modelRoute.findMany({
       where: { taskType, isEnabled: true },
       orderBy: { priority: 'desc' },
     });

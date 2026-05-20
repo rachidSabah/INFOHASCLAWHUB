@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Store as a git analysis of type "review"
-    const gitAnalysis = await db.gitAnalysis.create({
+    const gitAnalysis = await (db as any).gitAnalysis.create({
       data: {
         projectPath: projectPath || 'unknown',
         commitHash: `review-${Date.now()}`,

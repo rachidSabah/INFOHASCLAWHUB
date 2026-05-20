@@ -97,15 +97,15 @@ export async function POST(request: NextRequest) {
     const { framework, projectPath } = body;
 
     // Gather security data
-    const vulnerabilities = await db.securityVulnerability.findMany({
+    const vulnerabilities = await (db as any).securityVulnerability.findMany({
       where: projectPath ? { filePath: { startsWith: projectPath } } : {},
     });
 
-    const exposedSecrets = await db.exposedSecret.findMany({
+    const exposedSecrets = await (db as any).exposedSecret.findMany({
       where: { isRevoked: false },
     });
 
-    const auditLogs = await db.securityAuditLog.findMany({
+    const auditLogs = await (db as any).securityAuditLog.findMany({
       where: { risk: { in: ['high', 'critical'] } },
       take: 50,
       orderBy: { createdAt: 'desc' },

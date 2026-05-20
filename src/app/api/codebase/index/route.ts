@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
         }
 
         for (const symbol of symbols) {
-          const indexEntry = await db.codeIndex.create({
+          const indexEntry = await (db as any).codeIndex.create({
             data: {
               projectPath,
               filePath: file.path,

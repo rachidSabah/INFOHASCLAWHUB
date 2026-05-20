@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
       if (to) where.createdAt.lte = new Date(to);
     }
 
-    const events = await db.analyticsEvent.findMany({
+    const events = await (db as any).analyticsEvent.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const event = await db.analyticsEvent.create({ data: body });
+    const event = await (db as any).analyticsEvent.create({ data: body });
     return NextResponse.json(event);
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });

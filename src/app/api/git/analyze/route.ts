@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       analysis = { summary: aiResult, risk: 'low', suggestions: [], patterns: [] };
     }
 
-    const gitAnalysis = await db.gitAnalysis.create({
+    const gitAnalysis = await (db as any).gitAnalysis.create({
       data: {
         projectPath,
         commitHash,

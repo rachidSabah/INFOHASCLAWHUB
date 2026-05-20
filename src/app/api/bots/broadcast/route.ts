@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       where.platform = { in: platforms };
     }
 
-    const connections = await db.botConnection.findMany({ where });
+    const connections = await (db as any).botConnection.findMany({ where });
 
     const results = [];
     for (const connection of connections) {
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
         timestamp: new Date().toISOString(),
       });
 
-      await db.botConnection.update({
+      await (db as any).botConnection.update({
         where: { id: connection.id },
         data: { lastActivity: new Date() },
       });
