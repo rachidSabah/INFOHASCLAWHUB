@@ -263,11 +263,14 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                     {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                     Scan Tokens
                   </Button>
-                  <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Or paste Bearer token..." className="h-7 text-[10px] flex-1" />
+                  <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Or paste token manually..." className="h-7 text-[10px] flex-1" />
                   <Button size="sm" className={cn("h-7 text-[10px] gap-1", configured.includes(p.name) ? "bg-green-600" : "")} onClick={configureProvider}>
                     {configured.includes(p.name) ? <CheckCircle2 className="h-3 w-3" /> : <Play className="h-3 w-3" />}
                     {configured.includes(p.name) ? "Done" : "Configure"}
                   </Button>
+                </div>
+                <div className="mb-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-600 text-center shrink-0">
+                  ⚠ Close Chrome/Edge/Brave completely before scanning — browsers lock cookie files while running
                 </div>
 
                 {/* Models */}
