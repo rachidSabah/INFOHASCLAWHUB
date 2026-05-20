@@ -157,8 +157,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         const dynamicGroups = await res.json();
         set({ modelGroups: [...AVAILABLE_MODEL_GROUPS, ...dynamicGroups] });
       }
-    } catch (error) {
-      console.error("Failed to fetch models:", error);
+    } catch {
+      // Providers may be offline — models fallback to built-in list
     }
   },
 }));

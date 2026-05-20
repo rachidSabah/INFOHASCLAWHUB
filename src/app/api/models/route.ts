@@ -127,7 +127,7 @@ export async function GET() {
               }
             }
           } catch (err) {
-            console.error(`Error fetching from ${url}:`, err);
+            // Bridge may be offline — skip silently
           }
         }
       }

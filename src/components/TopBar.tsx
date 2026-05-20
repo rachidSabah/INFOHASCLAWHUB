@@ -75,7 +75,7 @@ export function TopBar() {
   // Load models on mount + periodic refresh
   useEffect(() => {
     fetchModels().catch(() => {});
-    const interval = setInterval(() => fetchModels().catch(() => {}), 30000);
+    const interval = setInterval(() => fetchModels().catch(() => {}), 300000); // 5 min
     return () => clearInterval(interval);
   }, [fetchModels]);
 
