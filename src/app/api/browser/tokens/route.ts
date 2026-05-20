@@ -60,15 +60,32 @@ function decryptChromeValue(encryptedValue: Buffer): string {
   if (!encryptedValue || encryptedValue.length === 0) return "";
   const prefix = encryptedValue.toString("utf-8", 0, 3);
   if (prefix === "v10" || prefix === "v11") {
-    const ciphertext = encryptedValue.slice(prefix.length);
+    const ciphertext = encryptedValue.slice(12); // Skip v10/v11 header (12 bytes)
     const b64 = ciphertext.toString("base64");
-    const psScript = `Add-Type -AssemblyName System.Security;$c=[Convert]::FromBase64String('${b64}');$d=[System.Security.Cryptography.ProtectedData]::Unprotect($c,$null,'CurrentUser');[Convert]::ToBase64String($d)`;
+    // Use spawn for better error handling
+    const psScript = `
+try {
+  Add-Type -AssemblyName System.Security
+  $c = [Convert]::FromBase64String('${b64}')
+  $d = [System.Security.Cryptography.ProtectedData]::Unprotect($c, $null, 'CurrentUser')
+  Write-Output ([Convert]::ToBase64String($d))
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}`;
     try {
-      const result = execSync(`powershell -NoProfile -NonInteractive -Command "${psScript}"`, {
-        encoding: "utf-8", timeout: 5000, windowsHide: true,
+      const result = execSync(`powershell -NoProfile -NonInteractive -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
+        encoding: "utf-8", timeout: 8000, windowsHide: true, stdio: ["pipe", "pipe", "pipe"],
       });
-      return Buffer.from(result.trim(), "base64").toString("utf-8");
-    } catch { throw new Error("DPAPI decrypt failed"); }
+      const lines = result.trim().split("\n");
+      const lastLine = lines[lines.length - 1].trim();
+      if (lastLine && lastLine.length > 10) {
+        return Buffer.from(lastLine, "base64").toString("utf-8");
+      }
+    } catch (e: any) {
+      console.error("[TokenDecrypt] PowerShell DPAPI failed:", e.message?.slice(0, 100));
+    }
+    throw new Error("DPAPI decrypt failed");
   }
   return encryptedValue.toString("utf-8");
 }
