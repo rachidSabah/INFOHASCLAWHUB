@@ -49,7 +49,7 @@ const PROVIDERS: ProviderInfo[] = [
     baseUrl: "http://localhost:8100/v1",
     tokenLabel: "Bearer Token (JWT)",
     domain: "qwenlm.ai",
-    loginUrl: "https://qwenlm.ai",
+    loginUrl: "https://chat.qwen.ai",
     localStorageKey: "token",
     models: [
       { id: "qwen-plus", name: "Qwen Plus", description: "Alibaba's flagship model" },
@@ -58,12 +58,12 @@ const PROVIDERS: ProviderInfo[] = [
       { id: "qwen-coder", name: "Qwen Coder", description: "Code generation specialist" },
     ],
     setupGuide: [
-      "Find or create a qw2api-like bridge (similar to ds2api)",
-      "The bridge should expose http://localhost:8100/v1",
-      "Log into qwenlm.ai in your browser",
-      "Extract the Bearer token using the scanner below",
-      "Paste token + configure provider",
-      "Use Model Router to route qwen-* to qw2api",
+      "Log into chat.qwen.ai in your browser",
+      "Open DevTools (F12) → Network → Fetch/XHR tab",
+      "Send a message — watch for requests to chat.qwen.ai/api",
+      "Find Authorization: Bearer eyJ... in Request Headers",
+      "Copy the full JWT token and paste it here",
+      "Find/create a qw2api bridge at localhost:8100",
     ],
   },
   {
