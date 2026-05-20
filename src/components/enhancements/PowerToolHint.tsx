@@ -162,6 +162,17 @@ const HINTS: Record<string, { title: string; steps: string[] }> = {
       "5. View the activity log for all remote interactions",
     ],
   },
+  "Browser Token Extractor": {
+    title: "Extract DeepSeek Session Tokens from Browser",
+    steps: [
+      "1. Log into chat.deepseek.com in Chrome/Edge/Brave first",
+      "2. Click Scan to read browser cookie databases",
+      "3. Tokens are decrypted using Windows DPAPI",
+      "4. Click the eye icon to reveal, copy icon to copy",
+      "5. Click Configure to auto-create ds2api provider",
+      "6. Use Model Router to route deepseek-chat to ds2api",
+    ],
+  },
 };
 
 interface PowerToolHintProps {

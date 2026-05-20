@@ -34,6 +34,8 @@ import { cn } from "@/lib/utils";
 const KNOWN_PROVIDERS = [
   { name: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1" },
   { name: "DeepSeek", baseUrl: "https://api.deepseek.com" },
+  { name: "DeepSeek (Free via ds2api)", baseUrl: "http://localhost:8000/v1" },
+  { name: "ds2api (Web-to-API Bridge)", baseUrl: "http://localhost:8000/v1" },
   { name: "Groq", baseUrl: "https://api.groq.com/openai/v1" },
   { name: "Mistral", baseUrl: "https://api.mistral.ai/v1" },
   { name: "Together AI", baseUrl: "https://api.together.xyz/v1" },
@@ -46,6 +48,8 @@ const KNOWN_PROVIDERS = [
   { name: "Anthropic", baseUrl: "https://api.anthropic.com/v1" },
   { name: "OpenAI", baseUrl: "https://api.openai.com/v1" },
   { name: "Perplexity", baseUrl: "https://api.perplexity.ai" },
+  { name: "Local AI (Ollama)", baseUrl: "http://localhost:11434/v1" },
+  { name: "Local AI (LM Studio)", baseUrl: "http://localhost:1234/v1" },
 ];
 
 function UpdatesSection() {
