@@ -177,8 +177,15 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
   };
 
   const configureProvider = async () => {
-    const token = apiKey || tokens.find(t => t.decrypted && t.value && t.source === "localStorage")?.value;
-    if (!token) { toast.error("No token available. Scan or paste one."); return; }
+    let token = apiKey.trim();
+    if (!token) { toast.error("Paste a Bearer token first"); return; }
+    // Auto-detect format: strip "Bearer " prefix, handle JWT
+    token = token.replace(/^Bearer\s+/i, "").replace(/^Authorization:\s*Bearer\s+/i, "");
+    if (!token.startsWith("eyJ") && !token.startsWith("sk-") && !token.startsWith("AIza")) {
+      toast.error("Token doesn't look like a JWT or API key. Check DevTools → Network → Request Headers → Authorization");
+      return;
+    }
+    setApiKey(token);
     try {
       await fetch("/api/providers", {
         method: "POST",
@@ -186,11 +193,9 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
         body: JSON.stringify({ name: provider.name, baseUrl: provider.baseUrl, apiKey: token, isActive: true }),
       });
       setConfigured(prev => [...prev, provider.name]);
-      toast.success(`Provider "${provider.name}" configured! Refresh the page or click Detect to load models.`);
-      // Auto-refresh models
-      setTimeout(async () => {
-        try { await fetch("/api/models?t=" + Date.now()); } catch {}
-      }, 1000);
+      toast.success(`"${provider.name}" configured! Models appear in dropdown.`);
+      setApiKey("");
+      setTimeout(async () => { try { await fetch("/api/models?t=" + Date.now()); } catch {} }, 1000);
     } catch { toast.error("Failed to configure provider"); }
   };
 
@@ -257,20 +262,27 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                   </ol>
                 </details>
 
-                {/* Token Scanner */}
-                <div className="flex gap-1.5 mb-2 shrink-0">
-                  <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1" onClick={scanTokens} disabled={loading}>
-                    {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                    Scan Tokens
-                  </Button>
-                  <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Or paste token manually..." className="h-7 text-[10px] flex-1" />
-                  <Button size="sm" className={cn("h-7 text-[10px] gap-1", configured.includes(p.name) ? "bg-green-600" : "")} onClick={configureProvider}>
-                    {configured.includes(p.name) ? <CheckCircle2 className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-                    {configured.includes(p.name) ? "Done" : "Configure"}
-                  </Button>
-                </div>
-                <div className="mb-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-600 text-center shrink-0">
-                  ⚠ Close Chrome/Edge/Brave completely before scanning — browsers lock cookie files while running
+                {/* Auto-Detect Token */}
+                <div className="mb-2 p-3 rounded-xl bg-violet-500/5 border border-violet-500/20 space-y-2 shrink-0">
+                  <p className="text-[11px] font-semibold flex items-center gap-1.5">
+                    <Zap className="h-3.5 w-3.5 text-violet-500" /> Auto-Detect & Configure
+                  </p>
+                  <ol className="text-[10px] text-muted-foreground space-y-0.5 list-decimal list-inside">
+                    <li>Open <a href={p.loginUrl} target="_blank" className="text-blue-500 hover:underline">{p.loginUrl}</a> → login & send a message</li>
+                    <li>F12 → Network → find the chat API request</li>
+                    <li>Copy the <code className="bg-muted px-1 rounded">Authorization: Bearer eyJ...</code> header value</li>
+                  </ol>
+                  <div className="flex gap-2">
+                    <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} 
+                      placeholder="Paste Bearer token (eyJ...) here" className="h-8 text-[10px] flex-1 font-mono" />
+                    <Button size="sm" className={cn("h-8 text-[10px] gap-1 shrink-0", configured.includes(p.name) ? "bg-green-600" : "")} onClick={configureProvider}
+                      disabled={!apiKey.trim()}>
+                      {configured.includes(p.name) ? <><CheckCircle2 className="h-3 w-3" /> Done</> : <><Play className="h-3 w-3" /> Configure</>}
+                    </Button>
+                  </div>
+                  <p className="text-[9px] text-muted-foreground">
+                    Token is auto-detected: strips "Bearer" prefix, handles JWT format
+                  </p>
                 </div>
 
                 {/* Models */}
@@ -289,34 +301,24 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
 
                 <Separator className="mb-2 shrink-0" />
 
-                {/* Token List */}
+                {/* Configured Status */}
                 <div className="flex-1 min-h-0">
                   <ScrollArea className="h-full">
-                    {tokens.filter(t => t.provider === ["deepseek","qwen","gemini","kimi","z-ai"][i] || !t.provider).length === 0 && !loading && (
-                      <p className="text-[11px] text-muted-foreground text-center py-4">Click Scan Tokens to find auth tokens in your browser</p>
+                    {configured.includes(p.name) ? (
+                      <div className="p-3 rounded-xl bg-green-500/5 border border-green-500/20 text-center">
+                        <CheckCircle2 className="h-5 w-5 text-green-500 mx-auto mb-1" />
+                        <p className="text-xs font-semibold text-green-600">Provider Configured</p>
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          Models available in the dropdown. Use Model Router for smart routing.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="p-3 rounded-xl bg-muted/30 border border-border text-center">
+                        <p className="text-xs text-muted-foreground">
+                          Configure this provider to access free models
+                        </p>
+                      </div>
                     )}
-                    <div className="space-y-1.5">
-                      {tokens.filter(t => t.provider === ["deepseek","qwen","gemini","kimi","z-ai"][i] || !t.provider).map((t, j) => (
-                        <div key={j} className={cn("rounded-lg border p-2", t.source === "localStorage" ? "border-blue-500/20 bg-blue-500/5" : "border-green-500/20 bg-green-500/5")}>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <Badge className={cn("text-[9px] h-4 shrink-0", t.source === "localStorage" ? "bg-blue-500/10 text-blue-600" : "bg-green-500/10 text-green-600")}>
-                                {t.source === "localStorage" ? "Bearer" : "Cookie"}
-                              </Badge>
-                              <code className="text-[10px] font-mono truncate max-w-[200px]">{showValues[`${j}`] ? t.value : t.value.slice(0, 40) + "..."}</code>
-                            </div>
-                            <div className="flex items-center gap-0.5 shrink-0">
-                              <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => setShowValues(p => ({ ...p, [`${j}`]: !p[`${j}`] }))}>
-                                {showValues[`${j}`] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                              </Button>
-                              <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => copyToken(t.value, `t-${j}`)}>
-                                {copied === `t-${j}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
                   </ScrollArea>
                 </div>
               </div>
