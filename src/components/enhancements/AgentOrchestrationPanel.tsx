@@ -594,6 +594,7 @@ export function AgentOrchestrationPanel({ open, onOpenChange }: AgentOrchestrati
             Build, visualize, and manage agent pipelines for complex multi-step workflows
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Agent Orchestration" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-3 mb-1 shrink-0">

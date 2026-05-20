@@ -286,6 +286,7 @@ export function GitIntelligencePanel({ open, onOpenChange }: GitIntelligencePane
             Generate commit messages, review PRs, and resolve merge conflicts with AI
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Git Intelligence" />
 
         <Tabs defaultValue="commit" className="flex flex-col flex-1 min-h-0">
           <div className="px-6 pt-2">

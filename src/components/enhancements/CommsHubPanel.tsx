@@ -721,6 +721,7 @@ export function CommsHubPanel({ open, onOpenChange }: CommsHubPanelProps) {
             Connect and manage bots across messaging platforms with AI auto-reply
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Comms Hub" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-5 mb-1 shrink-0">

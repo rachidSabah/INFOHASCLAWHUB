@@ -596,6 +596,7 @@ echo "✅ Deployment to $ENV complete!"`);
             Manage environments, deploy with one click, generate CI/CD configs, and monitor deployments
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Deploy Pipeline" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-4 mb-1 shrink-0">

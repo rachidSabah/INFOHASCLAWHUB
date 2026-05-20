@@ -164,6 +164,7 @@ export function QuickActionsPanel({ open, onOpenChange }: QuickActionsPanelProps
             Execute AI-powered actions on files and projects instantly
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Quick Actions" />
 
         <ScrollArea className="h-[calc(90vh-8rem)]">
           <div className="p-6 space-y-6">

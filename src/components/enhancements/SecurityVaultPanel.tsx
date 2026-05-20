@@ -348,6 +348,7 @@ export function SecurityVaultPanel({ open, onOpenChange }: SecurityVaultPanelPro
             Scan for exposed secrets, audit AI actions, and run compliance checks
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Security Vault" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-3 mb-1 shrink-0">

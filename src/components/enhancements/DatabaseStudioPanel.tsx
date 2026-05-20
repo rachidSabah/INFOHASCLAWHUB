@@ -502,6 +502,7 @@ export function DatabaseStudioPanel({ open, onOpenChange }: DatabaseStudioPanelP
             Connect databases, query with natural language, visualize schemas, and generate migrations
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Database Studio" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-4 mb-1 shrink-0">

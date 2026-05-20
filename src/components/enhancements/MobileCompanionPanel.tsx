@@ -386,6 +386,7 @@ export function MobileCompanionPanel({ open, onOpenChange }: MobileCompanionPane
             Pair mobile devices, manage notifications, and track mobile activity
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Mobile Companion" />
 
         <Tabs defaultValue="connection" className="flex flex-col flex-1 min-h-0">
           <div className="px-6 pt-2">

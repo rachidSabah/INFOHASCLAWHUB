@@ -388,6 +388,7 @@ export function AIPairTerminalPanel({
             Terminal with AI assistance — explain commands, fix errors, and generate commands from natural language
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="AI Pair Terminal" />
 
         {/* ── Split View ── */}
         <div className="flex flex-col md:flex-row h-[70vh] border-t">

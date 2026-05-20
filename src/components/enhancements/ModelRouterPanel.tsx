@@ -453,6 +453,7 @@ export function ModelRouterPanel({ open, onOpenChange }: ModelRouterPanelProps) 
             Configure smart routing rules, test model selection, and benchmark performance
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Model Router" />
 
         <Tabs defaultValue="routes" className="flex flex-col flex-1 min-h-0">
           <div className="px-6 pt-2">

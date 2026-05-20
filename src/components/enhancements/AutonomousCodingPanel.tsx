@@ -457,6 +457,7 @@ export function AutonomousCodingPanel({ open, onOpenChange }: AutonomousCodingPa
             Set up and monitor AI-driven autonomous coding sessions
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Autonomous Coding" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="w-full grid grid-cols-3">

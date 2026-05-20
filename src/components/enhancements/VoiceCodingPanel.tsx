@@ -287,6 +287,7 @@ export function VoiceCodingPanel({ open, onOpenChange }: VoiceCodingPanelProps) 
             Code with your voice, process commands, and convert meeting notes to tasks
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Voice Coding" />
 
         <Tabs defaultValue="voice" className="flex flex-col flex-1 min-h-0">
           <div className="px-6 pt-2">

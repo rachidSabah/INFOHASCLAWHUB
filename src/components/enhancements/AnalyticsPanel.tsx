@@ -285,6 +285,7 @@ export function AnalyticsPanel({ open, onOpenChange }: AnalyticsPanelProps) {
             Track usage, performance, and get AI-powered insights for optimization
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Analytics & Insights" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-3 mb-1 shrink-0">

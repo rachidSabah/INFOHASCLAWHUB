@@ -394,6 +394,7 @@ export function PluginMarketplacePanel({ open, onOpenChange }: PluginMarketplace
             Browse, install, and create plugins to extend ClawHub&apos;s capabilities
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Plugin Marketplace" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-3 mb-1 shrink-0">

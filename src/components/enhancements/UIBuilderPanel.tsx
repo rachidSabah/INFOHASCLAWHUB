@@ -445,6 +445,7 @@ try { const app = Vue.createApp({}); if (typeof template !== 'undefined') app.te
             Generate, convert, and edit UI components with AI assistance
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="UI Builder" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-4 mb-1 shrink-0">

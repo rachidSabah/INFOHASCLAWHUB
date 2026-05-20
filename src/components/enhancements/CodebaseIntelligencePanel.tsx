@@ -500,6 +500,7 @@ export function CodebaseIntelligencePanel({
             Semantic search, dependency analysis, architecture mapping &amp; security scanning
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Codebase Intelligence" />
 
         <Tabs defaultValue="search" className="w-full">
           <TabsList className="grid w-full grid-cols-4">
