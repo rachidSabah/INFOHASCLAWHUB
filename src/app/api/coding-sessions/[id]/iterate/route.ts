@@ -12,7 +12,7 @@ async function getZAI() {
 
 
 
-async function callAI(prompt: string) {
+async function callAI(prompt: string): Promise<string> {
   try {
     const zai = await getZAI();
     const completion = await zai.chat.completions.create({
@@ -21,11 +21,28 @@ async function callAI(prompt: string) {
         { role: 'user', content: prompt }
       ],
     });
-    return completion.choices[0]?.message?.content || '';
+    const result = completion.choices[0]?.message?.content;
+    if (result && result.trim()) return result;
+    // If AI returned empty, fall through to smart fallback
   } catch (error) {
-    console.error('ZAI SDK error:', error);
-    return '';
+    console.error('[CodingIterate] ZAI SDK error:', error);
+    // Fall through to smart fallback
   }
+  return generateIterationFallback(prompt);
+}
+
+function generateIterationFallback(prompt: string): string {
+  // Extract step info from the prompt
+  const stepMatch = prompt.match(/Step:\s*(.+)/);
+  const step = stepMatch ? stepMatch[1].trim() : 'Continue implementation';
+  const iterationMatch = prompt.match(/Iteration:\s*(\d+)/);
+  const iteration = iterationMatch ? iterationMatch[1] : '1';
+
+  return JSON.stringify({
+    action: 'code',
+    files: [],
+    summary: `Iteration ${iteration}: ${step} — AI unavailable, manual implementation recommended. Review the step description and implement accordingly.`,
+  });
 }
 
 export async function POST(

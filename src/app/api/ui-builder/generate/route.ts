@@ -20,13 +20,42 @@ async function callAI(prompt: string): Promise<string> {
         { role: 'user', content: prompt }
       ],
     });
-    return completion.choices[0]?.message?.content || '';
+    const result = completion.choices[0]?.message?.content;
+    if (result && result.trim()) return result;
+    // If AI returned empty, fall through to smart fallback
   } catch (aiError: unknown) {
     const errMsg = aiError instanceof Error ? aiError.message : 'AI generation failed';
     console.error('[UI Builder] AI call failed:', errMsg);
-    // Return a fallback template instead of crashing
-    return `// AI generation fallback - ${errMsg}\nexport default function GeneratedComponent() {\n  return <div className="p-4 border rounded">Component placeholder</div>;\n}`;
+    // Fall through to smart fallback
   }
+  return generateUIFallback(prompt);
+}
+
+function generateUIFallback(prompt: string): string {
+  // Extract description from the prompt
+  const descMatch = prompt.match(/Generate a\s+\w+\s+component for the following description:\n\n([\s\S]*?)\n\nReturn only/);
+  const description = descMatch ? descMatch[1].trim() : 'Custom Component';
+  const componentName = description
+    .split(/\s+/)
+    .filter(w => w.length > 2)
+    .slice(0, 3)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join('') || 'Generated';
+
+  return `// AI generation fallback - component created from description
+import React from 'react';
+
+export default function ${componentName}Component() {
+  return (
+    <div className="p-6 border border-border rounded-lg bg-card">
+      <h2 className="text-lg font-semibold text-card-foreground mb-2">${description.substring(0, 80)}</h2>
+      <p className="text-muted-foreground text-sm">
+        AI component generation unavailable. This is a placeholder component.
+        Customize it to match your requirements.
+      </p>
+    </div>
+  );
+}`;
 }
 
 export async function POST(request: NextRequest) {

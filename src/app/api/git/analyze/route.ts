@@ -12,7 +12,7 @@ async function getZAI() {
 
 
 
-async function callAI(prompt: string) {
+async function callAI(prompt: string): Promise<string> {
   try {
     const zai = await getZAI();
     const completion = await zai.chat.completions.create({
@@ -21,11 +21,37 @@ async function callAI(prompt: string) {
         { role: 'user', content: prompt }
       ],
     });
-    return completion.choices[0]?.message?.content || '{}';
+    const result = completion.choices[0]?.message?.content;
+    if (result && result.trim() && result.trim() !== '{}') return result;
+    // If AI returned empty, fall through to smart fallback
   } catch (error) {
-    console.error('ZAI SDK error:', error);
-    return '{}';
+    console.error('[GitAnalyze] ZAI SDK error:', error);
+    // Fall through to smart fallback
   }
+  return generateGitAnalyzeFallback(prompt);
+}
+
+function generateGitAnalyzeFallback(prompt: string): string {
+  // Determine risk level from prompt content
+  let risk: 'low' | 'medium' | 'high' = 'medium';
+  const lower = prompt.toLowerCase();
+  if (lower.includes('delete') || lower.includes('drop') || lower.includes('remove') || lower.includes('force')) {
+    risk = 'high';
+  } else if (lower.includes('fix') || lower.includes('update') || lower.includes('patch') || lower.includes('config')) {
+    risk = 'low';
+  }
+
+  return JSON.stringify({
+    summary: 'AI analysis unavailable — manual review recommended. Please inspect the changes carefully before proceeding.',
+    risk,
+    suggestions: [
+      'Review changes manually line by line',
+      'Run local tests before committing',
+      'Check for unintended side effects',
+      'Verify no sensitive data is exposed in the diff',
+    ],
+    patterns: [],
+  });
 }
 
 export async function POST(request: NextRequest) {

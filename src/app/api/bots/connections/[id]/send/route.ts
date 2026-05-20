@@ -12,7 +12,7 @@ async function getZAI() {
 
 
 
-async function callAI(prompt: string) {
+async function callAI(prompt: string): Promise<string> {
   try {
     const zai = await getZAI();
     const completion = await zai.chat.completions.create({
@@ -21,11 +21,27 @@ async function callAI(prompt: string) {
         { role: 'user', content: prompt }
       ],
     });
-    return completion.choices[0]?.message?.content || '';
+    const result = completion.choices[0]?.message?.content;
+    if (result && result.trim()) return result;
+    // If AI returned empty, fall through to smart fallback
   } catch (error) {
-    console.error('ZAI SDK error:', error);
-    return '';
+    console.error('[BotSend] ZAI SDK error:', error);
+    // Fall through to smart fallback
   }
+  return generateBotSendFallback(prompt);
+}
+
+function generateBotSendFallback(prompt: string): string {
+  // Extract the user message from the prompt
+  const msgMatch = prompt.match(/User message:\s*(.+)/);
+  const userMessage = msgMatch ? msgMatch[1].trim() : '';
+
+  // Generate a polite auto-reply acknowledging the message
+  if (userMessage) {
+    return `Thank you for your message. I'm currently operating with limited AI capabilities, but your message has been received. A team member will follow up with you shortly.`;
+  }
+
+  return `Hello! I'm currently operating with limited AI capabilities. Your message has been logged and will be addressed as soon as possible.`;
 }
 
 export async function POST(

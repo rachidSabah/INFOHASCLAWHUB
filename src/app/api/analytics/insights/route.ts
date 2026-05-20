@@ -12,7 +12,7 @@ async function getZAI() {
 
 
 
-async function callAI(prompt: string) {
+async function callAI(prompt: string): Promise<string> {
   try {
     const zai = await getZAI();
     const completion = await zai.chat.completions.create({
@@ -21,11 +21,87 @@ async function callAI(prompt: string) {
         { role: 'user', content: prompt }
       ],
     });
-    return completion.choices[0]?.message?.content || '{}';
+    const result = completion.choices[0]?.message?.content;
+    if (result && result.trim() && result.trim() !== '{}') return result;
+    // If AI returned empty, fall through to smart fallback
   } catch (error) {
-    console.error('ZAI SDK error:', error);
-    return '{}';
+    console.error('[Analytics] ZAI SDK error:', error);
+    // Fall through to smart fallback
   }
+  return generateInsightsFallback(prompt);
+}
+
+function generateInsightsFallback(prompt: string): string {
+  // Extract stats from the prompt
+  const totalMatch = prompt.match(/"totalEvents"[":\s]+(\d+)/);
+  const successRateMatch = prompt.match(/"successRate"[":\s]+(\d+)/);
+  const avgDurationMatch = prompt.match(/"avgDuration"[":\s]+(\d+)/);
+  const totalCostMatch = prompt.match(/"totalCost"[":\s]+([\d.]+)/);
+  const daysMatch = prompt.match(/past (\d+) days/);
+
+  const totalEvents = totalMatch ? parseInt(totalMatch[1]) : 0;
+  const successRate = successRateMatch ? parseInt(successRateMatch[1]) : 0;
+  const avgDuration = avgDurationMatch ? parseInt(avgDurationMatch[1]) : 0;
+  const totalCost = totalCostMatch ? parseFloat(totalCostMatch[1]) : 0;
+  const days = daysMatch ? parseInt(daysMatch[1]) : 7;
+
+  const insights: Array<{ title: string; description: string; severity: string }> = [];
+  const trends: Array<{ metric: string; direction: string; change: string }> = [];
+  const recommendations: string[] = [];
+
+  if (totalEvents > 0) {
+    insights.push({
+      title: 'Event Activity Detected',
+      description: `${totalEvents} events recorded in the past ${days} days.`,
+      severity: 'info',
+    });
+  }
+
+  if (successRate > 0 && successRate < 90) {
+    insights.push({
+      title: 'Below-Target Success Rate',
+      description: `Success rate is ${successRate}%, which is below the recommended 90% threshold.`,
+      severity: 'warning',
+    });
+    recommendations.push('Investigate failing events and implement error handling improvements.');
+  } else if (successRate >= 90) {
+    insights.push({
+      title: 'Healthy Success Rate',
+      description: `Success rate is ${successRate}%, which meets the recommended threshold.`,
+      severity: 'success',
+    });
+  }
+
+  if (avgDuration > 5000) {
+    insights.push({
+      title: 'High Average Duration',
+      description: `Average event duration is ${avgDuration}ms, which may indicate performance issues.`,
+      severity: 'warning',
+    });
+    recommendations.push('Profile slow operations and optimize database queries or API calls.');
+  }
+
+  if (totalCost > 0) {
+    trends.push({ metric: 'cost', direction: 'tracking', change: `$${totalCost.toFixed(2)} over ${days} days` });
+  }
+
+  if (totalEvents > 0) {
+    trends.push({ metric: 'volume', direction: 'stable', change: `${totalEvents} events over ${days} days` });
+  }
+
+  if (recommendations.length === 0) {
+    recommendations.push(
+      'Continue monitoring event patterns for anomalies.',
+      'Set up alerts for sudden changes in error rates or latency.',
+      'Review analytics periodically to identify optimization opportunities.'
+    );
+  }
+
+  return JSON.stringify({
+    insights: insights.length > 0 ? insights : [{ title: 'Analytics Data Available', description: `Data for the past ${days} days is available. AI insight generation unavailable — review stats manually.`, severity: 'info' }],
+    trends,
+    recommendations,
+  });
 }
 
 export async function GET(request: NextRequest) {
@@ -70,7 +146,7 @@ export async function GET(request: NextRequest) {
     };
 
     // Generate AI insights if there are events
-    let insights = null;
+    let insights: { insights?: unknown[]; trends?: unknown[]; recommendations?: string[] } | null = null;
     if (totalEvents > 0) {
       const aiResult = await callAI(
         `Analyze these analytics stats for the past ${days} days:\n\n${JSON.stringify(stats)}\n\nGenerate insights, trends, and recommendations as JSON.`

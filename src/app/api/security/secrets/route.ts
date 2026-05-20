@@ -12,7 +12,7 @@ async function getZAI() {
 
 
 
-async function callAI(prompt: string) {
+async function callAI(prompt: string): Promise<string> {
   try {
     const zai = await getZAI();
     const completion = await zai.chat.completions.create({
@@ -21,11 +21,65 @@ async function callAI(prompt: string) {
         { role: 'user', content: prompt }
       ],
     });
-    return completion.choices[0]?.message?.content || '[]';
+    const result = completion.choices[0]?.message?.content;
+    if (result && result.trim() && result.trim() !== '[]') return result;
+    // If AI returned empty, fall through to smart fallback
   } catch (error) {
-    console.error('ZAI SDK error:', error);
-    return '[]';
+    console.error('[SecuritySecrets] ZAI SDK error:', error);
+    // Fall through to smart fallback
   }
+  return generateSecretsFallback(prompt);
+}
+
+function generateSecretsFallback(prompt: string): string {
+  // Extract file path and content from the prompt
+  const filePathMatch = prompt.match(/File:\s*(.+)/);
+  const contentMatch = prompt.match(/Content:\n([\s\S]*?)$/);
+  const filePath = filePathMatch ? filePathMatch[1].trim() : 'unknown';
+  const content = contentMatch ? contentMatch[1] : '';
+
+  const secrets: Array<{ filePath: string; line: number; secretType: string; maskedValue: string; severity: string }> = [];
+
+  if (content) {
+    const lines = content.split('\n');
+
+    // Regex patterns for common secret types
+    const patterns: Array<{ regex: RegExp; secretType: string; severity: string }> = [
+      { regex: /(?:api[_-]?key|apikey)\s*[:=]\s*['"]([\w-]{8,})['"]/gi, secretType: 'api_key', severity: 'high' },
+      { regex: /(?:secret[_-]?key|secretkey)\s*[:=]\s*['"]([\w-]{8,})['"]/gi, secretType: 'secret_key', severity: 'critical' },
+      { regex: /(?:password|passwd|pwd)\s*[:=]\s*['"]([^'"]{4,})['"]/gi, secretType: 'password', severity: 'critical' },
+      { regex: /(?:auth[_-]?token|access[_-]?token|bearer)\s*[:=]\s*['"]([\w.-]{8,})['"]/gi, secretType: 'token', severity: 'high' },
+      { regex: /-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----/gi, secretType: 'private_key', severity: 'critical' },
+      { regex: /(?:mongodb|postgres|mysql|redis):\/\/[\w:.-]+@[\w.-]+/gi, secretType: 'connection_string', severity: 'critical' },
+      { regex: /sk-[a-zA-Z0-9]{20,}/g, secretType: 'openai_api_key', severity: 'critical' },
+      { regex: /AKIA[0-9A-Z]{16}/g, secretType: 'aws_access_key', severity: 'critical' },
+      { regex: /ghp_[a-zA-Z0-9]{36}/g, secretType: 'github_token', severity: 'high' },
+      { regex: /eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}/g, secretType: 'jwt_token', severity: 'medium' },
+    ];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      for (const { regex, secretType, severity } of patterns) {
+        const match = regex.exec(line);
+        if (match) {
+          const fullMatch = match[0];
+          const maskedValue = fullMatch.length > 6
+            ? fullMatch.substring(0, 3) + '***' + fullMatch.substring(fullMatch.length - 3)
+            : '***';
+          secrets.push({
+            filePath,
+            line: i + 1,
+            secretType,
+            maskedValue,
+            severity,
+          });
+        }
+        regex.lastIndex = 0; // Reset regex for next line
+      }
+    }
+  }
+
+  return JSON.stringify(secrets);
 }
 
 export async function GET(request: NextRequest) {

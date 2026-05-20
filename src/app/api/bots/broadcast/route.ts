@@ -12,7 +12,7 @@ async function getZAI() {
 
 
 
-async function callAI(prompt: string) {
+async function callAI(prompt: string): Promise<string> {
   try {
     const zai = await getZAI();
     const completion = await zai.chat.completions.create({
@@ -21,11 +21,26 @@ async function callAI(prompt: string) {
         { role: 'user', content: prompt }
       ],
     });
-    return completion.choices[0]?.message?.content || '';
+    const result = completion.choices[0]?.message?.content;
+    if (result && result.trim()) return result;
+    // If AI returned empty, fall through to smart fallback
   } catch (error) {
-    console.error('ZAI SDK error:', error);
-    return '';
+    console.error('[BotBroadcast] ZAI SDK error:', error);
+    // Fall through to smart fallback
   }
+  return generateBroadcastFallback(prompt);
+}
+
+function generateBroadcastFallback(prompt: string): string {
+  // Extract the original message from the prompt
+  const msgMatch = prompt.match(/Adapt this message[^:]*:\n\n([\s\S]*?)$/);
+  if (msgMatch) {
+    // Return the original message unchanged — better than empty string
+    return msgMatch[1].trim();
+  }
+  // Fallback: try to extract any message content after double newline
+  const simpleMatch = prompt.match(/:\n\n(.+)/);
+  return simpleMatch ? simpleMatch[1].trim() : 'Broadcast message (AI adaptation unavailable — original message preserved)';
 }
 
 export async function POST(request: NextRequest) {

@@ -12,7 +12,7 @@ async function getZAI() {
 
 
 
-async function callAI(prompt: string) {
+async function callAI(prompt: string): Promise<string> {
   try {
     const zai = await getZAI();
     const completion = await zai.chat.completions.create({
@@ -21,11 +21,30 @@ async function callAI(prompt: string) {
         { role: 'user', content: prompt }
       ],
     });
-    return completion.choices[0]?.message?.content || '{}';
+    const result = completion.choices[0]?.message?.content;
+    if (result && result.trim() && result.trim() !== '{}') return result;
+    // If AI returned empty, fall through to smart fallback
   } catch (error) {
-    console.error('ZAI SDK error:', error);
-    return '{}';
+    console.error('[GitReview] ZAI SDK error:', error);
+    // Fall through to smart fallback
   }
+  return generateGitReviewFallback(prompt);
+}
+
+function generateGitReviewFallback(prompt: string): string {
+  return JSON.stringify({
+    approved: false,
+    score: 50,
+    issues: [],
+    positives: ['Code changes were submitted for review'],
+    suggestions: [
+      'AI review unavailable — please perform a manual code review',
+      'Check for proper error handling and edge cases',
+      'Verify naming conventions and code style consistency',
+      'Ensure no hardcoded secrets or sensitive data',
+      'Confirm test coverage for new code',
+    ],
+  });
 }
 
 export async function POST(request: NextRequest) {

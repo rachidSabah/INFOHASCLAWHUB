@@ -12,7 +12,7 @@ async function getZAI() {
 
 
 
-async function callAI(prompt: string) {
+async function callAI(prompt: string): Promise<string> {
   try {
     const zai = await getZAI();
     const completion = await zai.chat.completions.create({
@@ -21,11 +21,65 @@ async function callAI(prompt: string) {
         { role: 'user', content: prompt }
       ],
     });
-    return completion.choices[0]?.message?.content || '{}';
+    const result = completion.choices[0]?.message?.content;
+    if (result && result.trim() && result.trim() !== '{}') return result;
+    // If AI returned empty, fall through to smart fallback
   } catch (error) {
-    console.error('ZAI SDK error:', error);
-    return '{}';
+    console.error('[VoiceCoding] ZAI SDK error:', error);
+    // Fall through to smart fallback
   }
+  return generateVoiceCodingFallback(prompt);
+}
+
+function generateVoiceCodingFallback(prompt: string): string {
+  // Extract transcript from the prompt
+  const transcriptMatch = prompt.match(/Transcript:\s*"([^"]+)"/);
+  const transcript = transcriptMatch ? transcriptMatch[1].trim() : '';
+  const lower = transcript.toLowerCase();
+
+  let action = 'unknown';
+  let code = '';
+  let command = transcript;
+  let explanation = 'AI interpretation unavailable. Voice command could not be processed automatically.';
+
+  // Basic keyword-based command interpretation
+  if (lower.includes('create') || lower.includes('make') || lower.includes('add') || lower.includes('new')) {
+    if (lower.includes('function') || lower.includes('method')) {
+      action = 'create_function';
+      const nameMatch = lower.match(/(?:called|named)\s+"?(\w+)"?/);
+      const name = nameMatch ? nameMatch[1] : 'newFunction';
+      code = `function ${name}() {\n  // TODO: Implement ${name}\n}\n`;
+      explanation = `Interpreted as: create a function named "${name}". AI code generation unavailable — please complete the implementation.`;
+    } else if (lower.includes('component')) {
+      action = 'create_component';
+      code = `export default function NewComponent() {\n  return <div>New Component</div>;\n}\n`;
+      explanation = 'Interpreted as: create a new component. AI code generation unavailable — please customize the component.';
+    } else if (lower.includes('file')) {
+      action = 'create_file';
+      code = `// New file created via voice command\n`;
+      explanation = 'Interpreted as: create a new file. AI code generation unavailable — please add content manually.';
+    } else {
+      action = 'create';
+      explanation = 'Interpreted as a create command. AI code generation unavailable — please implement manually.';
+    }
+  } else if (lower.includes('delete') || lower.includes('remove')) {
+    action = 'delete';
+    explanation = 'Interpreted as a delete/remove command. Please confirm before executing destructive actions.';
+  } else if (lower.includes('fix') || lower.includes('repair') || lower.includes('debug')) {
+    action = 'fix';
+    explanation = 'Interpreted as a fix/debug command. AI diagnosis unavailable — check error messages and logs for clues.';
+  } else if (lower.includes('run') || lower.includes('execute') || lower.includes('start')) {
+    action = 'run';
+    explanation = 'Interpreted as a run/execute command. Please verify the command before running.';
+  } else if (lower.includes('test')) {
+    action = 'test';
+    explanation = 'Interpreted as a test command. AI test generation unavailable — please write tests manually.';
+  } else if (lower.includes('refactor')) {
+    action = 'refactor';
+    explanation = 'Interpreted as a refactor command. AI refactoring unavailable — please identify and apply improvements manually.';
+  }
+
+  return JSON.stringify({ action, code, command, explanation });
 }
 
 export async function POST(request: NextRequest) {

@@ -12,7 +12,7 @@ async function getZAI() {
 
 
 
-async function callAI(prompt: string) {
+async function callAI(prompt: string): Promise<string> {
   try {
     const zai = await getZAI();
     const completion = await zai.chat.completions.create({
@@ -21,11 +21,53 @@ async function callAI(prompt: string) {
         { role: 'user', content: prompt }
       ],
     });
-    return completion.choices[0]?.message?.content || '';
+    const result = completion.choices[0]?.message?.content;
+    if (result && result.trim()) return result;
+    // If AI returned empty, fall through to smart fallback
   } catch (error) {
-    console.error('ZAI SDK error:', error);
-    return '';
+    console.error('[CodingPlan] ZAI SDK error:', error);
+    // Fall through to smart fallback
   }
+  return generatePlanFallback(prompt);
+}
+
+function generatePlanFallback(prompt: string): string {
+  const steps: string[] = [];
+  const lower = prompt.toLowerCase();
+
+  // Keyword-based step generation
+  if (lower.includes('create') || lower.includes('build') || lower.includes('implement')) {
+    steps.push('Analyze requirements and define scope', 'Set up project structure and dependencies', 'Implement core functionality', 'Add error handling and edge cases', 'Write tests for the implementation');
+  }
+  if (lower.includes('fix') || lower.includes('bug') || lower.includes('repair')) {
+    steps.push('Reproduce the bug and gather error details', 'Identify root cause by reviewing relevant code', 'Implement the fix with minimal changes', 'Add regression tests', 'Verify the fix resolves the issue');
+  }
+  if (lower.includes('refactor') || lower.includes('restructure') || lower.includes('reorganize')) {
+    steps.push('Identify code smells and areas for improvement', 'Plan refactoring strategy with minimal disruption', 'Apply refactoring incrementally', 'Run existing tests after each change', 'Update documentation to reflect changes');
+  }
+  if (lower.includes('test') || lower.includes('testing')) {
+    steps.push('Review existing test coverage', 'Identify untested code paths', 'Write unit tests for core logic', 'Add integration tests for key flows', 'Run full test suite and verify pass rate');
+  }
+  if (lower.includes('deploy') || lower.includes('release') || lower.includes('publish')) {
+    steps.push('Verify all tests pass', 'Update version and changelog', 'Build production artifacts', 'Deploy to staging environment', 'Validate deployment and promote to production');
+  }
+  if (lower.includes('migrate') || lower.includes('upgrade')) {
+    steps.push('Assess current state and migration requirements', 'Back up existing data and configuration', 'Implement migration scripts', 'Test migration on a copy of production data', 'Execute migration and verify data integrity');
+  }
+
+  // If no keywords matched, generate generic steps from the task description
+  if (steps.length === 0) {
+    steps.push(
+      'Understand the requirements and define acceptance criteria',
+      'Research existing codebase and relevant patterns',
+      'Design the solution approach',
+      'Implement the core changes',
+      'Test and validate the implementation',
+      'Review and document the changes'
+    );
+  }
+
+  return JSON.stringify({ steps });
 }
 
 export async function POST(
