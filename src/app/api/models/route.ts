@@ -16,7 +16,16 @@ const FALLBACK_MODELS: Record<string, { id: string; name: string; description: s
   ],
   deepseek: [
     { id: "deepseek-chat", name: "DeepSeek Chat (V3)", description: "Highly capable conversational model" },
+    { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1)", description: "Advanced reasoning and problem solving" },
     { id: "deepseek-coder", name: "DeepSeek Coder", description: "Advanced code generation and reasoning" },
+  ],
+  "deepseek-(free-via-ds2api)": [
+    { id: "deepseek-chat", name: "DeepSeek Chat (V3 via ds2api)", description: "Free DeepSeek V3 through web-to-API bridge" },
+    { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1 via ds2api)", description: "Free DeepSeek R1 reasoning through web-to-API bridge" },
+  ],
+  "ds2api-(web-to-api-bridge)": [
+    { id: "deepseek-chat", name: "DeepSeek Chat (V3 via ds2api)", description: "Free DeepSeek V3 through web-to-API bridge" },
+    { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1 via ds2api)", description: "Free DeepSeek R1 reasoning through web-to-API bridge" },
   ],
   openrouter: [
     { id: "google/gemini-2.0-flash-thinking-exp:free", name: "Gemini 2.0 Flash Thinking (Free)", description: "Google's reasoning model via OpenRouter" },
