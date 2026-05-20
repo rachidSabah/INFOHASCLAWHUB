@@ -235,7 +235,7 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
           </TabsList>
 
           {PROVIDERS.map((p, i) => (
-            <TabsContent key={i} value={String(i)} className="flex-1 flex flex-col min-h-0 mt-2 data-[state=inactive]:hidden">
+            <TabsContent key={i} value={String(i)} className="flex-1 flex flex-col min-h-0 mt-2 data-[state=inactive]:hidden overflow-y-auto">
               <div className="flex-1 flex flex-col min-h-0">
                 {/* Bridge Status */}
                 <div className="flex items-center gap-2 mb-2 shrink-0">
