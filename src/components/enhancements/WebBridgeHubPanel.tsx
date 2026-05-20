@@ -11,7 +11,7 @@ import { PowerToolHint } from "./PowerToolHint";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Globe, Key, Copy, Check, RefreshCw, ExternalLink, Loader2, AlertTriangle, CheckCircle2, XCircle, Eye, EyeOff, Play, Square, Server, Zap } from "lucide-react";
+import { Globe, Key, Copy, Check, RefreshCw, ExternalLink, Loader2, AlertTriangle, CheckCircle2, XCircle, Eye, EyeOff, Play, Square, Server, Zap, Search } from "lucide-react";
 
 interface TokenResult {
   browser: string; domain: string; name: string; value: string;
@@ -154,7 +154,7 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
   };
 
   useEffect(() => {
-    if (open) PROVIDERS.forEach(p => checkBridgeStatus(p));
+    if (open) { PROVIDERS.forEach(p => checkBridgeStatus(p)); scanTokens(); }
   }, [open]);
 
   const scanTokens = async () => {
@@ -275,6 +275,9 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                   <div className="flex gap-2">
                     <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} 
                       placeholder="Paste Bearer token (eyJ...) here" className="h-8 text-[10px] flex-1 font-mono" />
+                    <Button size="sm" variant="outline" className="h-8 text-[10px] shrink-0" onClick={scanTokens} disabled={loading}>
+                      {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+                    </Button>
                     <Button size="sm" className={cn("h-8 text-[10px] gap-1 shrink-0", configured.includes(p.name) ? "bg-green-600" : "")} onClick={configureProvider}
                       disabled={!apiKey.trim()}>
                       {configured.includes(p.name) ? <><CheckCircle2 className="h-3 w-3" /> Done</> : <><Play className="h-3 w-3" /> Configure</>}
@@ -301,24 +304,41 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
 
                 <Separator className="mb-2 shrink-0" />
 
-                {/* Configured Status */}
+                {/* Token List */}
                 <div className="flex-1 min-h-0">
                   <ScrollArea className="h-full">
-                    {configured.includes(p.name) ? (
-                      <div className="p-3 rounded-xl bg-green-500/5 border border-green-500/20 text-center">
-                        <CheckCircle2 className="h-5 w-5 text-green-500 mx-auto mb-1" />
-                        <p className="text-xs font-semibold text-green-600">Provider Configured</p>
-                        <p className="text-[10px] text-muted-foreground mt-1">
-                          Models available in the dropdown. Use Model Router for smart routing.
-                        </p>
-                      </div>
-                    ) : (
+                    {tokens.filter(t => t.provider === ["deepseek","qwen","gemini","kimi","z-ai"][i] || !t.provider).length === 0 && (
                       <div className="p-3 rounded-xl bg-muted/30 border border-border text-center">
                         <p className="text-xs text-muted-foreground">
-                          Configure this provider to access free models
+                          {configured.includes(p.name) ? "Provider configured. Models available in dropdown." : "Scan or paste a token to configure this provider"}
                         </p>
                       </div>
                     )}
+                    <div className="space-y-1.5">
+                      {tokens.filter(t => t.provider === ["deepseek","qwen","gemini","kimi","z-ai"][i] || !t.provider).map((t, j) => (
+                        <div key={j} className={cn("rounded-lg border p-2", t.decrypted ? (t.source === "localStorage" ? "border-blue-500/20 bg-blue-500/5" : "border-green-500/20 bg-green-500/5") : "border-amber-500/20 bg-amber-500/5")}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Badge className={cn("text-[9px] h-4 shrink-0", !t.decrypted ? "bg-amber-500/10 text-amber-600" : t.source === "localStorage" ? "bg-blue-500/10 text-blue-600" : "bg-green-500/10 text-green-600")}>
+                                {!t.decrypted ? "Locked" : t.source === "localStorage" ? "Bearer" : "Cookie"}
+                              </Badge>
+                              <span className="text-[10px] truncate max-w-[150px]">{t.name || t.domain}</span>
+                            </div>
+                            <div className="flex items-center gap-0.5 shrink-0">
+                              {t.decrypted && t.value && t.value !== "[locked]" ? (
+                                <>
+                                  <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => { setApiKey(t.value); toast.success("Token pasted"); }}>
+                                    <Play className="h-3 w-3" />
+                                  </Button>
+                                </>
+                              ) : (
+                                <span className="text-[9px] text-amber-600">{t.error || "Locked"}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </ScrollArea>
                 </div>
               </div>
