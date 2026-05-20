@@ -193,6 +193,7 @@ export function BrowserTokenExtractorPanel({ open, onOpenChange }: Props) {
                   key={i}
                   className={cn(
                     "rounded-xl border p-3 transition-colors",
+                    token.source === "localStorage" && token.decrypted ? "border-blue-500/30 bg-blue-500/5" :
                     token.decrypted && token.value ? "border-green-500/20 bg-green-500/5" :
                     token.error ? "border-amber-500/20 bg-amber-500/5" :
                     "border-border bg-card/30"
@@ -202,8 +203,11 @@ export function BrowserTokenExtractorPanel({ open, onOpenChange }: Props) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-xs font-semibold">{token.browser}</span>
-                        {token.decrypted && token.value && (
-                          <Badge variant="outline" className="text-[9px] h-4 text-green-500 border-green-500/20">Decrypted</Badge>
+                        {token.source === "localStorage" && (
+                          <Badge className="text-[9px] h-4 bg-blue-500/10 text-blue-600 border-blue-500/20">Bearer Token</Badge>
+                        )}
+                        {token.source === "cookie" && token.decrypted && token.value && (
+                          <Badge variant="outline" className="text-[9px] h-4 text-green-500 border-green-500/20">Cookie</Badge>
                         )}
                         {token.error && (
                           <Badge variant="outline" className="text-[9px] h-4 text-amber-500 border-amber-500/20">Locked</Badge>
@@ -213,14 +217,9 @@ export function BrowserTokenExtractorPanel({ open, onOpenChange }: Props) {
                         <p className="text-[11px] text-muted-foreground truncate">{token.domain}</p>
                       )}
                       {token.name && (
-                        <p className="text-[10px] font-mono text-muted-foreground truncate">{token.name}
-                          {token.name.toLowerCase().includes("token") || token.name.toLowerCase().includes("session") || token.name.toLowerCase().includes("auth") ? (
-                            <span className="ml-1 text-amber-500 font-bold">← likely auth token</span>
-                          ) : token.name === "cf_clearance" ? (
-                            <span className="ml-1 text-blue-500">← Cloudflare clearance</span>
-                          ) : token.name.toLowerCase().includes("intercom") ? (
-                            <span className="ml-1 text-muted-foreground">← chat widget</span>
-                          ) : null}
+                        <p className="text-[10px] font-mono text-muted-foreground truncate">
+                          {token.source === "localStorage" ? "🗄️ localStorage" : token.domain}
+                          {" → "}{token.name}
                         </p>
                       )}
                       {token.error && (
