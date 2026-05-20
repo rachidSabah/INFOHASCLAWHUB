@@ -181,8 +181,8 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
     if (!token) { toast.error("Paste a Bearer token first"); return; }
     // Auto-detect format: strip "Bearer " prefix, handle JWT
     token = token.replace(/^Bearer\s+/i, "").replace(/^Authorization:\s*Bearer\s+/i, "");
-    if (!token.startsWith("eyJ") && !token.startsWith("sk-") && !token.startsWith("AIza")) {
-      toast.error("Token doesn't look like a JWT or API key. Check DevTools → Network → Request Headers → Authorization");
+    if (token.length < 20) {
+      toast.error("Token too short. Copy the full Authorization header value from DevTools.");
       return;
     }
     setApiKey(token);
