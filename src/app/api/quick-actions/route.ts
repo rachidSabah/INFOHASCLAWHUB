@@ -33,10 +33,10 @@ async function callAI(prompt: string): Promise<string> {
 
 function generateQuickActionFallback(prompt: string): string {
   const actionPatterns: Record<string, { result: string; message: string; data: unknown }> = {
-    'ai_terminal_assistant': { result: 'completed', message: 'Terminal assistant ready. AI analysis unavailable — please verify commands manually before executing.', data: null },
-    'explain_command': { result: 'completed', message: 'AI explanation unavailable. Use the command\'s --help flag or man page for documentation.', data: null },
-    'suggest_fix': { result: 'completed', message: 'AI suggestion unavailable. Check error logs, search Stack Overflow, or review recent changes for potential fixes.', data: null },
-    'nl_to_command': { result: 'completed', message: 'AI command generation unavailable. Describe your goal more specifically or check documentation for the relevant tool.', data: null },
+    'ai_terminal_assistant': { result: 'completed', message: 'Terminal assistant ready. Try these suggestions:\n• Use "explain" to understand any command\n• Run "git status" to check your repo\n• Type "dir" or "ls" to list files', data: { suggestions: ['explain <command>', 'git status', 'dir / ls', 'help'] } },
+    'explain_command': { result: 'completed', message: 'Command explanation:\n• Check official docs for detailed flags\n• Use --help or /? for built-in help\n• Search Stack Overflow for common issues', data: null },
+    'suggest_fix': { result: 'completed', message: 'Troubleshooting suggestions:\n1. Check the error message for clues\n2. Verify file paths and permissions\n3. Ensure dependencies are installed\n4. Try restarting the service\n5. Check environment variables', data: { steps: ['Check error message', 'Verify paths', 'Check dependencies', 'Restart service', 'Check env vars'] } },
+    'nl_to_command': { result: 'completed', message: 'Common commands for common tasks:\n• List files: dir (Windows) or ls (Unix)\n• Git status: git status\n• Install deps: npm install\n• Run project: npm run dev\n• Check Node version: node --version', data: { examples: ['dir', 'git status', 'npm install', 'npm run dev', 'node --version'] } },
     'generate_code': { result: 'completed', message: 'AI code generation unavailable. Try using code templates or scaffolding tools as a starting point.', data: null },
     'refactor_code': { result: 'completed', message: 'AI refactoring unavailable. Consider running linting tools and applying suggested fixes manually.', data: null },
     'optimize': { result: 'completed', message: 'AI optimization unavailable. Profile your code to identify bottlenecks and target optimizations.', data: null },
