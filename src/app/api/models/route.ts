@@ -19,11 +19,11 @@ const FALLBACK_MODELS: Record<string, { id: string; name: string; description: s
     { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1)", description: "Advanced reasoning and problem solving" },
     { id: "deepseek-coder", name: "DeepSeek Coder", description: "Advanced code generation and reasoning" },
   ],
-  "deepseek-(free-via-ds2api)": [
+  "deepseek-free-via-ds2api": [
     { id: "deepseek-chat", name: "DeepSeek Chat (V3 via ds2api)", description: "Free DeepSeek V3 through web-to-API bridge" },
     { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1 via ds2api)", description: "Free DeepSeek R1 reasoning through web-to-API bridge" },
   ],
-  "ds2api-(web-to-api-bridge)": [
+  "ds2api-web-to-api-bridge": [
     { id: "deepseek-chat", name: "DeepSeek Chat (V3 via ds2api)", description: "Free DeepSeek V3 through web-to-API bridge" },
     { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1 via ds2api)", description: "Free DeepSeek R1 reasoning through web-to-API bridge" },
   ],
@@ -48,7 +48,7 @@ export async function GET() {
 
     for (const provider of providers) {
       // Normalize provider name for ID use
-      const providerSlug = provider.name.toLowerCase().replace(/\s+/g, "-");
+      const providerSlug = provider.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
 
       let models: { id: string; name: string; description: string }[] = [];
       let success = false;
