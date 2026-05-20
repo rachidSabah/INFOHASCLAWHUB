@@ -26,10 +26,6 @@ ${assistantText.slice(0, 4000)}`;
 
   try {
     let responseText = "";
-    const controller = new ReadableStream({
-      start(c) { c.close(); }
-    });
-    const encoder = new TextEncoder();
 
     if (isCustomProvider && providerData) {
       const baseUrl = (providerData.baseUrl?.replace(/\/$/, "") || "https://api.openai.com/v1").replace("://localhost", "://127.0.0.1");
@@ -507,7 +503,10 @@ export async function POST(req: NextRequest) {
         console.log(`[${requestId}] Routing to Proxima Local Gateway`);
       } else {
         const providers = await db.provider.findMany({ where: { isActive: true } });
-        let provider = providers.find(p => p.name.toLowerCase().replace(/\s+/g, "-") === providerSlug);
+        let provider = providers.find(p => {
+          const slug = p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+          return slug === providerSlug || providerSlug.includes(slug) || slug.includes(providerSlug);
+        });
 
         if (!provider && providerSlug === "deepseek") {
           console.log(`[${requestId}] DeepSeek provider not found in DB, checking Antigravity config...`);

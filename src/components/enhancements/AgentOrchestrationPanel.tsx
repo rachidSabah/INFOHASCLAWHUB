@@ -1,5 +1,6 @@
 "use client";
 
+import { PowerToolHint } from "./PowerToolHint";
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -582,7 +583,7 @@ export function AgentOrchestrationPanel({ open, onOpenChange }: AgentOrchestrati
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-hidden flex flex-col" showCloseButton>
+      <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-hidden flex flex-col" showCloseButton>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-gradient-to-br from-violet-500/20 to-cyan-500/20 border border-violet-500/30">
@@ -594,6 +595,7 @@ export function AgentOrchestrationPanel({ open, onOpenChange }: AgentOrchestrati
             Build, visualize, and manage agent pipelines for complex multi-step workflows
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Agent Orchestration" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-3 mb-1 shrink-0">
@@ -612,7 +614,7 @@ export function AgentOrchestrationPanel({ open, onOpenChange }: AgentOrchestrati
           </TabsList>
 
           {/* ═══ BUILDER TAB ═══ */}
-          <TabsContent value="builder" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="builder" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-6 p-1 pr-4">
                 {/* Pipeline Info */}
@@ -869,7 +871,7 @@ export function AgentOrchestrationPanel({ open, onOpenChange }: AgentOrchestrati
           </TabsContent>
 
           {/* ═══ VISUAL PIPELINE TAB ═══ */}
-          <TabsContent value="visual" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="visual" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             {!selectedPipeline ? (
               <div className="flex flex-col items-center justify-center h-[calc(90vh-200px)] text-muted-foreground">
                 <Workflow className="h-12 w-12 mb-4 opacity-20" />
@@ -1182,7 +1184,7 @@ export function AgentOrchestrationPanel({ open, onOpenChange }: AgentOrchestrati
           </TabsContent>
 
           {/* ═══ ALL PIPELINES TAB ═══ */}
-          <TabsContent value="pipelines" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="pipelines" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="p-1 pr-4 space-y-2">
                 {loading && pipelines.length === 0 ? (

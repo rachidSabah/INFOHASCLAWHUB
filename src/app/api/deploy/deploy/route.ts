@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'environmentId is required' }, { status: 400 });
     }
 
-    const environment = await db.deployEnvironment.findUnique({ where: { id: environmentId } });
+    const environment = await (db as any).deployEnvironment.findUnique({ where: { id: environmentId } });
     if (!environment) {
       return NextResponse.json({ error: 'Deploy environment not found' }, { status: 404 });
     }
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Simulate deployment start
-    const updated = await db.deployEnvironment.update({
+    const updated = await (db as any).deployEnvironment.update({
       where: { id: environmentId },
       data: {
         status: 'deploying',

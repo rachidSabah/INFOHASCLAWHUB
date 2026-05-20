@@ -39,7 +39,7 @@ export async function POST(
       },
     });
 
-    return NextResponse.json(message);
+    return NextResponse.json(message, { status: 201 });
   } catch (error: unknown) {
     console.error("Failed to create message:", error);
     const errorMessage = error instanceof Error ? error.message : "Failed to create message";

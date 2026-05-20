@@ -3,6 +3,10 @@ import { db } from "@/lib/db";
 
 export const dynamic = 'force-dynamic';
 
+function errorResponse(message: string, status: number) {
+  return NextResponse.json({ error: message }, { status });
+}
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -28,7 +32,8 @@ export async function GET(req: Request) {
     return NextResponse.json(memories);
   } catch (error) {
     console.error("[MEMORIES_GET]", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Failed to fetch memories";
+    return errorResponse(errorMessage, 500);
   }
 }
 
@@ -38,20 +43,25 @@ export async function POST(req: Request) {
     const { key, content, source } = body;
 
     if (!key || !content) {
-      return new NextResponse("Key and Content are required", { status: 400 });
+      return errorResponse("Key and Content are required", 400);
+    }
+
+    if (typeof key !== "string" || typeof content !== "string") {
+      return errorResponse("Key and Content must be strings", 400);
     }
 
     const memory = await db.memory.create({
       data: {
         key,
         content,
-        source: source || "manual",
+        source: source ?? "manual",
       },
     });
 
-    return NextResponse.json(memory);
+    return NextResponse.json(memory, { status: 201 });
   } catch (error) {
     console.error("[MEMORIES_POST]", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Failed to create memory";
+    return errorResponse(errorMessage, 500);
   }
 }

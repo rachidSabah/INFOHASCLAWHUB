@@ -100,6 +100,8 @@ function DashboardContent() {
               if (reload.ok) setAgents(await reload.json());
             } catch {}
           }
+          // Auto-seed plugins on every load
+          try { await fetch("/api/plugins/seed", { method: "POST" }); } catch {}
         }
       } catch {}
     };

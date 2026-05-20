@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     if (category) where.category = category;
     if (isInstalled !== null) where.isInstalled = isInstalled === 'true';
 
-    const plugins = await db.plugin.findMany({
+    const plugins = await (db as any).plugin.findMany({
       where,
       orderBy: { installs: 'desc' },
     });
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const plugin = await db.plugin.create({ data: body });
+    const plugin = await (db as any).plugin.create({ data: body });
     return NextResponse.json(plugin);
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });

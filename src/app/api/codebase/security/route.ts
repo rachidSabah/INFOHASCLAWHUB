@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     if (projectPath) where.filePath = { startsWith: projectPath };
     if (severity) where.severity = severity;
 
-    const vulnerabilities = await db.securityVulnerability.findMany({
+    const vulnerabilities = await (db as any).securityVulnerability.findMany({
       where,
       orderBy: { createdAt: 'desc' },
     });

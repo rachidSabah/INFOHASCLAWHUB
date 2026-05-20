@@ -3,6 +3,10 @@ import { db } from "@/lib/db";
 
 export const dynamic = 'force-dynamic';
 
+function errorResponse(message: string, status: number) {
+  return NextResponse.json({ error: message }, { status });
+}
+
 export async function GET() {
   try {
     const agents = await db.agent.findMany({
@@ -11,7 +15,8 @@ export async function GET() {
     return NextResponse.json(agents);
   } catch (error) {
     console.error("[AGENTS_GET]", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Failed to fetch agents";
+    return errorResponse(errorMessage, 500);
   }
 }
 
@@ -21,7 +26,11 @@ export async function POST(req: Request) {
     const { name, role, systemPrompt, avatar, skills } = body;
 
     if (!name || !role || !systemPrompt) {
-      return new NextResponse("Missing required fields", { status: 400 });
+      return errorResponse("Missing required fields", 400);
+    }
+
+    if (typeof name !== "string" || typeof role !== "string" || typeof systemPrompt !== "string") {
+      return errorResponse("Invalid field types", 400);
     }
 
     const agent = await db.agent.create({
@@ -29,14 +38,15 @@ export async function POST(req: Request) {
         name,
         role,
         systemPrompt,
-        avatar,
-        skills,
+        avatar: avatar ?? null,
+        skills: skills ?? null,
       },
     });
 
-    return NextResponse.json(agent);
+    return NextResponse.json(agent, { status: 201 });
   } catch (error) {
     console.error("[AGENTS_POST]", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Failed to create agent";
+    return errorResponse(errorMessage, 500);
   }
 }

@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
     if (secretType) where.secretType = secretType;
     if (isRevoked !== null) where.isRevoked = isRevoked === 'true';
 
-    const secrets = await db.exposedSecret.findMany({
+    const secrets = await (db as any).exposedSecret.findMany({
       where,
       orderBy: { createdAt: 'desc' },
     });
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
       }
 
       for (const secret of secrets) {
-        const created = await db.exposedSecret.create({
+        const created = await (db as any).exposedSecret.create({
           data: {
             filePath: secret.filePath || file.path,
             line: secret.line || 0,

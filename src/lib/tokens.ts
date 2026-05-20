@@ -28,7 +28,8 @@ const DEFAULT_PRICING = { input: 1, output: 5 };
 
 function getModelPricing(model: string): { input: number; output: number } {
   const lower = model.toLowerCase();
-  for (const [key, pricing] of Object.entries(MODEL_PRICING)) {
+  const sorted = Object.entries(MODEL_PRICING).sort(([a], [b]) => b.length - a.length);
+  for (const [key, pricing] of sorted) {
     if (lower.includes(key)) return pricing;
   }
   return DEFAULT_PRICING;

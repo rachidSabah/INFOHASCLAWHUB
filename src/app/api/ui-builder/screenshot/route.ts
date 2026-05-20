@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (projectId) {
-      await db.uIBuilderProject.update({
+      await (db as any).uiBuilderProject.update({
         where: { id: projectId },
         data: { generatedCode },
       });

@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     const where: any = {};
     if (projectPath) where.projectPath = projectPath;
 
-    const symbols = await db.codeIndex.findMany({ where });
+    const symbols = await (db as any).codeIndex.findMany({ where });
 
     if (symbols.length === 0) {
       return NextResponse.json({ results: [], message: 'No indexed symbols found. Index a project first.' });

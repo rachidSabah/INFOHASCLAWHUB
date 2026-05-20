@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { exec } from "child_process";
+import { exec, ExecException } from "child_process";
 import { MCPClient, getMcpServerConfigs } from "@/lib/mcp";
 
 export interface ToolParameter {
@@ -43,7 +43,8 @@ function safeMathEval(expression: string): number {
   if (/[^0-9+\-*/().%^]/.test(sanitized)) {
     throw new Error("Expression contains disallowed characters. Only numbers and + - * / ( ) . % ^ are allowed.");
   }
-  return new Function(`"use strict"; return (${sanitized})`)();
+  const withPow = sanitized.replace(/\^/g, "**");
+  return new Function(`"use strict"; return (${withPow})`)();
 }
 
 const availableTools: ToolDefinition[] = [
@@ -352,7 +353,7 @@ export async function executeToolCall(
       : path.join(os.homedir(), "Desktop");
     try {
       const result = await new Promise<string>((resolve) => {
-        exec(call.arguments.command, { cwd: activeDir, timeout: 30000 }, (error: Error | null, stdout: string, stderr: string) => {
+        exec(call.arguments.command, { cwd: activeDir, timeout: 30000 }, (error: ExecException | null, stdout: string, stderr: string) => {
           resolve(
             JSON.stringify({
               stdout: stdout || "(no stdout)",

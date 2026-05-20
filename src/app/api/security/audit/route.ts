@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     if (agentId) where.agentId = agentId;
     if (risk) where.risk = risk;
 
-    const logs = await db.securityAuditLog.findMany({
+    const logs = await (db as any).securityAuditLog.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: limit,

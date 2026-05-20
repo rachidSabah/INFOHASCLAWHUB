@@ -114,7 +114,7 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     name: "CodeForge",
     role: "Senior Software Architect & Full-Stack Developer",
     avatar: "⚒️",
-    skills: ["agent-browser", "coding-agent", "fullstack-dev"],
+    skills: ["agent-browser", "coding-agent", "fullstack-dev", "frontend-expert", "backend-expert", "database-architect", "system-architect"],
     systemPrompt: CodeForgeSystemPrompt,
   },
   {

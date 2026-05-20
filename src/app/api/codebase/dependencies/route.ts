@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'projectPath query parameter is required' }, { status: 400 });
     }
 
-    const symbols = await db.codeIndex.findMany({
+    const symbols = await (db as any).codeIndex.findMany({
       where: { projectPath },
     });
 

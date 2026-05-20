@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
       resolution = { resolvedCode: aiResult, strategy: 'ai-assisted', explanation: 'AI-generated merge resolution' };
     }
 
-    const gitAnalysis = await db.gitAnalysis.create({
+    const gitAnalysis = await (db as any).gitAnalysis.create({
       data: {
         projectPath: projectPath || 'unknown',
         commitHash: `conflict-${Date.now()}`,

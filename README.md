@@ -4,15 +4,33 @@
 
 ---
 
-## ⚡ One-Command Setup (Windows)
+## ⚡ One-Command Setup
 
-Open **PowerShell** (or Windows Terminal) and paste this single command:
-
+### Windows (PowerShell)
 ```powershell
-irm https://raw.githubusercontent.com/rachidSabah/INFOHASCLAWHUB/main/setup.ps1 | iex
+irm https://raw.githubusercontent.com/rachidSabah/INFOHASCLAWHUB/main/install.bat -OutFile install.bat; .\install.bat
 ```
 
-> This script will automatically: install Node.js (if missing), clone this repo, install dependencies, set up the database, and start the app at **http://localhost:3000**.
+### Windows (PowerShell)
+```powershell
+irm https://raw.githubusercontent.com/rachidSabah/INFOHASCLAWHUB/main/install.bat -OutFile install.bat; .\install.bat
+```
+
+### WSL / Linux (Recommended)
+```bash
+curl -fsSL https://raw.githubusercontent.com/rachidSabah/INFOHASCLAWHUB/main/install.sh | bash
+```
+
+> Each script automatically: installs prerequisites (if missing), clones the repo, installs dependencies, sets up the database, and starts at **http://localhost:3000**.
+
+## 🗑️ One-Command Uninstall
+
+```bash
+# WSL / Linux
+curl -fsSL https://raw.githubusercontent.com/rachidSabah/INFOHASCLAWHUB/main/uninstall.sh | bash
+
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/rachidSabah/INFOHASCLAWHUB/main/uninstall.bat -OutFile uninstall.bat; .\uninstall.bat
 
 Or do it step by step manually (see [Manual Install](#manual-install) below).
 

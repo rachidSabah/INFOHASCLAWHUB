@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'pluginId is required' }, { status: 400 });
     }
 
-    const plugin = await db.plugin.findUnique({ where: { id: pluginId } });
+    const plugin = await (db as any).plugin.findUnique({ where: { id: pluginId } });
     if (!plugin) {
       return NextResponse.json({ error: 'Plugin not found' }, { status: 404 });
     }
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Plugin is already installed' }, { status: 400 });
     }
 
-    const updated = await db.plugin.update({
+    const updated = await (db as any).plugin.update({
       where: { id: pluginId },
       data: {
         isInstalled: true,

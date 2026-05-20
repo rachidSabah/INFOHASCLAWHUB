@@ -1,5 +1,6 @@
 "use client";
 
+import { PowerToolHint } from "./PowerToolHint";
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -273,7 +274,7 @@ export function AnalyticsPanel({ open, onOpenChange }: AnalyticsPanelProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-hidden flex flex-col" showCloseButton>
+      <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-hidden flex flex-col" showCloseButton>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-gradient-to-br from-cyan-500/20 to-emerald-500/20 border border-cyan-500/30">
@@ -285,6 +286,7 @@ export function AnalyticsPanel({ open, onOpenChange }: AnalyticsPanelProps) {
             Track usage, performance, and get AI-powered insights for optimization
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Analytics & Insights" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-3 mb-1 shrink-0">
@@ -303,7 +305,7 @@ export function AnalyticsPanel({ open, onOpenChange }: AnalyticsPanelProps) {
           </TabsList>
 
           {/* ═══ OVERVIEW TAB ═══ */}
-          <TabsContent value="overview" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="overview" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-6 p-1 pr-4">
                 {/* Key Metrics */}
@@ -487,7 +489,7 @@ export function AnalyticsPanel({ open, onOpenChange }: AnalyticsPanelProps) {
           </TabsContent>
 
           {/* ═══ CODE QUALITY TAB ═══ */}
-          <TabsContent value="quality" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="quality" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-6 p-1 pr-4">
                 {/* Productivity Score */}
@@ -700,7 +702,7 @@ export function AnalyticsPanel({ open, onOpenChange }: AnalyticsPanelProps) {
           </TabsContent>
 
           {/* ═══ INSIGHTS TAB ═══ */}
-          <TabsContent value="insights" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="insights" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-6 p-1 pr-4">
                 {/* Refresh */}

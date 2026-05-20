@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'connectionId query parameter is required' }, { status: 400 });
     }
 
-    const connection = await db.databaseConnection.findUnique({ where: { id: connectionId } });
+    const connection = await (db as any).databaseConnection.findUnique({ where: { id: connectionId } });
     if (!connection) {
       return NextResponse.json({ error: 'Database connection not found' }, { status: 404 });
     }

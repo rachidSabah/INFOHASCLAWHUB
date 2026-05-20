@@ -1,5 +1,6 @@
 "use client";
 
+import { PowerToolHint } from "./PowerToolHint";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -378,7 +379,7 @@ export function AIPairTerminalPanel({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-6xl max-h-[90vh] p-0 gap-0" showCloseButton>
+      <DialogContent className="sm:max-w-6xl max-h-[92vh] overflow-hidden flex flex-col" showCloseButton>
         <DialogHeader className="px-6 pt-6 pb-2">
           <DialogTitle className="flex items-center gap-2">
             <Terminal className="h-5 w-5" />
@@ -388,9 +389,10 @@ export function AIPairTerminalPanel({
             Terminal with AI assistance — explain commands, fix errors, and generate commands from natural language
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="AI Pair Terminal" />
 
         {/* ── Split View ── */}
-        <div className="flex flex-col md:flex-row h-[70vh] border-t">
+        <div className="flex flex-col md:flex-row flex-1 min-h-0 border-t">
           {/* ── Left: Terminal ── */}
           <div className="flex flex-col flex-1 min-w-0 border-r">
             {/* Terminal Header */}

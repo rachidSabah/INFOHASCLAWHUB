@@ -1,5 +1,6 @@
 "use client";
 
+import { PowerToolHint } from "./PowerToolHint";
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -709,7 +710,7 @@ export function CommsHubPanel({ open, onOpenChange }: CommsHubPanelProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px] max-h-[85vh] overflow-hidden flex flex-col" showCloseButton>
+      <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-hidden flex flex-col" showCloseButton>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-500/20 to-sky-500/20 border border-emerald-500/30">
@@ -721,6 +722,7 @@ export function CommsHubPanel({ open, onOpenChange }: CommsHubPanelProps) {
             Connect and manage bots across messaging platforms with AI auto-reply
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Comms Hub" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-5 mb-1 shrink-0">
@@ -747,7 +749,7 @@ export function CommsHubPanel({ open, onOpenChange }: CommsHubPanelProps) {
           </TabsList>
 
           {/* ═══ WHATSAPP TAB ═══ */}
-          <TabsContent value="whatsapp" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="whatsapp" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(85vh-220px)]">
               <div className="space-y-4 p-1 pr-3">
                 {/* Connection Status */}
@@ -973,22 +975,22 @@ export function CommsHubPanel({ open, onOpenChange }: CommsHubPanelProps) {
           </TabsContent>
 
           {/* ═══ TELEGRAM TAB ═══ */}
-          <TabsContent value="telegram" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="telegram" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             {renderPlatformTab("telegram")}
           </TabsContent>
 
           {/* ═══ DISCORD TAB ═══ */}
-          <TabsContent value="discord" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="discord" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             {renderPlatformTab("discord")}
           </TabsContent>
 
           {/* ═══ SLACK TAB ═══ */}
-          <TabsContent value="slack" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="slack" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             {renderPlatformTab("slack")}
           </TabsContent>
 
           {/* ═══ BROADCAST TAB ═══ */}
-          <TabsContent value="broadcast" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="broadcast" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(85vh-220px)]">
               <div className="space-y-4 p-1 pr-3">
                 {/* Connected Platforms */}

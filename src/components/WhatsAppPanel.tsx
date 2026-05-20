@@ -66,7 +66,6 @@ export function WhatsAppPanel({
   const [disconnected, setDisconnected] = useState(false); // Track manual disconnect for fresh QR
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
 
   const fetchStatus = useCallback(async () => {
     try {

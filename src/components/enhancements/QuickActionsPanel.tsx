@@ -1,5 +1,6 @@
 "use client";
 
+import { PowerToolHint } from "./PowerToolHint";
 import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -154,7 +155,7 @@ export function QuickActionsPanel({ open, onOpenChange }: QuickActionsPanelProps
   // ── Render ──
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl max-h-[90vh] p-0 gap-0 overflow-hidden">
+      <DialogContent className="sm:max-w-4xl max-h-[92vh] p-0 gap-0 overflow-hidden flex flex-col overflow-hidden overflow-hidden flex flex-col">
         <DialogHeader className="px-6 pt-6 pb-0">
           <DialogTitle className="flex items-center gap-2">
             <Zap className="h-5 w-5" />
@@ -164,6 +165,7 @@ export function QuickActionsPanel({ open, onOpenChange }: QuickActionsPanelProps
             Execute AI-powered actions on files and projects instantly
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Quick Actions" />
 
         <ScrollArea className="h-[calc(90vh-8rem)]">
           <div className="p-6 space-y-6">

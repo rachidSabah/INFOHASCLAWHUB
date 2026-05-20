@@ -1,5 +1,6 @@
 "use client";
 
+import { PowerToolHint } from "./PowerToolHint";
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -490,7 +491,7 @@ export function DatabaseStudioPanel({ open, onOpenChange }: DatabaseStudioPanelP
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-hidden flex flex-col" showCloseButton>
+      <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-hidden flex flex-col" showCloseButton>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-gradient-to-br from-cyan-500/20 to-emerald-500/20 border border-cyan-500/30">
@@ -502,6 +503,7 @@ export function DatabaseStudioPanel({ open, onOpenChange }: DatabaseStudioPanelP
             Connect databases, query with natural language, visualize schemas, and generate migrations
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Database Studio" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-4 mb-1 shrink-0">
@@ -524,7 +526,7 @@ export function DatabaseStudioPanel({ open, onOpenChange }: DatabaseStudioPanelP
           </TabsList>
 
           {/* ═══ CONNECTIONS TAB ═══ */}
-          <TabsContent value="connections" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="connections" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-4 p-1 pr-4">
                 {/* Add Connection Button */}
@@ -715,7 +717,7 @@ export function DatabaseStudioPanel({ open, onOpenChange }: DatabaseStudioPanelP
           </TabsContent>
 
           {/* ═══ QUERY TAB ═══ */}
-          <TabsContent value="query" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="query" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-4 p-1 pr-4">
                 {/* Connection Selector */}
@@ -933,7 +935,7 @@ export function DatabaseStudioPanel({ open, onOpenChange }: DatabaseStudioPanelP
           </TabsContent>
 
           {/* ═══ SCHEMA TAB ═══ */}
-          <TabsContent value="schema" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="schema" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-4 p-1 pr-4">
                 {/* Schema Controls */}
@@ -1117,7 +1119,7 @@ export function DatabaseStudioPanel({ open, onOpenChange }: DatabaseStudioPanelP
           </TabsContent>
 
           {/* ═══ MIGRATE TAB ═══ */}
-          <TabsContent value="migrate" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="migrate" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-4 p-1 pr-4">
                 {/* Connection Selector */}

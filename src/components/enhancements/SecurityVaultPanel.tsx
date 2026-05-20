@@ -1,5 +1,6 @@
 "use client";
 
+import { PowerToolHint } from "./PowerToolHint";
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -336,7 +337,7 @@ export function SecurityVaultPanel({ open, onOpenChange }: SecurityVaultPanelPro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" showCloseButton>
+      <DialogContent className="sm:max-w-4xl max-h-[92vh] overflow-hidden flex flex-col" showCloseButton>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-gradient-to-br from-red-500/20 to-amber-500/20 border border-red-500/30">
@@ -348,6 +349,7 @@ export function SecurityVaultPanel({ open, onOpenChange }: SecurityVaultPanelPro
             Scan for exposed secrets, audit AI actions, and run compliance checks
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="Security Vault" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-3 mb-1 shrink-0">
@@ -366,7 +368,7 @@ export function SecurityVaultPanel({ open, onOpenChange }: SecurityVaultPanelPro
           </TabsList>
 
           {/* ═══ SECRET SCANNER TAB ═══ */}
-          <TabsContent value="secrets" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="secrets" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-4 p-1 pr-4">
                 {/* Stats Row */}
@@ -502,7 +504,7 @@ export function SecurityVaultPanel({ open, onOpenChange }: SecurityVaultPanelPro
           </TabsContent>
 
           {/* ═══ AUDIT LOG TAB ═══ */}
-          <TabsContent value="audit" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="audit" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-4 p-1 pr-4">
                 {/* Filter */}
@@ -676,7 +678,7 @@ export function SecurityVaultPanel({ open, onOpenChange }: SecurityVaultPanelPro
           </TabsContent>
 
           {/* ═══ COMPLIANCE TAB ═══ */}
-          <TabsContent value="compliance" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="compliance" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-6 p-1 pr-4">
                 {/* Framework Selection */}

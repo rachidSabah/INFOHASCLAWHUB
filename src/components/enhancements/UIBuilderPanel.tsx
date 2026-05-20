@@ -1,5 +1,6 @@
 "use client";
 
+import { PowerToolHint } from "./PowerToolHint";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -433,7 +434,7 @@ try { const app = Vue.createApp({}); if (typeof template !== 'undefined') app.te
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-hidden flex flex-col" showCloseButton>
+      <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-hidden flex flex-col" showCloseButton>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-gradient-to-br from-sky-500/20 to-violet-500/20 border border-sky-500/30">
@@ -445,6 +446,7 @@ try { const app = Vue.createApp({}); if (typeof template !== 'undefined') app.te
             Generate, convert, and edit UI components with AI assistance
           </DialogDescription>
         </DialogHeader>
+          <PowerToolHint name="UI Builder" />
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-4 mb-1 shrink-0">
@@ -467,7 +469,7 @@ try { const app = Vue.createApp({}); if (typeof template !== 'undefined') app.te
           </TabsList>
 
           {/* ═══ PROJECTS TAB ═══ */}
-          <TabsContent value="projects" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="projects" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-4 p-1 pr-4">
                 {/* Create Project */}
@@ -607,7 +609,7 @@ try { const app = Vue.createApp({}); if (typeof template !== 'undefined') app.te
           </TabsContent>
 
           {/* ═══ GENERATE TAB ═══ */}
-          <TabsContent value="generate" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="generate" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-4 p-1 pr-4">
                 {/* Description Input */}
@@ -723,7 +725,7 @@ try { const app = Vue.createApp({}); if (typeof template !== 'undefined') app.te
           </TabsContent>
 
           {/* ═══ SCREENSHOT TAB ═══ */}
-          <TabsContent value="screenshot" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="screenshot" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-4 p-1 pr-4">
                 {/* Upload Zone */}
@@ -891,7 +893,7 @@ try { const app = Vue.createApp({}); if (typeof template !== 'undefined') app.te
           </TabsContent>
 
           {/* ═══ EDITOR TAB ═══ */}
-          <TabsContent value="editor" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="editor" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <div className="flex flex-col h-[calc(90vh-200px)]">
               {/* Editor Header */}
               <div className="flex items-center justify-between p-3 border-b bg-card rounded-t-xl gap-2 flex-wrap">
