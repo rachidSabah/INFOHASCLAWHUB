@@ -5,12 +5,9 @@ import os from "os";
 import { NextResponse } from "next/server";
 
 interface TokenResult {
-  browser: string;
-  domain: string;
-  name: string;
-  value: string;
-  decrypted?: boolean;
-  source?: "cookie" | "localStorage";
+  browser: string; domain: string; name: string; value: string;
+  decrypted?: boolean; source?: "cookie" | "localStorage";
+  provider?: string;
   error?: string;
 }
 
@@ -77,18 +74,18 @@ function decryptChromeValue(encryptedValue: Buffer): string {
 }
 
 // ─── Cookie Scanner ───
-function scanCookies(dbPath: string, browser: string): TokenResult[] {
+function scanCookies(dbPath: string, browser: string, providerDomains: string[], providerName: string): TokenResult[] {
   try {
     const Database = require("better-sqlite3");
     const db = new Database(dbPath, { readonly: true });
-    const domains = "'chat.deepseek.com','.deepseek.com','deepseek.com','api.deepseek.com','platform.deepseek.com'";
+    const domains = providerDomains.map(d => `'${d}'`).join(",");
     const rows = db.prepare(`SELECT host_key, name, encrypted_value FROM cookies WHERE host_key IN (${domains})`).all();
     const results: TokenResult[] = [];
     for (const row of rows) {
       try {
-        results.push({ browser, domain: row.host_key, name: row.name, value: decryptChromeValue(row.encrypted_value), decrypted: true, source: "cookie" });
-      } catch (e: any) {
-        results.push({ browser, domain: row.host_key, name: row.name, value: "[locked]", decrypted: false, source: "cookie", error: "Close browser and retry" });
+        results.push({ browser, domain: row.host_key, name: row.name, value: decryptChromeValue(row.encrypted_value), decrypted: true, source: "cookie", provider: providerName });
+      } catch {
+        results.push({ browser, domain: row.host_key, name: row.name, value: "[locked]", decrypted: false, source: "cookie", provider: providerName, error: "Close browser and retry" });
       }
     }
     db.close();
@@ -99,35 +96,29 @@ function scanCookies(dbPath: string, browser: string): TokenResult[] {
 }
 
 // ─── localStorage Scanner ───
-function scanLocalStorage(basePath: string, browser: string): TokenResult[] {
+function scanLocalStorage(basePath: string, browser: string, providerDomains: string[], providerName: string): TokenResult[] {
   try {
     if (!existsSync(basePath)) return [];
     const files = readdirSync(basePath).filter(f => f.endsWith(".log") || f.endsWith(".ldb"));
     const results: TokenResult[] = [];
     const seen = new Set<string>();
+    // Build patterns that check for domain context
+    const domainPattern = providerDomains.map(d => d.replace(/\./g, "\\.")).join("|");
     const patterns = [
-      /"accessToken"\s*:\s*"((?:eyJ|ya29\.|ya\.)[\w\-\.+\/=]+)"/gi,
-      /"userToken"\s*:\s*"((?:eyJ)[\w\-\.+\/=]+)"/gi,
-      /"bearerToken"\s*:\s*"([^"]+)"/gi,
-      /token["\s:=]+((?:eyJ|ya29\.|ya\.)[\w\-\.+\/=]{50,})/gi,
-      /Authorization\\":\\"Bearer (eyJ[\w\-\.+\/=]+)/gi,
-      /\\"chat_token\\":\\"([^"\\]+)/gi,
-      /\\"deepseek_token\\":\\"([^"\\]+)/gi,
-      /\"deepseekToken\":\"([^\"]+)\"/gi,
-      /\"auth_jwt\":\"([^\"]+)\"/gi,
+      new RegExp(`"(?:accessToken|userToken|bearerToken|authToken|sessionToken|chat_token|deepseek_token|qwen_token)"\\s*:\\s*"((?:eyJ|ya29\\.|ya\\.)[\\w\\-\\.\\+\\/=]+)"`, "gi"),
+      new RegExp(`token["\\s:=]+((?:eyJ|ya29\\.|ya\\.)[\\w\\-\\.\\+\\/=]{50,})`, "gi"),
+      new RegExp(`\\\\\\\\?"(?:${domainPattern})[^"]*token[^"]*\\\\\\\\?"\\s*:\\s*"([^"\\\\]+)"`, "gi"),
     ];
     for (const file of files) {
       try {
         const content = readFileSync(join(basePath, file), "utf-8");
         for (const p of patterns) {
-          p.lastIndex = 0;
-          let m;
+          p.lastIndex = 0; let m;
           while ((m = p.exec(content)) !== null) {
             const val = m[1] || m[0];
             if (val && val.length > 20 && !seen.has(val)) {
               seen.add(val);
-              const isJWT = val.startsWith("eyJ");
-              results.push({ browser, domain: "localStorage", name: isJWT ? "Bearer Token (JWT)" : "Auth Token", value: val, decrypted: true, source: "localStorage" });
+              results.push({ browser, domain: "localStorage", name: "Bearer Token (JWT)", value: val, decrypted: true, source: "localStorage", provider: providerName });
             }
           }
         }
@@ -143,25 +134,31 @@ export async function GET() {
     return NextResponse.json({ tokens: [], error: "Windows only" });
   }
 
+  const providers = [
+    { name: "deepseek", domains: ["chat.deepseek.com", ".deepseek.com", "deepseek.com", "api.deepseek.com"] },
+    { name: "qwen", domains: ["qwenlm.ai", ".qwenlm.ai", "tongyi.aliyun.com", "qwen.ai"] },
+    { name: "gemini", domains: ["gemini.google.com", "aistudio.google.com", "generativelanguage.googleapis.com"] },
+  ];
+
   const allTokens: TokenResult[] = [];
   const browsers = getBrowserPaths();
 
-  for (const b of browsers) {
-    // Scan cookies
-    if (b.cookiePath) {
-      const ct = scanCookies(b.cookiePath, b.name);
-      if (ct.length === 0) {
-        allTokens.push({ browser: b.name, domain: "chat.deepseek.com", name: "", value: "", decrypted: false, error: "No DeepSeek cookies. Log into chat.deepseek.com first." });
-      } else {
+  for (const prov of providers) {
+    for (const b of browsers) {
+      if (b.cookiePath) {
+        const ct = scanCookies(b.cookiePath, b.name, prov.domains, prov.name);
         allTokens.push(...ct);
       }
-    } else {
+      const lt = scanLocalStorage(b.localStoragePath, b.name, prov.domains, prov.name);
+      allTokens.push(...lt);
+    }
+  }
+
+  // Add browser-not-found notes
+  for (const b of browsers) {
+    if (!b.cookiePath) {
       allTokens.push({ browser: b.name, domain: "", name: "", value: "", decrypted: false, error: `${b.name} not found` });
     }
-
-    // Scan localStorage for Bearer tokens
-    const lt = scanLocalStorage(b.localStoragePath, b.name);
-    allTokens.push(...lt);
   }
 
   const valid = allTokens.filter(t => t.decrypted && t.value && t.value !== "[locked]");
