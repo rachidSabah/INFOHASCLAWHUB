@@ -60,8 +60,8 @@ function decryptChromeValue(encryptedValue: Buffer): string {
   if (!encryptedValue || encryptedValue.length === 0) return "";
   const prefix = String.fromCharCode(encryptedValue[0], encryptedValue[1], encryptedValue[2]);
   if (prefix === "v10" || prefix === "v11") {
-    // Chrome v10/v11 format: skip 12-byte header, DPAPI decrypt remaining bytes
-    const ciphertext = encryptedValue.slice(12);
+    // Chrome v10/v11 format: "v10" (3 bytes) + nonce (12 bytes) = skip 15 bytes
+    const ciphertext = encryptedValue.slice(15);
     const tmpIn = join(os.tmpdir(), `clawhub_dpapi_in_${Date.now()}.bin`);
     const tmpOut = join(os.tmpdir(), `clawhub_dpapi_out_${Date.now()}.bin`);
     try {
