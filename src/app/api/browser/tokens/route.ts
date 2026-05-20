@@ -94,7 +94,12 @@ try {
 function scanCookies(dbPath: string, browser: string, providerDomains: string[], providerName: string): TokenResult[] {
   try {
     const Database = require("better-sqlite3");
-    const db = new Database(dbPath, { readonly: true });
+    // Copy DB to temp to bypass browser lock
+    const tmpPath = join(os.tmpdir(), `clawhub_cookies_${Date.now()}.db`);
+    try { require("fs").copyFileSync(dbPath, tmpPath); } catch (e: any) {
+      return [{ browser, domain: "", name: "", value: "", decrypted: false, error: `Cannot access cookies. ${e.message}. Close ${browser} first.` }];
+    }
+    const db = new Database(tmpPath, { readonly: true });
     const domains = providerDomains.map(d => `'${d}'`).join(",");
     const rows = db.prepare(`SELECT host_key, name, encrypted_value FROM cookies WHERE host_key IN (${domains})`).all();
     const results: TokenResult[] = [];
@@ -106,6 +111,7 @@ function scanCookies(dbPath: string, browser: string, providerDomains: string[],
       }
     }
     db.close();
+    try { require("fs").unlinkSync(tmpPath); } catch {}
     return results;
   } catch (e: any) {
     return [{ browser, domain: "", name: "", value: "", decrypted: false, error: e.message }];
