@@ -86,6 +86,48 @@ const PROVIDERS: ProviderInfo[] = [
       "50 requests/day free tier",
     ],
   },
+  {
+    name: "Kimi (Moonshot)",
+    baseUrl: "http://localhost:8200/v1",
+    tokenLabel: "Bearer Token (JWT)",
+    domain: "kimi.moonshot.cn",
+    loginUrl: "https://kimi.moonshot.cn",
+    localStorageKey: "token",
+    models: [
+      { id: "kimi-latest", name: "Kimi Latest", description: "Moonshot's flagship conversational model" },
+      { id: "moonshot-v1-8k", name: "Moonshot v1 8K", description: "Standard context window" },
+      { id: "moonshot-v1-32k", name: "Moonshot v1 32K", description: "Extended context for documents" },
+      { id: "moonshot-v1-128k", name: "Moonshot v1 128K", description: "Ultra-long context" },
+    ],
+    setupGuide: [
+      "Log into kimi.moonshot.cn in your browser",
+      "Open DevTools (F12) → Network → Fetch/XHR",
+      "Send a message — find Authorization: Bearer in headers",
+      "Or scan cookies for token from kimi.moonshot.cn",
+      "Create/use a Kimi bridge at localhost:8200/v1",
+    ],
+  },
+  {
+    name: "Z.AI / GLM",
+    baseUrl: "http://localhost:8300/v1",
+    tokenLabel: "Bearer Token (JWT)",
+    domain: "chat.z.ai",
+    loginUrl: "https://chat.z.ai",
+    localStorageKey: "authToken",
+    models: [
+      { id: "glm-4", name: "GLM-4", description: "Zhipu's flagship model" },
+      { id: "glm-4-flash", name: "GLM-4 Flash", description: "Fast and lightweight" },
+      { id: "glm-4-air", name: "GLM-4 Air", description: "Balanced performance" },
+      { id: "glm-4-long", name: "GLM-4 Long", description: "Extended context" },
+    ],
+    setupGuide: [
+      "Log into chat.z.ai in your browser",
+      "Open DevTools (F12) → Network → Fetch/XHR",
+      "Send a message — find Authorization: Bearer in headers",
+      "Or scan cookies for authToken from chat.z.ai",
+      "Create/use a GLM bridge at localhost:8300/v1",
+    ],
+  },
 ];
 
 interface Props { open: boolean; onOpenChange: (open: boolean) => void; }
@@ -181,8 +223,8 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
         <Tabs value={String(activeProvider)} onValueChange={(v) => setActiveProvider(parseInt(v))} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full shrink-0" style={{ gridTemplateColumns: `repeat(${PROVIDERS.length}, 1fr)` }}>
             {PROVIDERS.map((p, i) => (
-              <TabsTrigger key={i} value={String(i)} className="text-[11px] gap-1.5 py-1.5">
-                {i === 0 ? "⚡" : i === 1 ? "🧠" : "🔵"} {p.name.split("(")[0].trim()}
+              <TabsTrigger key={i} value={String(i)} className="text-[10px] gap-1.5 py-1.5">
+                {["⚡","🧠","🔵","🚀","💎"][i] || "•"} {p.name.split("(")[0].trim()}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -247,11 +289,11 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                 {/* Token List */}
                 <div className="flex-1 min-h-0">
                   <ScrollArea className="h-full">
-                    {tokens.filter(t => !t.provider || t.provider === (i === 0 ? "deepseek" : i === 1 ? "qwen" : "gemini")).length === 0 && !loading && (
+                    {tokens.filter(t => !t.provider || t.provider === ["deepseek","qwen","gemini","kimi","z-ai"][i]).length === 0 && !loading && (
                       <p className="text-[11px] text-muted-foreground text-center py-4">Click Scan Tokens to find auth tokens in your browser</p>
                     )}
                     <div className="space-y-1.5">
-                      {tokens.filter(t => t.decrypted && t.value && t.value !== "[locked]" && (!t.provider || t.provider === (i === 0 ? "deepseek" : i === 1 ? "qwen" : "gemini"))).map((t, j) => (
+                      {tokens.filter(t => t.decrypted && t.value && t.value !== "[locked]" && (!t.provider || t.provider === ["deepseek","qwen","gemini","kimi","z-ai"][i])).map((t, j) => (
                         <div key={j} className={cn("rounded-lg border p-2", t.source === "localStorage" ? "border-blue-500/20 bg-blue-500/5" : "border-green-500/20 bg-green-500/5")}>
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-1.5 min-w-0">

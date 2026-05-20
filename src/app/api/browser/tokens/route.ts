@@ -146,6 +146,8 @@ export async function GET() {
     { name: "deepseek", domains: ["chat.deepseek.com", ".deepseek.com", "deepseek.com", "api.deepseek.com"] },
     { name: "qwen", domains: ["chat.qwen.ai", ".qwen.ai", "qwen.ai", "qwenlm.ai", ".qwenlm.ai", "tongyi.aliyun.com", "aplus.qwen.ai"] },
     { name: "gemini", domains: ["gemini.google.com", "aistudio.google.com", "generativelanguage.googleapis.com"] },
+    { name: "kimi", domains: ["kimi.moonshot.cn", ".moonshot.cn", "moonshot.cn", "api.moonshot.cn"] },
+    { name: "z-ai", domains: ["chat.z.ai", ".z.ai", "z.ai", "api.z.ai", "open.bigmodel.cn"] },
   ];
 
   const allTokens: TokenResult[] = [];

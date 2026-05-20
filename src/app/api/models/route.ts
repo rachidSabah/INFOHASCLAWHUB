@@ -44,6 +44,18 @@ const FALLBACK_MODELS: Record<string, { id: string; name: string; description: s
     { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (Free)", description: "Google's most capable model" },
     { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (Free)", description: "Fast thinking with high quality" },
   ],
+  "kimi-moonshot": [
+    { id: "kimi-latest", name: "Kimi Latest (via web bridge)", description: "Free Kimi through web-to-API bridge" },
+    { id: "moonshot-v1-8k", name: "Moonshot v1 8K (via web bridge)", description: "Standard context via web bridge" },
+    { id: "moonshot-v1-32k", name: "Moonshot v1 32K (via web bridge)", description: "Extended context via web bridge" },
+    { id: "moonshot-v1-128k", name: "Moonshot v1 128K (via web bridge)", description: "Ultra-long context via web bridge" },
+  ],
+  "z-ai-glm": [
+    { id: "glm-4", name: "GLM-4 (via web bridge)", description: "Free GLM-4 through web-to-API bridge" },
+    { id: "glm-4-flash", name: "GLM-4 Flash (via web bridge)", description: "Fast GLM via web bridge" },
+    { id: "glm-4-air", name: "GLM-4 Air (via web bridge)", description: "Balanced GLM via web bridge" },
+    { id: "glm-4-long", name: "GLM-4 Long (via web bridge)", description: "Extended GLM via web bridge" },
+  ],
   openrouter: [
     { id: "google/gemini-2.0-flash-thinking-exp:free", name: "Gemini 2.0 Flash Thinking (Free)", description: "Google's reasoning model via OpenRouter" },
     { id: "deepseek/deepseek-chat", name: "DeepSeek V3", description: "DeepSeek Chat via OpenRouter" },
