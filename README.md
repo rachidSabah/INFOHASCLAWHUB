@@ -11,17 +11,26 @@
 irm https://raw.githubusercontent.com/rachidSabah/INFOHASCLAWHUB/main/install.bat -OutFile install.bat; .\install.bat
 ```
 
+### Windows (PowerShell)
+```powershell
+irm https://raw.githubusercontent.com/rachidSabah/INFOHASCLAWHUB/main/install.bat -OutFile install.bat; .\install.bat
+```
+
 ### WSL / Linux (Recommended)
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rachidSabah/INFOHASCLAWHUB/main/install.sh | bash
 ```
 
-### Windows (Advanced Setup Script)
-```powershell
-irm https://raw.githubusercontent.com/rachidSabah/INFOHASCLAWHUB/main/setup.ps1 | iex
-```
-
 > Each script automatically: installs prerequisites (if missing), clones the repo, installs dependencies, sets up the database, and starts at **http://localhost:3000**.
+
+## 🗑️ One-Command Uninstall
+
+```bash
+# WSL / Linux
+curl -fsSL https://raw.githubusercontent.com/rachidSabah/INFOHASCLAWHUB/main/uninstall.sh | bash
+
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/rachidSabah/INFOHASCLAWHUB/main/uninstall.bat -OutFile uninstall.bat; .\uninstall.bat
 
 Or do it step by step manually (see [Manual Install](#manual-install) below).
 
