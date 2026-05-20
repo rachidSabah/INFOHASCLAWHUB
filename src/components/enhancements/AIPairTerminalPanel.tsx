@@ -1,5 +1,6 @@
 "use client";
 
+import { PowerToolHint } from "./PowerToolHint";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
