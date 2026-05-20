@@ -15,90 +15,148 @@ interface TokenResult {
 
 function getChromeCookiesPath(profile = "Default"): string {
   const localAppData = process.env.LOCALAPPDATA || join(os.homedir(), "AppData", "Local");
+  const chromeBase = join(localAppData, "Google", "Chrome", "User Data");
+  if (!existsSync(chromeBase)) return "";
+
   const paths = [
-    join(localAppData, "Google", "Chrome", "User Data", profile, "Network", "Cookies"),
-    join(localAppData, "Google", "Chrome", "User Data", profile, "Cookies"),
+    join(chromeBase, profile, "Network", "Cookies"),
+    join(chromeBase, profile, "Cookies"),
+    join(chromeBase, "Cookies"),
   ];
   for (const p of paths) if (existsSync(p)) return p;
+
+  // Try any profile directory
+  try {
+    const dirs = readdirSync(chromeBase, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && d.name !== "System Profile" && d.name !== "Guest Profile");
+    for (const d of dirs) {
+      const p = join(chromeBase, d.name, "Network", "Cookies");
+      if (existsSync(p)) return p;
+      const p2 = join(chromeBase, d.name, "Cookies");
+      if (existsSync(p2)) return p2;
+    }
+  } catch {}
   return "";
 }
 
 function getEdgeCookiesPath(profile = "Default"): string {
   const localAppData = process.env.LOCALAPPDATA || join(os.homedir(), "AppData", "Local");
+  const edgeBase = join(localAppData, "Microsoft", "Edge", "User Data");
+  if (!existsSync(edgeBase)) return "";
+
   const paths = [
-    join(localAppData, "Microsoft", "Edge", "User Data", profile, "Network", "Cookies"),
-    join(localAppData, "Microsoft", "Edge", "User Data", profile, "Cookies"),
+    join(edgeBase, profile, "Network", "Cookies"),
+    join(edgeBase, profile, "Cookies"),
+    join(edgeBase, "Cookies"),
   ];
   for (const p of paths) if (existsSync(p)) return p;
+
+  try {
+    const dirs = readdirSync(edgeBase, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && d.name !== "System Profile" && d.name !== "Guest Profile");
+    for (const d of dirs) {
+      const p = join(edgeBase, d.name, "Network", "Cookies");
+      if (existsSync(p)) return p;
+      const p2 = join(edgeBase, d.name, "Cookies");
+      if (existsSync(p2)) return p2;
+    }
+  } catch {}
   return "";
 }
 
 function getBraveCookiesPath(profile = "Default"): string {
   const localAppData = process.env.LOCALAPPDATA || join(os.homedir(), "AppData", "Local");
+  const braveBase = join(localAppData, "BraveSoftware", "Brave-Browser", "User Data");
+  if (!existsSync(braveBase)) return "";
+
   const paths = [
-    join(localAppData, "BraveSoftware", "Brave-Browser", "User Data", profile, "Network", "Cookies"),
-    join(localAppData, "BraveSoftware", "Brave-Browser", "User Data", profile, "Cookies"),
+    join(braveBase, profile, "Network", "Cookies"),
+    join(braveBase, profile, "Cookies"),
+    join(braveBase, "Cookies"),
   ];
   for (const p of paths) if (existsSync(p)) return p;
+
+  try {
+    const dirs = readdirSync(braveBase, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && d.name !== "System Profile" && d.name !== "Guest Profile");
+    for (const d of dirs) {
+      const p = join(braveBase, d.name, "Network", "Cookies");
+      if (existsSync(p)) return p;
+      const p2 = join(braveBase, d.name, "Cookies");
+      if (existsSync(p2)) return p2;
+    }
+  } catch {}
   return "";
 }
 
-function queryChromeCookies(dbPath: string, domains: string[]): TokenResult[] {
+function queryChromeCookies(dbPath: string, domains: string[], browserName: string): TokenResult[] {
   try {
-    const sqlite3 = require("better-sqlite3");
-    const db = new sqlite3(dbPath, { readonly: true });
+    const Database = require("better-sqlite3");
+    const db = new Database(dbPath, { readonly: true });
 
     const domainFilter = domains.map((d) => `'${d}'`).join(",");
-    const rows = db
-      .prepare(
-        `SELECT host_key, name, encrypted_value FROM cookies WHERE host_key IN (${domainFilter}) ORDER BY host_key`
-      )
-      .all();
+    let rows: any[];
+    try {
+      rows = db
+        .prepare(
+          `SELECT host_key, name, encrypted_value FROM cookies WHERE host_key IN (${domainFilter}) ORDER BY host_key`
+        )
+        .all();
+    } catch (e: any) {
+      db.close();
+      return [{
+        browser: browserName,
+        domain: "",
+        name: "",
+        value: "",
+        decrypted: false,
+        error: `Cannot query cookies DB: ${e.message}. Close the browser first.`,
+      }];
+    }
 
     const results: TokenResult[] = [];
     for (const row of rows) {
       const host = row.host_key || "";
-      const browser = dbPath.includes("Chrome") ? "Chrome" : dbPath.includes("Edge") ? "Edge" : "Brave";
       try {
         const decrypted = decryptChromeValue(row.encrypted_value);
         results.push({
-          browser,
+          browser: browserName,
           domain: host,
           name: row.name,
           value: decrypted,
           decrypted: true,
         });
-      } catch {
+      } catch (e: any) {
         results.push({
-          browser,
+          browser: browserName,
           domain: host,
           name: row.name,
-          value: "[encrypted - close browser first]",
+          value: "[encrypted]",
           decrypted: false,
-          error: "Cannot decrypt. Close the browser and try again.",
+          error: `Decrypt failed: ${e.message}. Close browser and retry.`,
         });
       }
     }
     db.close();
     return results;
   } catch (e: any) {
-    if (e.code === "MODULE_NOT_FOUND") {
+    if (e.code === "MODULE_NOT_FOUND" || e.message?.includes("better-sqlite3")) {
       return [{
-        browser: "Chrome",
+        browser: browserName,
         domain: "",
         name: "",
         value: "",
         decrypted: false,
-        error: "better-sqlite3 not available. Reading cookies requires this native module.",
+        error: "better-sqlite3 native module not available",
       }];
     }
     return [{
-      browser: "Chrome",
+      browser: browserName,
       domain: "",
       name: "",
       value: "",
       decrypted: false,
-      error: e.message || "Failed to read cookies",
+      error: `Failed to read: ${e.message}`,
     }];
   }
 }
@@ -173,7 +231,7 @@ export async function GET() {
       continue;
     }
 
-    const tokens = queryChromeCookies(dbPath, targetDomains);
+    const tokens = queryChromeCookies(dbPath, targetDomains, browser.name);
     if (tokens.length === 0) {
       results.push({
         browser: browser.name,
