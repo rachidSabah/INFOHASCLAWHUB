@@ -292,11 +292,11 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                 {/* Token List */}
                 <div className="flex-1 min-h-0">
                   <ScrollArea className="h-full">
-                    {tokens.filter(t => !t.provider || t.provider === ["deepseek","qwen","gemini","kimi","z-ai"][i]).length === 0 && !loading && (
+                    {tokens.filter(t => t.provider === ["deepseek","qwen","gemini","kimi","z-ai"][i] || !t.provider).length === 0 && !loading && (
                       <p className="text-[11px] text-muted-foreground text-center py-4">Click Scan Tokens to find auth tokens in your browser</p>
                     )}
                     <div className="space-y-1.5">
-                      {tokens.filter(t => t.decrypted && t.value && t.value !== "[locked]" && (!t.provider || t.provider === ["deepseek","qwen","gemini","kimi","z-ai"][i])).map((t, j) => (
+                      {tokens.filter(t => t.provider === ["deepseek","qwen","gemini","kimi","z-ai"][i] || !t.provider).map((t, j) => (
                         <div key={j} className={cn("rounded-lg border p-2", t.source === "localStorage" ? "border-blue-500/20 bg-blue-500/5" : "border-green-500/20 bg-green-500/5")}>
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-1.5 min-w-0">
