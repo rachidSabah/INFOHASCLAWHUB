@@ -246,7 +246,7 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                   </Badge>
                   {bridgeStatus[p.name] !== "running" && (
                     <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => checkBridgeStatus(p)}>
-                      <RefreshCw className="h-3 w-3 mr-1" /> Retry
+                      {bridgeStatus[p.name] === "unknown" ? <RefreshCw className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />} Check
                     </Button>
                   )}
                   <a href={p.loginUrl} target="_blank" className="text-[10px] text-muted-foreground hover:text-foreground ml-auto flex items-center gap-1">
@@ -275,8 +275,9 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                   <div className="flex gap-2">
                     <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} 
                       placeholder="Paste Bearer token (eyJ...) here" className="h-8 text-[10px] flex-1 font-mono" />
-                    <Button size="sm" variant="outline" className="h-8 text-[10px] shrink-0" onClick={scanTokens} disabled={loading}>
-                      {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+                    <Button size="sm" variant="outline" className="h-8 text-[10px] gap-1 shrink-0" onClick={scanTokens} disabled={loading}>
+                      {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                      Scan
                     </Button>
                     <Button size="sm" className={cn("h-8 text-[10px] gap-1 shrink-0", configured.includes(p.name) ? "bg-green-600" : "")} onClick={configureProvider}
                       disabled={!apiKey.trim()}>
