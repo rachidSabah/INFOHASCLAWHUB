@@ -444,7 +444,7 @@ export function ModelRouterPanel({ open, onOpenChange }: ModelRouterPanelProps) 
   // ── Render ──
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl max-h-[92vh] p-0 gap-0 overflow-hidden flex flex-col overflow-hidden overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-4xl max-h-[92vh] p-0 gap-0 overflow-hidden flex flex-col">
         <DialogHeader className="px-6 pt-6 pb-0">
           <DialogTitle className="flex items-center gap-2">
             <Route className="h-5 w-5" />

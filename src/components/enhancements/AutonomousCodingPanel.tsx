@@ -477,7 +477,7 @@ export function AutonomousCodingPanel({ open, onOpenChange }: AutonomousCodingPa
           </TabsList>
 
           {/* ─── SETUP TAB ──────────────────────────────────────────────── */}
-          <TabsContent value="setup" className="flex-1 overflow-y-auto mt-0 overflow-y-auto">
+          <TabsContent value="setup" className="flex-1 overflow-y-auto mt-0">
             <ScrollArea className="max-h-[65vh]">
               <div className="space-y-6 p-1">
                 <Card>

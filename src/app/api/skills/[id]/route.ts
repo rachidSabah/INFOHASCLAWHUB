@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 
+function errorResponse(message: string, status: number) {
+  return NextResponse.json({ error: message }, { status });
+}
+
 export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -11,20 +15,23 @@ export async function DELETE(
     const skillsPath = path.join(process.cwd(), "skills");
     const skillDir = path.join(skillsPath, id);
 
-    if (!fs.existsSync(skillDir)) {
-      return new NextResponse("Skill not found", { status: 404 });
+    // Security check: ensure the path is within the skills directory
+    const resolvedSkillsPath = path.resolve(skillsPath);
+    const resolvedSkillDir = path.resolve(skillDir);
+    if (!resolvedSkillDir.startsWith(resolvedSkillsPath)) {
+      return errorResponse("Forbidden", 403);
     }
 
-    // Security check: ensure the path is within the skills directory
-    if (!skillDir.startsWith(skillsPath)) {
-      return new NextResponse("Forbidden", { status: 403 });
+    if (!fs.existsSync(skillDir)) {
+      return errorResponse("Skill not found", 404);
     }
 
     fs.rmSync(skillDir, { recursive: true, force: true });
 
-    return new NextResponse(null, { status: 204 });
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error("[SKILL_DELETE]", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Failed to delete skill";
+    return errorResponse(errorMessage, 500);
   }
 }

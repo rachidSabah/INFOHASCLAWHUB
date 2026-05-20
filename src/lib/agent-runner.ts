@@ -258,6 +258,7 @@ export class AgentRunner {
   }
 
   deleteRun(runId: string): boolean {
+    this.abortControllers.get(runId)?.abort();
     this.abortControllers.delete(runId);
     return this.runs.delete(runId);
   }
@@ -290,7 +291,11 @@ export class AgentRunner {
     ].join("\n");
 
     try {
-      if (signal.aborted) return;
+      if (signal.aborted) {
+        run.status = "failed";
+        run.endTime = logTime();
+        return;
+      }
 
       run.logs.push({
         timestamp: logTime(),
@@ -325,7 +330,11 @@ export class AgentRunner {
       const retryCount = new Map<number, number>();
 
       for (let stepIdx = 0; stepIdx < plan.steps.length && run.iterations < maxIter; stepIdx++) {
-        if (signal.aborted) return;
+        if (signal.aborted) {
+          run.status = "failed";
+          run.endTime = logTime();
+          return;
+        }
         if (run.status === "paused") return;
 
         run.iterations++;
@@ -366,7 +375,11 @@ export class AgentRunner {
         try {
           const stepResponse = await callChatAPI(context, model, agentId, workspacePath, signal);
 
-          if (signal.aborted) return;
+          if (signal.aborted) {
+            run.status = "failed";
+            run.endTime = logTime();
+            return;
+          }
 
           run.logs.push({
             timestamp: logTime(),
@@ -398,7 +411,11 @@ export class AgentRunner {
               signal
             );
 
-            if (signal.aborted) return;
+            if (signal.aborted) {
+              run.status = "failed";
+              run.endTime = logTime();
+              return;
+            }
 
             {
               const altPlan = parsePlan(replanResponse);
@@ -470,7 +487,11 @@ export class AgentRunner {
 
       run.endTime = logTime();
     } catch (err: unknown) {
-      if (signal.aborted) return;
+      if (signal.aborted) {
+        run.status = "failed";
+        run.endTime = logTime();
+        return;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       run.status = "failed";
       run.endTime = logTime();

@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       data: {
         title: title || "New Chat",
         model: model || "gemini-2.5-pro",
-        systemPrompt: systemPrompt || null,
+        systemPrompt: systemPrompt ?? null,
       },
     });
 

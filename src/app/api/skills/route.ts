@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 
+function errorResponse(message: string, status: number) {
+  return NextResponse.json({ error: message }, { status });
+}
+
 export async function GET() {
   try {
     const skillsPath = path.join(process.cwd(), "skills");
@@ -37,7 +41,8 @@ export async function GET() {
     return NextResponse.json(skills);
   } catch (error) {
     console.error("[SKILLS_GET]", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Failed to fetch skills";
+    return errorResponse(errorMessage, 500);
   }
 }
 
@@ -46,8 +51,8 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { name, description } = body;
 
-    if (!name) {
-      return new NextResponse("Name is required", { status: 400 });
+    if (!name || typeof name !== "string") {
+      return errorResponse("Name is required", 400);
     }
 
     const skillsPath = path.join(process.cwd(), "skills");
@@ -55,11 +60,16 @@ export async function POST(req: Request) {
       fs.mkdirSync(skillsPath, { recursive: true });
     }
 
-    const skillId = name.toLowerCase().replace(/\s+/g, "-");
+    const skillId = name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-");
     const skillDir = path.join(skillsPath, skillId);
 
     if (fs.existsSync(skillDir)) {
-      return new NextResponse("Skill already exists", { status: 400 });
+      return errorResponse("Skill already exists", 400);
     }
 
     fs.mkdirSync(skillDir, { recursive: true });
@@ -80,10 +90,11 @@ ${description || `Skill for ${name}`}
       id: skillId,
       name,
       description: description || `Skill for ${name}`,
-    });
+    }, { status: 201 });
   } catch (error) {
     console.error("[SKILLS_POST]", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Failed to create skill";
+    return errorResponse(errorMessage, 500);
   }
 }
 

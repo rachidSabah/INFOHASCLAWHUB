@@ -81,7 +81,7 @@ async function runAllChecks(): Promise<{ checks: DoctorCheck[]; summary: DoctorS
       name: "npm",
       status: "ok",
       message: `v${npmVersion}`,
-      details: `Global packages installed`,
+      details: `Global packages: ${npmGlobalCount.trim()} installed`,
     };
   } else {
     npmCheck = {

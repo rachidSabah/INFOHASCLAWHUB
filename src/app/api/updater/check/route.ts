@@ -91,7 +91,7 @@ export async function GET() {
   } catch (error: unknown) {
     return Response.json({
       hasUpdate: false,
-      error: error instanceof Error ? error.message : 'Unknown error' || "Internal error",
+      error: error instanceof Error ? error.message : "Internal error",
     }, { status: 500 });
   }
 }

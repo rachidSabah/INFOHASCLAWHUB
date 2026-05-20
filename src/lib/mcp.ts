@@ -77,7 +77,8 @@ export class MCPClient {
       this.process.on("close", (code) => {
         clearTimeout(connectTimeout);
         this.initialized = false;
-        this.pending.forEach((p) => p.reject(new Error(`MCP server "${this.config.name}" exited with code ${code}`)));
+        const exitInfo = code !== null ? `exited with code ${code}` : "was killed";
+        this.pending.forEach((p) => p.reject(new Error(`MCP server "${this.config.name}" ${exitInfo}`)));
         this.pending.clear();
       });
 

@@ -61,6 +61,7 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 export function chunkText(text: string, chunkSize = 500, overlap = 50): string[] {
+  if (chunkSize <= 0 || overlap < 0 || overlap >= chunkSize) return [text];
   const chunks: string[] = [];
   let start = 0;
   while (start < text.length) {

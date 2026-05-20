@@ -26,10 +26,6 @@ ${assistantText.slice(0, 4000)}`;
 
   try {
     let responseText = "";
-    const controller = new ReadableStream({
-      start(c) { c.close(); }
-    });
-    const encoder = new TextEncoder();
 
     if (isCustomProvider && providerData) {
       const baseUrl = (providerData.baseUrl?.replace(/\/$/, "") || "https://api.openai.com/v1").replace("://localhost", "://127.0.0.1");

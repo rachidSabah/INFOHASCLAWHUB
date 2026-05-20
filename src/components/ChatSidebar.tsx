@@ -170,8 +170,7 @@ export function ChatSidebar() {
     setEditingId(null);
   };
 
-  const toggleFavorite = async (id: string, currentVal: boolean, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const toggleFavorite = async (id: string, currentVal: boolean) => {
     const newVal = !currentVal;
     updateConversation(id, { isFavorite: newVal });
     try {
@@ -534,7 +533,7 @@ export function ChatSidebar() {
                         {!selectMode && editingId !== conv.id && (
                           <ActionMenu
                             isFavorite={true}
-                            onToggleFavorite={() => toggleFavorite(conv.id, true, new MouseEvent("click") as any)}
+                            onToggleFavorite={() => toggleFavorite(conv.id, true)}
                             onRename={() => { setEditingId(conv.id); setEditTitle(conv.title || ""); }}
                             onExportMarkdown={() => handleExport(conv.id, "markdown")}
                             onExportJSON={() => handleExport(conv.id, "json")}
@@ -642,7 +641,7 @@ export function ChatSidebar() {
                         {!selectMode && editingId !== conv.id && (
                           <ActionMenu
                             isFavorite={false}
-                            onToggleFavorite={() => toggleFavorite(conv.id, false, new MouseEvent("click") as any)}
+                            onToggleFavorite={() => toggleFavorite(conv.id, false)}
                             onRename={() => { setEditingId(conv.id); setEditTitle(conv.title || ""); }}
                             onExportMarkdown={() => handleExport(conv.id, "markdown")}
                             onExportJSON={() => handleExport(conv.id, "json")}
