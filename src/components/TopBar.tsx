@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { ClawHubLogo, ClawHubText } from "./ClawHubLogo";
 import {
   PanelLeft, Settings, Bot, Zap, ChevronDown, Check, BarChart3, Activity, ArrowUpCircle, HeartPulse,
-  Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu, Globe,
+  Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu, Server,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -30,7 +30,7 @@ import { QuickActionsPanel } from "./enhancements/QuickActionsPanel";
 import { VoiceCodingPanel } from "./enhancements/VoiceCodingPanel";
 import { GitIntelligencePanel } from "./enhancements/GitIntelligencePanel";
 import { MobileCompanionPanel } from "./enhancements/MobileCompanionPanel";
-import { BrowserTokenExtractorPanel } from "./enhancements/BrowserTokenExtractorPanel";
+import { WebBridgeHubPanel } from "./enhancements/WebBridgeHubPanel";
 
 export function TopBar() {
   const { toggleSidebar, setSettingsOpen } = useUIStore();
@@ -65,7 +65,7 @@ export function TopBar() {
   const [voiceCodingOpen, setVoiceCodingOpen] = useState(false);
   const [gitIntelOpen, setGitIntelOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [browserTokenOpen, setBrowserTokenOpen] = useState(false);
+  const [webBridgeOpen, setWebBridgeOpen] = useState(false);
 
   const agentRef = useRef<HTMLDivElement>(null);
   const skillRef = useRef<HTMLDivElement>(null);
@@ -369,8 +369,8 @@ export function TopBar() {
               <button onClick={() => { setMobileOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
                 <Smartphone className="h-3.5 w-3.5 text-fuchsia-500" /><div><span className="font-medium">Mobile Companion</span><p className="text-[10px] text-muted-foreground">Monitor from your phone</p></div>
               </button>
-              <button onClick={() => { setBrowserTokenOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-                <Globe className="h-3.5 w-3.5 text-blue-500" /><div><span className="font-medium">Browser Tokens</span><p className="text-[10px] text-muted-foreground">Extract DeepSeek session tokens</p></div>
+              <button onClick={() => { setWebBridgeOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <Globe className="h-3.5 w-3.5 text-blue-500" /><div><span className="font-medium">Web Bridges</span><p className="text-[10px] text-muted-foreground">Free AI via browser tokens</p></div>
               </button>
             </div>
           </div>
@@ -430,7 +430,7 @@ export function TopBar() {
       <VoiceCodingPanel open={voiceCodingOpen} onOpenChange={setVoiceCodingOpen} />
       <GitIntelligencePanel open={gitIntelOpen} onOpenChange={setGitIntelOpen} />
       <MobileCompanionPanel open={mobileOpen} onOpenChange={setMobileOpen} />
-      <BrowserTokenExtractorPanel open={browserTokenOpen} onOpenChange={setBrowserTokenOpen} />
+      <WebBridgeHubPanel open={webBridgeOpen} onOpenChange={setWebBridgeOpen} />
     </div>
   );
 }
