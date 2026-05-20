@@ -383,7 +383,7 @@ export function PluginMarketplacePanel({ open, onOpenChange }: PluginMarketplace
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-hidden flex flex-col" showCloseButton>
+      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-hidden flex flex-col overflow-hidden flex flex-col" showCloseButton>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-500/20 to-violet-500/20 border border-emerald-500/30">
@@ -641,14 +641,13 @@ export function PluginMarketplacePanel({ open, onOpenChange }: PluginMarketplace
                               variant="ghost"
                               className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
                               onClick={() => {
-                                try {
-                                  const manifest = JSON.parse(plugin.manifest);
-                                  toast.info(
-                                    `Plugin: ${manifest.name || plugin.name}\nEntry: ${manifest.entry || "N/A"}\nPermissions: ${(manifest.permissions || []).join(", ") || "None"}`
-                                  );
-                                } catch {
-                                  toast.info("No configuration available");
-                                }
+                                toast(
+                                  `${plugin.name} v${plugin.version || "1.0"}`,
+                                  {
+                                    description: `By ${plugin.author} • ⭐ ${plugin.rating} • ${plugin.installs} installs\n\n${plugin.description}`,
+                                    duration: 5000,
+                                  }
+                                );
                               }}
                             >
                               <Settings className="h-3.5 w-3.5" />

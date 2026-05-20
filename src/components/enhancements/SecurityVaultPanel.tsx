@@ -337,7 +337,7 @@ export function SecurityVaultPanel({ open, onOpenChange }: SecurityVaultPanelPro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" showCloseButton>
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col overflow-hidden flex flex-col" showCloseButton>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-gradient-to-br from-red-500/20 to-amber-500/20 border border-red-500/30">

@@ -379,7 +379,7 @@ export function AIPairTerminalPanel({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-6xl max-h-[90vh] p-0 gap-0" showCloseButton>
+      <DialogContent className="sm:max-w-6xl max-h-[90vh] p-0 gap-0 overflow-hidden flex flex-col overflow-hidden flex flex-col" showCloseButton>
         <DialogHeader className="px-6 pt-6 pb-2">
           <DialogTitle className="flex items-center gap-2">
             <Terminal className="h-5 w-5" />

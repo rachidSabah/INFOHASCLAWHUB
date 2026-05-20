@@ -491,7 +491,7 @@ export function CodebaseIntelligencePanel({
   // ── Render ──
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-6xl max-h-[90vh]" showCloseButton>
+      <DialogContent className="sm:max-w-6xl max-h-[90vh] overflow-hidden flex flex-col" showCloseButton>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <LayoutGrid className="h-5 w-5" />
