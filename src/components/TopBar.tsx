@@ -370,7 +370,7 @@ export function TopBar() {
                 <Smartphone className="h-3.5 w-3.5 text-fuchsia-500" /><div><span className="font-medium">Mobile Companion</span><p className="text-[10px] text-muted-foreground">Monitor from your phone</p></div>
               </button>
               <button onClick={() => { setWebBridgeOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-                <Globe className="h-3.5 w-3.5 text-blue-500" /><div><span className="font-medium">Web Bridges</span><p className="text-[10px] text-muted-foreground">Free AI via browser tokens</p></div>
+                <Server className="h-3.5 w-3.5 text-blue-500" /><div><span className="font-medium">Web Bridges</span><p className="text-[10px] text-muted-foreground">Free AI via browser tokens</p></div>
               </button>
             </div>
           </div>
