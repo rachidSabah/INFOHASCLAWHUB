@@ -585,7 +585,7 @@ echo "✅ Deployment to $ENV complete!"`);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-hidden flex flex-col overflow-hidden flex flex-col" showCloseButton>
+      <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-hidden flex flex-col" showCloseButton>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-gradient-to-br from-orange-500/20 to-rose-500/20 border border-orange-500/30">
@@ -620,7 +620,7 @@ echo "✅ Deployment to $ENV complete!"`);
           </TabsList>
 
           {/* ═══ ENVIRONMENTS TAB ═══ */}
-          <TabsContent value="environments" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="environments" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-4 p-1 pr-4">
                 {/* Add Environment Button */}
@@ -806,7 +806,7 @@ echo "✅ Deployment to $ENV complete!"`);
           </TabsContent>
 
           {/* ═══ DEPLOY TAB ═══ */}
-          <TabsContent value="deploy" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="deploy" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-4 p-1 pr-4">
                 {/* Select Environment */}
@@ -935,7 +935,7 @@ echo "✅ Deployment to $ENV complete!"`);
           </TabsContent>
 
           {/* ═══ CI/CD TAB ═══ */}
-          <TabsContent value="cicd" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="cicd" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-4 p-1 pr-4">
                 {/* CI/CD Generator Buttons */}
@@ -1040,7 +1040,7 @@ echo "✅ Deployment to $ENV complete!"`);
           </TabsContent>
 
           {/* ═══ MONITORING TAB ═══ */}
-          <TabsContent value="monitoring" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="monitoring" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-4 p-1 pr-4">
                 {/* Monitor Controls */}

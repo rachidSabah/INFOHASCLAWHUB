@@ -448,7 +448,7 @@ export function AutonomousCodingPanel({ open, onOpenChange }: AutonomousCodingPa
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-hidden flex flex-col overflow-hidden flex flex-col" showCloseButton>
+      <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-hidden flex flex-col" showCloseButton>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Code2 className="h-5 w-5" />
@@ -477,7 +477,7 @@ export function AutonomousCodingPanel({ open, onOpenChange }: AutonomousCodingPa
           </TabsList>
 
           {/* ─── SETUP TAB ──────────────────────────────────────────────── */}
-          <TabsContent value="setup" className="flex-1 overflow-y-auto mt-0">
+          <TabsContent value="setup" className="flex-1 overflow-y-auto mt-0 overflow-y-auto">
             <ScrollArea className="max-h-[65vh]">
               <div className="space-y-6 p-1">
                 <Card>
@@ -624,7 +624,7 @@ export function AutonomousCodingPanel({ open, onOpenChange }: AutonomousCodingPa
           </TabsContent>
 
           {/* ─── LIVE LOOP TAB ───────────────────────────────────────────── */}
-          <TabsContent value="live" className="flex-1 overflow-hidden mt-0">
+          <TabsContent value="live" className="flex-1 overflow-hidden mt-0 overflow-y-auto">
             {!activeSession ? (
               <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center gap-3 p-8">
                 <Code2 className="h-12 w-12 text-muted-foreground/30" />
@@ -1071,7 +1071,7 @@ export function AutonomousCodingPanel({ open, onOpenChange }: AutonomousCodingPa
           </TabsContent>
 
           {/* ─── HISTORY TAB ───────────────────────────────────────────── */}
-          <TabsContent value="history" className="flex-1 overflow-hidden mt-0">
+          <TabsContent value="history" className="flex-1 overflow-hidden mt-0 overflow-y-auto">
             <ScrollArea className="max-h-[65vh]">
               {sessions.length === 0 ? (
                 <div className="flex flex-col items-center justify-center min-h-[200px] text-center gap-3 p-8">

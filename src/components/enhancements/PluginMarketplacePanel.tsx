@@ -383,7 +383,7 @@ export function PluginMarketplacePanel({ open, onOpenChange }: PluginMarketplace
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-hidden flex flex-col overflow-hidden flex flex-col" showCloseButton>
+      <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-hidden flex flex-col" showCloseButton>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-gradient-to-br from-emerald-500/20 to-violet-500/20 border border-emerald-500/30">
@@ -414,7 +414,7 @@ export function PluginMarketplacePanel({ open, onOpenChange }: PluginMarketplace
           </TabsList>
 
           {/* ═══ BROWSE TAB ═══ */}
-          <TabsContent value="browse" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="browse" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-4 p-1 pr-4">
                 {/* Search & Filter */}
@@ -533,7 +533,7 @@ export function PluginMarketplacePanel({ open, onOpenChange }: PluginMarketplace
           </TabsContent>
 
           {/* ═══ INSTALLED TAB ═══ */}
-          <TabsContent value="installed" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="installed" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-4 p-1 pr-4">
                 {/* Filter */}
@@ -671,7 +671,7 @@ export function PluginMarketplacePanel({ open, onOpenChange }: PluginMarketplace
           </TabsContent>
 
           {/* ═══ CREATE TAB ═══ */}
-          <TabsContent value="create" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="create" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-200px)]">
               <div className="space-y-6 p-1 pr-4">
                 {/* Plugin Info */}

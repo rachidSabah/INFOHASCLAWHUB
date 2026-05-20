@@ -444,7 +444,7 @@ export function ModelRouterPanel({ open, onOpenChange }: ModelRouterPanelProps) 
   // ── Render ──
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl max-h-[90vh] p-0 gap-0 overflow-hidden flex flex-col overflow-hidden overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-4xl max-h-[92vh] p-0 gap-0 overflow-hidden flex flex-col overflow-hidden overflow-hidden flex flex-col">
         <DialogHeader className="px-6 pt-6 pb-0">
           <DialogTitle className="flex items-center gap-2">
             <Route className="h-5 w-5" />
@@ -475,7 +475,7 @@ export function ModelRouterPanel({ open, onOpenChange }: ModelRouterPanelProps) 
           </div>
 
           {/* ──────── ROUTES TAB ──────── */}
-          <TabsContent value="routes" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="routes" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-14rem)]">
               <div className="p-6 space-y-4">
                 {/* Action bar */}
@@ -771,7 +771,7 @@ export function ModelRouterPanel({ open, onOpenChange }: ModelRouterPanelProps) 
           </TabsContent>
 
           {/* ──────── SMART ROUTE TAB ──────── */}
-          <TabsContent value="smart-route" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="smart-route" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-14rem)]">
               <div className="p-6 space-y-5">
                 {/* Input section */}
@@ -946,7 +946,7 @@ export function ModelRouterPanel({ open, onOpenChange }: ModelRouterPanelProps) 
           </TabsContent>
 
           {/* ──────── BENCHMARK TAB ──────── */}
-          <TabsContent value="benchmark" className="flex-1 min-h-0 mt-0">
+          <TabsContent value="benchmark" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-14rem)]">
               <div className="p-6 space-y-4">
                 {/* Action bar */}

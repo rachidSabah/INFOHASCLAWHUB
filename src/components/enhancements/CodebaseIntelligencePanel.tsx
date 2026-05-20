@@ -491,7 +491,7 @@ export function CodebaseIntelligencePanel({
   // ── Render ──
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-6xl max-h-[90vh] overflow-hidden flex flex-col" showCloseButton>
+      <DialogContent className="sm:max-w-6xl max-h-[92vh] overflow-hidden flex flex-col" showCloseButton>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <LayoutGrid className="h-5 w-5" />
@@ -524,7 +524,7 @@ export function CodebaseIntelligencePanel({
           </TabsList>
 
           {/* ── Search Tab ── */}
-          <TabsContent value="search" className="mt-4">
+          <TabsContent value="search" className="mt-4 overflow-y-auto">
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
@@ -662,7 +662,7 @@ export function CodebaseIntelligencePanel({
           </TabsContent>
 
           {/* ── Dependencies Tab ── */}
-          <TabsContent value="dependencies" className="mt-4">
+          <TabsContent value="dependencies" className="mt-4 overflow-y-auto">
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Button
@@ -792,7 +792,7 @@ export function CodebaseIntelligencePanel({
           </TabsContent>
 
           {/* ── Architecture Tab ── */}
-          <TabsContent value="architecture" className="mt-4">
+          <TabsContent value="architecture" className="mt-4 overflow-y-auto">
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Button
@@ -922,7 +922,7 @@ export function CodebaseIntelligencePanel({
           </TabsContent>
 
           {/* ── Security Tab ── */}
-          <TabsContent value="security" className="mt-4">
+          <TabsContent value="security" className="mt-4 overflow-y-auto">
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Button size="sm" onClick={fetchSecurity} disabled={secLoading}>
