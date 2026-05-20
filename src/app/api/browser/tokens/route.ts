@@ -1,5 +1,5 @@
 import { execSync } from "child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "fs";
+import { existsSync, readFileSync, readdirSync, statSync, copyFileSync, unlinkSync } from "fs";
 import { join } from "path";
 import os from "os";
 import crypto from "crypto";
@@ -7,7 +7,7 @@ import { NextResponse } from "next/server";
 
 interface TokenResult {
   browser: string; domain: string; name: string; value: string;
-  decrypted?: boolean; source?: "cookie" | "localStorage"; provider?: string; error?: string;
+  decrypted?: boolean; source?: "cookie" | "localStorage" | "manual"; provider?: string; error?: string;
 }
 
 const isWin = process.platform === "win32";
@@ -30,18 +30,75 @@ function dpapiDecrypt(data: Buffer): Buffer | null {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[DPAPI]", msg.slice(0, 80));
   } finally {
-    try { require("fs").unlinkSync(tmpIn); } catch {}
-    try { require("fs").unlinkSync(tmpOut); } catch {}
+    try { unlinkSync(tmpIn); } catch {}
+    try { unlinkSync(tmpOut); } catch {}
   }
   return null;
 }
 
-// ─── Linux key derivation (Chrome uses PBKDF2 with "peanuts" password) ───
+// ─── Linux key derivation strategies ───
 function getLinuxChromeKey(): Buffer {
   // Chrome on Linux (older versions) uses PBKDF2-HMAC-SHA1 with:
   //   password = "peanuts", salt = "saltysalt", iterations = 1, keylen = 16
-  // This gives AES-128-CBC key for v10 cookies
   return crypto.pbkdf2Sync("peanuts", "saltysalt", 1, 16, "sha1");
+}
+
+function getLinuxKeyringKey(browserName: string): Buffer | null {
+  // Chrome 80+ on Linux stores the key in the system keyring (gnome-keyring / kwallet)
+  // Access via `secret-tool` CLI (part of libsecret-tools)
+  const appNames: Record<string, string> = {
+    "Chrome": "chrome",
+    "Chromium": "chromium",
+    "Brave": "brave",
+    "Edge": "microsoft-edge",
+    "Vivaldi": "vivaldi",
+  };
+  const app = appNames[browserName];
+  if (!app) return null;
+
+  try {
+    // Try gnome-keyring via secret-tool
+    const password = execSync(
+      `secret-tool lookup application ${app} 2>/dev/null || secret-tool lookup xdg:schema chrome_libsecret_os_crypt_password_v2 application ${app} 2>/dev/null`,
+      { encoding: "utf-8", timeout: 5000 }
+    ).trim();
+
+    if (password) {
+      // Derive key using PBKDF2 (same as Chrome does)
+      // v2 schema uses: PBKDF2-HMAC-SHA1, salt="saltysalt", iterations=1, keylen=16
+      return crypto.pbkdf2Sync(password, "saltysalt", 1, 16, "sha1");
+    }
+  } catch {
+    // secret-tool not available or key not found
+  }
+
+  return null;
+}
+
+// ─── Detect Chrome version ───
+function getChromeVersion(userDataPath: string): string | null {
+  // Try to read from the browser's manifest or prefs
+  try {
+    const prefsPath = join(userDataPath, "Default", "Preferences");
+    if (existsSync(prefsPath)) {
+      const prefs = JSON.parse(readFileSync(prefsPath, "utf-8"));
+      // Not always present, but worth checking
+      return prefs?.browser?.window?.placement?.bottom || null;
+    }
+  } catch {}
+  return null;
+}
+
+// ─── Check if app-bound encryption is in use (Chrome v127+ on Windows) ───
+function checkAppBoundEncryption(userDataPath: string): boolean {
+  if (!isWin) return false;
+  try {
+    const localStatePath = join(userDataPath, "Local State");
+    if (!existsSync(localStatePath)) return false;
+    const localState = JSON.parse(readFileSync(localStatePath, "utf-8"));
+    // Chrome v127+ uses app-bound encryption which is NOT accessible from external processes
+    return localState?.os_crypt?.app_bound_encrypted_key !== undefined;
+  } catch { return false; }
 }
 
 // ─── Decrypt Chrome v10/v11 cookie (AES-256-GCM) ───
@@ -61,13 +118,12 @@ function decryptChromeCookieGCM(encryptedValue: Buffer, masterKey: Buffer): stri
   } catch { return null; }
 }
 
-// ─── Decrypt Chrome v10 cookie with AES-128-CBC (Linux fallback) ───
+// ─── Decrypt Chrome v10/v11 cookie with AES-128-CBC (Linux/macOS) ───
 function decryptChromeCookieCBC(encryptedValue: Buffer, key: Buffer): string | null {
   try {
     if (encryptedValue.length < 3) return null;
     const prefix = encryptedValue.toString("utf-8", 0, 3);
     if (prefix !== "v10" && prefix !== "v11") return null;
-    // v10/v11 on Linux: strip 3-byte prefix, then AES-128-CBC with IV = 16 x 0x20
     const encrypted = encryptedValue.slice(3);
     const iv = Buffer.alloc(16, 0x20); // 16 space characters
     const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
@@ -77,53 +133,84 @@ function decryptChromeCookieCBC(encryptedValue: Buffer, key: Buffer): string | n
 }
 
 // ─── Get Chrome master key (cross-platform) ───
-function getChromeMasterKey(userDataPath: string): Buffer | null {
+function getChromeMasterKey(userDataPath: string, browserName: string): { key: Buffer | null; reason: string } {
   const localStatePath = join(userDataPath, "Local State");
-  if (!existsSync(localStatePath)) return null;
+  if (!existsSync(localStatePath)) {
+    return { key: null, reason: "No Local State file found" };
+  }
+
   try {
     const localState = JSON.parse(readFileSync(localStatePath, "utf-8"));
     const encryptedKeyB64 = localState?.os_crypt?.encrypted_key;
-    if (!encryptedKeyB64) return null;
+    if (!encryptedKeyB64) {
+      return { key: null, reason: "No encrypted_key in Local State" };
+    }
     const encryptedKey = Buffer.from(encryptedKeyB64, "base64");
 
-    // Windows: skip "DPAPI" prefix (5 bytes), then DPAPI decrypt
-    if (encryptedKey.length > 5 && encryptedKey.toString("utf-8", 0, 5) === "DPAPI") {
-      const rawKey = encryptedKey.slice(5);
-      const decrypted = dpapiDecrypt(rawKey);
-      return decrypted;
+    // ─── Windows ───
+    if (isWin) {
+      // Check for app-bound encryption first (Chrome v127+)
+      if (checkAppBoundEncryption(userDataPath)) {
+        return { key: null, reason: "Chrome v127+ app-bound encryption — cookies cannot be decrypted externally. Use DevTools (F12) to extract Bearer token manually." };
+      }
+
+      // Standard DPAPI: skip "DPAPI" prefix (5 bytes), then decrypt
+      if (encryptedKey.length > 5 && encryptedKey.toString("utf-8", 0, 5) === "DPAPI") {
+        const rawKey = encryptedKey.slice(5);
+        const decrypted = dpapiDecrypt(rawKey);
+        if (decrypted) return { key: decrypted, reason: "DPAPI decryption successful" };
+        return { key: null, reason: "DPAPI decryption failed — run as the same Windows user that created the cookies" };
+      }
+
+      return { key: null, reason: "Unknown encryption format on Windows" };
     }
 
-    // macOS: skip "v10" prefix (3 bytes), then keychain decrypt via `security` CLI
-    if (isMac && encryptedKey.length > 3 && encryptedKey.toString("utf-8", 0, 3) === "v10") {
-      try {
-        const keyBase64 = execSync(
-          `security find-generic-password -wa "Chrome Safe Storage" 2>/dev/null`,
-          { encoding: "utf-8", timeout: 5000 }
-        ).trim();
-        const key = crypto.pbkdf2Sync(keyBase64, "saltysalt", 1003, 16, "sha1");
-        return key; // 16-byte key for AES-128-CBC on macOS
-      } catch { return null; }
+    // ─── macOS ───
+    if (isMac) {
+      if (encryptedKey.length > 3 && encryptedKey.toString("utf-8", 0, 3) === "v10") {
+        try {
+          const keyPassword = execSync(
+            `security find-generic-password -wa "Chrome Safe Storage" 2>/dev/null`,
+            { encoding: "utf-8", timeout: 5000 }
+          ).trim();
+          const key = crypto.pbkdf2Sync(keyPassword, "saltysalt", 1003, 16, "sha1");
+          return { key, reason: "macOS Keychain key retrieved" };
+        } catch {
+          return { key: null, reason: "macOS Keychain access denied — allow terminal access to 'Chrome Safe Storage' in Keychain Access" };
+        }
+      }
     }
 
-    // Linux: some Chrome versions store key without DPAPI wrapper — raw base64 key
+    // ─── Linux ───
     if (isLinux) {
+      // Strategy 1: Try system keyring (gnome-keyring) — Chrome 80+ stores key there
+      const keyringKey = getLinuxKeyringKey(browserName);
+      if (keyringKey) {
+        return { key: keyringKey, reason: "Linux keyring key retrieved via secret-tool" };
+      }
+
+      // Strategy 2: Try raw base64 key (some Chrome versions)
       try {
-        // Try direct key (no DPAPI wrapper on some Linux Chrome versions)
-        const rawKey = encryptedKey; // no prefix to skip
-        if (rawKey.length === 32 || rawKey.length === 16) return rawKey;
-        // If it's 37 bytes (5 byte prefix + 32 byte key), skip prefix
-        if (rawKey.length === 37) return rawKey.slice(5);
-      } catch { /* fall through */ }
+        const rawKey = encryptedKey;
+        if (rawKey.length === 32) return { key: rawKey, reason: "Raw 32-byte key found" };
+        if (rawKey.length === 16) return { key: rawKey, reason: "Raw 16-byte key found" };
+        if (rawKey.length === 37) return { key: rawKey.slice(5), reason: "Key with 5-byte prefix" };
+      } catch {}
+
+      // Strategy 3: Try DPAPI prefix (some Chromium builds)
+      if (encryptedKey.length > 5 && encryptedKey.toString("utf-8", 0, 5) === "DPAPI") {
+        // Can't use DPAPI on Linux, but let's note it
+        return { key: null, reason: "Key uses Windows DPAPI format — cannot decrypt on Linux. Install libsecret-tools and run: secret-tool lookup application chrome" };
+      }
+
+      return { key: null, reason: "Could not retrieve encryption key. Install libsecret-tools: sudo apt install libsecret-tools, then try again. Or use DevTools to extract Bearer token manually." };
     }
 
-    // Fallback: try DPAPI anyway
-    if (encryptedKey.length > 5) {
-      const decrypted = dpapiDecrypt(encryptedKey.slice(5));
-      if (decrypted) return decrypted;
-    }
-
-    return null;
-  } catch { return null; }
+    return { key: null, reason: "Unsupported platform" };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { key: null, reason: `Error reading master key: ${msg.slice(0, 100)}` };
+  }
 }
 
 // ─── Browser paths (cross-platform) ───
@@ -160,7 +247,6 @@ function getBrowserPaths(): { name: string; userDataPath: string; cookiePath: st
     try {
       if (!existsSync(b.base)) return { name: b.name, userDataPath: b.base, cookiePath: "" };
       const dirs = readdirSync(b.base, { withFileTypes: true }).filter(d => d.isDirectory());
-      // Try profile directories in order of priority
       const profileOrder = ["Default", "Profile 1", "Profile 2", "Profile 3"];
       for (const profileName of profileOrder) {
         const p = join(b.base, profileName, "Network", "Cookies");
@@ -168,7 +254,6 @@ function getBrowserPaths(): { name: string; userDataPath: string; cookiePath: st
         const p2 = join(b.base, profileName, "Cookies");
         if (existsSync(p2)) { cookiePath = p2; break; }
       }
-      // Fallback: scan all subdirectories
       if (!cookiePath) {
         for (const d of dirs) {
           const p = join(b.base, d.name, "Network", "Cookies");
@@ -182,64 +267,76 @@ function getBrowserPaths(): { name: string; userDataPath: string; cookiePath: st
   });
 }
 
-// ─── Cookie scanner (cross-platform) ───
-function scanCookies(cookiePath: string, masterKey: Buffer | null, browser: string, providerDomains: string[], providerName: string): TokenResult[] {
+// ─── Cookie scanner (cross-platform, all strategies) ───
+function scanCookies(cookiePath: string, masterKey: Buffer | null, keyReason: string, browser: string, providerDomains: string[], providerName: string): TokenResult[] {
   try {
     // Copy the cookie DB to temp to avoid lock issues
     const tmpDbPath = join(os.tmpdir(), `ch_cookies_${Date.now()}.db`);
     try {
-      const { copyFileSync } = require("fs") as typeof import("fs");
       copyFileSync(cookiePath, tmpDbPath);
     } catch {
-      // If copy fails, try direct read
-      return [{ browser, domain: "", name: "", value: "", decrypted: false, provider: providerName, error: "Cookie DB locked — close browser and retry" }];
+      return [{ browser, domain: "", name: "", value: "", decrypted: false, provider: providerName, error: "Cookie DB locked by browser — close browser and retry" }];
     }
 
-    const Database = require("better-sqlite3");
+    let Database: any;
+    try {
+      Database = require("better-sqlite3");
+    } catch {
+      return [{ browser, domain: "", name: "", value: "", decrypted: false, provider: providerName, error: "better-sqlite3 not available — cannot read cookie database" }];
+    }
+
     const db = new Database(tmpDbPath, { readonly: true });
     const domains = providerDomains.map(d => `'${d}'`).join(",");
     let rows: { host_key: string; name: string; encrypted_value: Buffer }[];
     try {
       rows = db.prepare(`SELECT host_key, name, encrypted_value FROM cookies WHERE host_key IN (${domains})`).all();
     } catch {
-      // Table might not exist or be empty
       db.close();
-      try { require("fs").unlinkSync(tmpDbPath); } catch {}
+      try { unlinkSync(tmpDbPath); } catch {}
       return [];
     }
 
     const linuxFallbackKey = isLinux ? getLinuxChromeKey() : null;
+    const linuxKeyringKey = isLinux ? getLinuxKeyringKey(browser) : null;
     const r: TokenResult[] = [];
 
     for (const row of rows) {
       const ev = Buffer.isBuffer(row.encrypted_value) ? row.encrypted_value : Buffer.from(row.encrypted_value || []);
 
-      // Strategy 1: AES-256-GCM with master key (Windows DPAPI-decrypted key or Linux raw key)
+      if (ev.length === 0) continue; // skip empty entries
+
+      // Strategy 1: AES-256-GCM with master key (Windows DPAPI-decrypted key)
       if (masterKey && masterKey.length === 32) {
         const val = decryptChromeCookieGCM(ev, masterKey);
         if (val) { r.push({ browser, domain: row.host_key, name: row.name, value: val, decrypted: true, source: "cookie", provider: providerName }); continue; }
       }
 
-      // Strategy 2: AES-128-CBC with Linux fallback key (PBKDF2 "peanuts")
+      // Strategy 2: AES-128-CBC with Linux keyring key (gnome-keyring)
+      if (linuxKeyringKey) {
+        const val = decryptChromeCookieCBC(ev, linuxKeyringKey);
+        if (val) { r.push({ browser, domain: row.host_key, name: row.name, value: val, decrypted: true, source: "cookie", provider: providerName }); continue; }
+      }
+
+      // Strategy 3: AES-128-CBC with PBKDF2 "peanuts" key (older Chrome on Linux)
       if (linuxFallbackKey) {
         const val = decryptChromeCookieCBC(ev, linuxFallbackKey);
         if (val) { r.push({ browser, domain: row.host_key, name: row.name, value: val, decrypted: true, source: "cookie", provider: providerName }); continue; }
       }
 
-      // Strategy 3: AES-128-CBC with macOS key
+      // Strategy 4: AES-128-CBC with macOS key
       if (isMac && masterKey && masterKey.length === 16) {
         const val = decryptChromeCookieCBC(ev, masterKey);
         if (val) { r.push({ browser, domain: row.host_key, name: row.name, value: val, decrypted: true, source: "cookie", provider: providerName }); continue; }
       }
 
-      // Strategy 4: DPAPI fallback (Windows)
+      // Strategy 5: DPAPI fallback (Windows)
       if (isWin && ev.length > 15) {
         const plain = dpapiDecrypt(ev.slice(15));
         if (plain) { r.push({ browser, domain: row.host_key, name: row.name, value: plain.toString("utf-8"), decrypted: true, source: "cookie", provider: providerName }); continue; }
       }
 
-      // Strategy 5: Plaintext (some Linux Chrome versions store cookies unencrypted)
-      if (ev.length > 0 && ev[0] !== 0x76) { // not starting with 'v' (v10/v11 prefix)
+      // Strategy 6: Plaintext (some Linux Chrome versions store cookies unencrypted)
+      if (ev.length > 0 && ev[0] !== 0x76) {
         try {
           const plaintext = ev.toString("utf-8");
           if (plaintext.length > 5 && !/[\x00-\x08\x0e-\x1f]/.test(plaintext)) {
@@ -249,11 +346,24 @@ function scanCookies(cookiePath: string, masterKey: Buffer | null, browser: stri
         } catch {}
       }
 
-      r.push({ browser, domain: row.host_key, name: row.name, value: "[locked]", decrypted: false, source: "cookie", provider: providerName, error: "Encrypted — close browser, run on desktop, or paste token manually" });
+      // All strategies failed — provide helpful error message
+      const isV20 = ev.length > 3 && (ev.toString("utf-8", 0, 3) === "v10" || ev.toString("utf-8", 0, 3) === "v11");
+      let lockReason = "Encrypted cookie — could not decrypt";
+      if (!masterKey && !linuxFallbackKey && !linuxKeyringKey) {
+        lockReason = keyReason || "No decryption key available";
+      } else if (isV20 && isWin) {
+        lockReason = "Chrome encrypted this cookie — DPAPI key extraction failed. Try running as the same Windows user.";
+      } else if (isV20 && isLinux) {
+        lockReason = "Chrome uses keyring encryption. Install: sudo apt install libsecret-tools. Then re-scan.";
+      } else {
+        lockReason = "Cookie encrypted with unknown scheme. Use F12 → Network → copy Bearer token manually.";
+      }
+
+      r.push({ browser, domain: row.host_key, name: row.name, value: "[locked]", decrypted: false, source: "cookie", provider: providerName, error: lockReason });
     }
 
     db.close();
-    try { require("fs").unlinkSync(tmpDbPath); } catch {}
+    try { unlinkSync(tmpDbPath); } catch {}
     return r;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -315,6 +425,88 @@ function scanBridgeStatus(): Record<string, { running: boolean; url: string; mod
   return status;
 }
 
+// ─── Client-side extraction scripts for each provider ───
+function getClientSideScripts(): Record<string, { label: string; script: string }> {
+  return {
+    deepseek: {
+      label: "Extract DeepSeek Token",
+      script: `// Run this in chat.deepseek.com browser console (F12)
+(function() {
+  // Try localStorage first
+  const keys = ['userToken', 'token', 'authToken', 'access_token'];
+  for (const k of keys) {
+    const v = localStorage.getItem(k);
+    if (v && v.length > 20) {
+      navigator.clipboard.writeText(v).then(() => alert('Token copied! Key: ' + k));
+      return;
+    }
+  }
+  // Try cookies
+  const cookies = document.cookie.split(';');
+  for (const c of cookies) {
+    const [name, val] = c.trim().split('=');
+    if (val && val.length > 20 && name.includes('token')) {
+      navigator.clipboard.writeText(val).then(() => alert('Token copied! Cookie: ' + name));
+      return;
+    }
+  }
+  alert('No token found in localStorage/cookies.\\nUse F12 → Network → find Bearer token in request headers.');
+})();`,
+    },
+    qwen: {
+      label: "Extract Qwen Token",
+      script: `// Run this in chat.qwen.ai browser console (F12)
+(function() {
+  const keys = ['token', 'authToken', 'access_token', 'userToken'];
+  for (const k of keys) {
+    const v = localStorage.getItem(k);
+    if (v && v.length > 20) {
+      navigator.clipboard.writeText(v).then(() => alert('Qwen token copied! Key: ' + k));
+      return;
+    }
+  }
+  alert('No token found. Use F12 → Network → find Authorization: Bearer header.');
+})();`,
+    },
+    gemini: {
+      label: "Get Gemini API Key",
+      script: `// Gemini uses API keys, not session tokens.
+// Visit https://aistudio.google.com/apikey to get your free key.
+alert('Gemini uses API keys, not session tokens.\\nVisit aistudio.google.com/apikey to get yours.');`,
+    },
+    kimi: {
+      label: "Extract Kimi Token",
+      script: `// Run this in kimi.moonshot.cn browser console (F12)
+(function() {
+  const keys = ['token', 'authToken', 'access_token', 'userToken', 'Bearer'];
+  for (const k of keys) {
+    const v = localStorage.getItem(k);
+    if (v && v.length > 20) {
+      navigator.clipboard.writeText(v).then(() => alert('Kimi token copied! Key: ' + k));
+      return;
+    }
+  }
+  alert('No token found. Use F12 → Network → find Authorization: Bearer header.');
+})();`,
+    },
+    "z-ai": {
+      label: "Extract GLM Token",
+      script: `// Run this in chat.z.ai browser console (F12)
+(function() {
+  const keys = ['authToken', 'token', 'access_token', 'userToken'];
+  for (const k of keys) {
+    const v = localStorage.getItem(k);
+    if (v && v.length > 20) {
+      navigator.clipboard.writeText(v).then(() => alert('GLM token copied! Key: ' + k));
+      return;
+    }
+  }
+  alert('No token found. Use F12 → Network → find Authorization: Bearer header.');
+})();`,
+    },
+  };
+}
+
 // ─── GET Handler ───
 export async function GET() {
   const providers = [
@@ -328,6 +520,7 @@ export async function GET() {
   const allTokens: TokenResult[] = [];
   const browserPaths = getBrowserPaths();
   const scannedBrowsers: string[] = [];
+  const keyStatuses: Record<string, string> = {};
 
   for (const b of browserPaths) {
     if (!b.cookiePath || !existsSync(b.cookiePath)) {
@@ -335,13 +528,14 @@ export async function GET() {
       continue;
     }
     scannedBrowsers.push(b.name);
-    const masterKey = getChromeMasterKey(b.userDataPath);
-    console.log(`[Tokens] ${b.name}: masterKey=${!!masterKey}(${masterKey?.length}B), cookies=${b.cookiePath}`);
+    const { key: masterKey, reason: keyReason } = getChromeMasterKey(b.userDataPath, b.name);
+    keyStatuses[b.name] = keyReason;
+    console.log(`[Tokens] ${b.name}: masterKey=${!!masterKey}(${masterKey?.length || 0}B), reason=${keyReason.slice(0, 60)}`);
 
     for (const p of providers) {
-      allTokens.push(...scanCookies(b.cookiePath, masterKey, b.name, p.domains, p.name));
+      allTokens.push(...scanCookies(b.cookiePath, masterKey, keyReason, b.name, p.domains, p.name));
 
-      // Also scan localStorage for JWT Bearer tokens
+      // Scan localStorage for JWT Bearer tokens
       const lsPath = join(b.userDataPath, "Default", "Local Storage", "leveldb");
       if (existsSync(lsPath)) {
         allTokens.push(...scanLocalStorage(lsPath, b.name, p.domains, p.name));
@@ -370,8 +564,10 @@ export async function GET() {
       valid: valid.length,
       encrypted: allTokens.filter(t => !t.decrypted && t.name).length,
       browsersFound: scannedBrowsers,
+      keyStatuses,
     },
     platform,
     bridgeStatus,
+    clientScripts: getClientSideScripts(),
   });
 }

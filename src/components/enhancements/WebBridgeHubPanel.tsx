@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import {
   Globe, Key, Copy, Check, RefreshCw, ExternalLink, Loader2,
   AlertTriangle, CheckCircle2, XCircle, Eye, EyeOff, Play,
-  Server, Zap, Search, Shield, Wifi, WifiOff, Sparkles
+  Server, Zap, Search, Shield, Wifi, WifiOff, Sparkles, Terminal
 } from "lucide-react";
 
 interface TokenResult {
@@ -167,6 +167,9 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
   const [validating, setValidating] = useState<string | null>(null);
   const [platform, setPlatform] = useState<string>("");
   const [scannedBrowsers, setScannedBrowsers] = useState<string[]>([]);
+  const [keyStatuses, setKeyStatuses] = useState<Record<string, string>>({});
+  const [clientScripts, setClientScripts] = useState<Record<string, { label: string; script: string }>>({});
+  const [showExtractScript, setShowExtractScript] = useState(false);
 
   const provider = PROVIDERS[activeProvider];
 
@@ -199,6 +202,8 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
       setTokens(data.tokens || []);
       setPlatform(data.platform || "unknown");
       setScannedBrowsers(data.summary?.browsersFound || []);
+      setKeyStatuses(data.summary?.keyStatuses || {});
+      setClientScripts(data.clientScripts || {});
 
       // Also get bridge status from the API
       if (data.bridgeStatus) {
@@ -324,6 +329,7 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
   const bridgeInfo = bridgeStatus[provider.name];
   const validation = validationResults[provider.name];
   const isGemini = provider.name.includes("Gemini");
+  const providerKey = ["deepseek", "qwen", "gemini", "kimi", "z-ai"][activeProvider];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -486,6 +492,61 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                     ))}
                   </div>
                 </div>
+
+                <Separator className="shrink-0" />
+
+                {/* Key Decryption Status */}
+                {Object.keys(keyStatuses).length > 0 && (
+                  <details className="shrink-0">
+                    <summary className="text-[11px] font-medium text-muted-foreground cursor-pointer hover:text-foreground">
+                      Decryption Key Status
+                    </summary>
+                    <div className="mt-1 space-y-0.5">
+                      {Object.entries(keyStatuses).map(([browser, reason]) => (
+                        <div key={browser} className="flex items-center gap-1.5 text-[10px]">
+                          <span className="font-medium">{browser}:</span>
+                          <span className={reason.includes('successful') || reason.includes('retrieved') ? 'text-green-600' : 'text-amber-600'}>{reason}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+
+                {/* Client-Side Token Extractor */}
+                {!isGemini && (
+                  <div className="shrink-0">
+                    <button
+                      className="text-[11px] font-medium text-blue-500 hover:text-blue-400 flex items-center gap-1.5"
+                      onClick={() => setShowExtractScript(!showExtractScript)}
+                    >
+                      <Terminal className="h-3 w-3" />
+                      {showExtractScript ? 'Hide' : 'Show'} One-Click Token Extractor
+                    </button>
+                    {showExtractScript && clientScripts[providerKey] && (
+                      <div className="mt-1.5 p-2.5 rounded-xl bg-blue-500/5 border border-blue-500/20 space-y-2">
+                        <p className="text-[10px] text-muted-foreground">
+                          Open <a href={provider.loginUrl} target="_blank" className="text-blue-500 hover:underline">{provider.loginUrl}</a> in a new tab,
+                          then paste this script in the browser console (F12):
+                        </p>
+                        <pre className="text-[9px] bg-muted/50 p-2 rounded-lg overflow-x-auto max-h-32 overflow-y-auto font-mono whitespace-pre-wrap">
+                          {clientScripts[providerKey].script}
+                        </pre>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1"
+                            onClick={() => {
+                              navigator.clipboard.writeText(clientScripts[providerKey].script);
+                              toast.success('Script copied! Paste it in the provider\'s browser console.');
+                            }}>
+                            <Copy className="h-3 w-3" /> Copy Script
+                          </Button>
+                          <span className="text-[9px] text-muted-foreground self-center">
+                            The script will auto-copy the token to your clipboard
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <Separator className="shrink-0" />
 
