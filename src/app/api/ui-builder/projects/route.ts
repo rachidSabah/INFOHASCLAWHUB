@@ -19,14 +19,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const project = await (db as any).uiBuilderProject.create({ data: body });
-    return NextResponse.json(project);
-  } catch (error: unknown) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
-  }
-}
