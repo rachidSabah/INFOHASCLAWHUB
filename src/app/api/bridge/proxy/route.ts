@@ -7,107 +7,115 @@ import { NextRequest, NextResponse } from "next/server";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { messages, model, provider: providerName } = body;
+    const { messages, model, provider: providerName, action } = body;
 
-    if (!messages || !model) {
-      return NextResponse.json({ error: "messages and model required" }, { status: 400 });
-    }
-
-    // Find the provider by name or use the first active web bridge provider
+    // Find the provider
     let provider: any = null;
     const providers = await db.provider.findMany({ where: { isActive: true } });
 
-    // Smart provider matching: use model prefix to find correct provider
+    // Smart provider matching
+    const modelLower = (model || "").toLowerCase();
+    if (providerName) {
+      provider = providers.find((p: any) => p.name?.toLowerCase().includes(providerName.toLowerCase()));
+    }
     if (!provider) {
-      const modelLower = (model || "").toLowerCase();
-      const providerHints: Record<string, string[]> = {
-        deepseek: ["deepseek"],
-        qwen: ["qwen"],
-        glm: ["glm", "z.ai", "chatglm", "zhipu"],
-        kimi: ["kimi", "moonshot"],
-        gemini: ["gemini"],
+      const hints: Record<string, string[]> = {
+        deepseek: ["deepseek"], qwen: ["qwen"], glm: ["glm", "z.ai", "chatglm", "zhipu"],
+        kimi: ["kimi", "moonshot"], gemini: ["gemini"],
       };
-      
-      for (const [key, hints] of Object.entries(providerHints)) {
-        if (hints.some(h => modelLower.includes(h) || (providerName && providerName.includes(key)))) {
+      for (const [key, hints] of Object.entries(hints)) {
+        if (hints.some(h => modelLower.includes(h))) {
           provider = providers.find((p: any) => p.name?.toLowerCase().includes(key));
           if (provider) break;
         }
       }
     }
-
-    // Fallback: try any provider with an API key
-    if (!provider) {
-      provider = providers.find((p: any) => p.apiKey && p.apiKey.length > 10);
-    }
-
+    if (!provider) provider = providers.find((p: any) => p.apiKey && p.apiKey.length > 10);
     if (!provider?.apiKey) {
-      return NextResponse.json({ 
-        error: "No provider configured with API key. Go to WebBridge → Configure a provider first." 
-      }, { status: 401 });
+      return NextResponse.json({ error: "No provider configured. Go to WebBridge → Configure a provider first." }, { status: 401 });
     }
 
     const baseUrl = (provider.baseUrl || "http://localhost:8000/v1").replace(/\/$/, "");
+
+    // If action is list_models, query the provider for available models
+    if (action === "list_models") {
+      try {
+        const modelsRes = await fetch(`${baseUrl}/models`, {
+          headers: { Authorization: `Bearer ${provider.apiKey}` },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (modelsRes.ok) {
+          const data = await modelsRes.json();
+          const models = (data.data || []).map((m: any) => ({
+            id: m.id || m.name, name: m.id || m.name || "model"
+          }));
+          return NextResponse.json({ provider: provider.name, models });
+        }
+        // Try list endpoint
+        const listRes = await fetch(`${baseUrl}/v1/models`, {
+          headers: { Authorization: `Bearer ${provider.apiKey}` },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (listRes.ok) {
+          const data = await listRes.json();
+          const models = (data.data || []).map((m: any) => ({
+            id: m.id || m.name, name: m.id || m.name || "model"
+          }));
+          return NextResponse.json({ provider: provider.name, models });
+        }
+      } catch {}
+      // Fallback: return prebuilt models
+      return NextResponse.json({ provider: provider.name, models: [], fallback: true });
+    }
+
+    if (!messages) {
+      return NextResponse.json({ error: "messages required" }, { status: 400 });
+    }
+
+    // Chat completion
     const apiUrl = baseUrl.endsWith("/v1") ? `${baseUrl}/chat/completions` : `${baseUrl}/v1/chat/completions`;
-    let cleanModel = model.includes("/") ? model.split("/").pop() : model;
-
-    // Model name mapping for different providers
-    const modelMap: Record<string, string> = {
-      "glm-4": "glm-4-flash",
-      "glm-4-plus": "glm-4-plus",
-      "glm-4-flash": "glm-4-flash",
-      "glm-4-air": "glm-4-air",
-      "glm-4-long": "glm-4-long",
-      "qwen-plus": "qwen-plus",
-      "qwen-max": "qwen-max",
-      "qwen-turbo": "qwen-turbo",
-      "deepseek-chat": "deepseek-chat",
-      "deepseek-reasoner": "deepseek-reasoner",
-      "moonshot-v1-8k": "moonshot-v1-8k",
-      "moonshot-v1-32k": "moonshot-v1-32k",
-    };
-    cleanModel = modelMap[cleanModel || ""] || cleanModel || "chat";
-
-    console.log(`[Bridge Proxy] Routing to ${apiUrl} with model ${cleanModel}`);
+    let cleanModel = model?.includes("/") ? model.split("/").pop() : model || "chat";
+    
+    console.log(`[Bridge] ${provider.name} → ${apiUrl}, model: ${cleanModel}`);
 
     const res = await fetch(apiUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${provider.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: cleanModel,
-        messages,
-        temperature: 0.7,
-        max_tokens: 4096,
-        stream: false,
-      }),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${provider.apiKey}` },
+      body: JSON.stringify({ model: cleanModel, messages, temperature: 0.7, max_tokens: 4096, stream: false }),
       signal: AbortSignal.timeout(60000),
     });
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      console.error(`[Bridge Proxy] ${apiUrl} returned ${res.status}: ${errText.slice(0, 200)}`);
-      return NextResponse.json({ 
-        error: `API error ${res.status}: ${errText.slice(0, 100) || "Authentication failed"}` 
-      }, { status: res.status });
+      console.error(`[Bridge] ${res.status}: ${errText.slice(0, 200)}`);
+      return NextResponse.json({ error: `API error ${res.status}: ${errText.slice(0, 100)}` }, { status: res.status });
     }
 
     const data = await res.json();
-    const content = data.choices?.[0]?.message?.content || "";
-
-    return NextResponse.json({ 
-      content,
-      model: cleanModel,
-      provider: provider.name,
-      usage: data.usage,
-    });
+    return NextResponse.json({ content: data.choices?.[0]?.message?.content || "", model: cleanModel, provider: provider.name, usage: data.usage });
   } catch (e: any) {
-    if (e.name === "TimeoutError" || e.name === "AbortError") {
-      return NextResponse.json({ error: "Request timed out — bridge may not be running" }, { status: 504 });
-    }
-    console.error("[Bridge Proxy Error]:", e);
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
+}
+
+// GET: list available models for a provider
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const providerName = searchParams.get("provider");
+  const providers = await db.provider.findMany({ where: { isActive: true } });
+  let provider = providerName ? providers.find((p: any) => p.name?.toLowerCase().includes(providerName.toLowerCase())) : providers.find((p: any) => p.apiKey && p.apiKey.length > 10);
+  if (!provider) return NextResponse.json({ models: [] });
+  
+  const baseUrl = (provider.baseUrl || "").replace(/\/$/, "");
+  try {
+    const res = await fetch(`${baseUrl}/models`, {
+      headers: { Authorization: `Bearer ${provider.apiKey}` },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return NextResponse.json({ provider: provider.name, models: (data.data || []).map((m: any) => ({ id: m.id, name: m.id })) });
+    }
+  } catch {}
+  return NextResponse.json({ provider: provider.name, models: [], fallback: true });
 }
