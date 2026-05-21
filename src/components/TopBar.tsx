@@ -108,7 +108,7 @@ export function TopBar() {
   const activeSkill = skills.find(s => s.id === activeSkillId);
 
   // Flatten all models to find the active model display name
-  const allModels = modelGroups.flatMap(g => g.models);
+  const allModels = modelGroups.flatMap(g => g.models).filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i);
   const activeModel = allModels.find(m => m.id === currentModelId);
 
   const handleModelChange = async (modelId: string) => {
@@ -270,7 +270,7 @@ export function TopBar() {
                     {group.name}
                   </p>
                   <div className="space-y-0.5">
-                    {group.models.map((model) => (
+                    {group.models.filter((m,i,a) => a.findIndex(x => x.id === m.id) === i).map((model) => (
                       <button
                         key={model.id}
                         onClick={() => handleModelChange(model.id)}
