@@ -20,11 +20,11 @@ export async function POST(req: NextRequest) {
     }
     if (!provider) {
       const hints: Record<string, string[]> = {
-        deepseek: ["deepseek"], qwen: ["qwen"], glm: ["glm", "z.ai", "chatglm", "zhipu"],
+        deepseek: ["deepseek"], qwen: ["qwen"], glm: ["glm", "z.ai", "chatglm", "zhipu", "bigmodel"],
         kimi: ["kimi", "moonshot"], gemini: ["gemini"],
       };
       for (const [key, patterns] of Object.entries(hints)) {
-        if (patterns.some(h => modelLower.includes(h))) {
+        if (patterns.some(h => (modelLower || "").includes(h))) {
           provider = providers.find((p: any) => p.name?.toLowerCase().includes(key));
           if (provider) break;
         }
@@ -32,7 +32,14 @@ export async function POST(req: NextRequest) {
     }
     if (!provider) provider = providers.find((p: any) => p.apiKey && p.apiKey.length > 10);
     if (!provider?.apiKey) {
-      return NextResponse.json({ error: "No provider configured. Go to WebBridge → Configure a provider first." }, { status: 401 });
+      const modelHint = (model || "").toLowerCase();
+      const providerName = modelHint.includes("moonshot") || modelHint.includes("kimi") ? "Kimi" : 
+                          modelHint.includes("qwen") ? "Qwen" :
+                          modelHint.includes("glm") || modelHint.includes("z.ai") ? "Z.AI/GLM" :
+                          modelHint.includes("gemini") ? "Gemini" : "DeepSeek";
+      return NextResponse.json({ 
+        error: `${providerName} not configured. Go to WebBridge → ${providerName} tab → paste token → click Configure first.` 
+      }, { status: 401 });
     }
 
     const baseUrl = (provider.baseUrl || "http://localhost:8000/v1").replace(/\/$/, "");
