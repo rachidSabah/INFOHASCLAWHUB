@@ -285,7 +285,6 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
       toast.error("Bridge not reachable");
     } finally { setValidating(null); }
   }, []);
-  }, []);
 
   // Configure provider
   const configureProvider = useCallback(async () => {
