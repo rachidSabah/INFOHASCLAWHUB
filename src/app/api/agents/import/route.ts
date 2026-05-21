@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
   try {
     const { url } = await req.json();
@@ -115,8 +117,8 @@ export async function POST(req: NextRequest) {
         });
 
         imported.push(agentName);
-      } catch (e: any) {
-        errors.push(`${file.path}: ${e.message}`);
+      } catch (e: unknown) {
+        errors.push(`${file.path}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
@@ -159,8 +161,8 @@ export async function POST(req: NextRequest) {
               }
             }
           }
-        } catch (e: any) {
-          errors.push(`README parsing: ${e.message}`);
+        } catch (e: unknown) {
+          errors.push(`README parsing: ${e instanceof Error ? e.message : String(e)}`);
         }
       }
     }

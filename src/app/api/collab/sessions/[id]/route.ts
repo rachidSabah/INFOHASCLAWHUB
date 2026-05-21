@@ -9,16 +9,16 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const sandbox = await db.sandbox.findUnique({ where: { id } });
+    const session = await db.collabSession.findUnique({ where: { id } });
 
-    if (!sandbox) {
+    if (!session) {
       return NextResponse.json(
-        { error: 'Sandbox not found' },
+        { error: 'Session not found' },
         { status: 404 }
       );
     }
 
-    return NextResponse.json(sandbox);
+    return NextResponse.json(session);
   } catch (error: unknown) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
@@ -34,36 +34,30 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, framework, status, port, containerId, previewUrl, files, envVars } = body as {
+    const { name, hostId, peers, status, sharedAgent } = body as {
       name?: string;
-      framework?: string;
+      hostId?: string;
+      peers?: Array<{ id: string; name: string; cursor: unknown; color: string }>;
       status?: string;
-      port?: number;
-      containerId?: string;
-      previewUrl?: string;
-      files?: Record<string, string>;
-      envVars?: Record<string, string>;
+      sharedAgent?: string;
     };
 
-    const existing = await db.sandbox.findUnique({ where: { id } });
+    const existing = await db.collabSession.findUnique({ where: { id } });
     if (!existing) {
       return NextResponse.json(
-        { error: 'Sandbox not found' },
+        { error: 'Session not found' },
         { status: 404 }
       );
     }
 
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name;
-    if (framework !== undefined) updateData.framework = framework;
+    if (hostId !== undefined) updateData.hostId = hostId;
+    if (peers !== undefined) updateData.peers = JSON.stringify(peers);
     if (status !== undefined) updateData.status = status;
-    if (port !== undefined) updateData.port = port;
-    if (containerId !== undefined) updateData.containerId = containerId;
-    if (previewUrl !== undefined) updateData.previewUrl = previewUrl;
-    if (files !== undefined) updateData.files = JSON.stringify(files);
-    if (envVars !== undefined) updateData.envVars = JSON.stringify(envVars);
+    if (sharedAgent !== undefined) updateData.sharedAgent = sharedAgent;
 
-    const updated = await db.sandbox.update({
+    const updated = await db.collabSession.update({
       where: { id },
       data: updateData,
     });
@@ -83,15 +77,15 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const existing = await db.sandbox.findUnique({ where: { id } });
+    const existing = await db.collabSession.findUnique({ where: { id } });
     if (!existing) {
       return NextResponse.json(
-        { error: 'Sandbox not found' },
+        { error: 'Session not found' },
         { status: 404 }
       );
     }
 
-    await db.sandbox.delete({ where: { id } });
+    await db.collabSession.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     return NextResponse.json(

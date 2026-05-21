@@ -1,16 +1,16 @@
-import { db } from "@/lib/db";
+import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 
-let ZAI: any = null;
+export const dynamic = 'force-dynamic';
+
+let ZAI: unknown = null;
 async function getZAI() {
   if (!ZAI) {
     const mod = await import('z-ai-web-dev-sdk');
     ZAI = mod.default;
   }
-  return ZAI.create();
+  return (ZAI as any).create();
 }
-
-
 
 async function callAI(prompt: string): Promise<string> {
   try {
@@ -23,16 +23,13 @@ async function callAI(prompt: string): Promise<string> {
     });
     const result = completion.choices[0]?.message?.content;
     if (result && result.trim() && result.trim() !== '{}') return result;
-    // If AI returned empty, fall through to smart fallback
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('[Compliance] ZAI SDK error:', error);
-    // Fall through to smart fallback
   }
   return generateComplianceFallback(prompt);
 }
 
 function generateComplianceFallback(prompt: string): string {
-  // Extract security data from the prompt
   const vulnMatch = prompt.match(/unresolvedVulnerabilities[":\s]+(\d+)/);
   const secretsMatch = prompt.match(/exposedSecrets[":\s]+(\d+)/);
   const highRiskMatch = prompt.match(/highRiskActions[":\s]+(\d+)/);
@@ -41,7 +38,6 @@ function generateComplianceFallback(prompt: string): string {
   const exposedSecrets = secretsMatch ? parseInt(secretsMatch[1]) : 0;
   const highRiskActions = highRiskMatch ? parseInt(highRiskMatch[1]) : 0;
 
-  // Calculate score based on data
   let score = 100;
   score -= unresolvedVulns * 10;
   score -= exposedSecrets * 15;
@@ -75,7 +71,6 @@ function generateComplianceFallback(prompt: string): string {
     });
   }
 
-  // Basic compliance checklist
   if (issues.length === 0) {
     issues.push(
       { category: 'encryption', severity: 'info', description: 'Verify data encryption at rest and in transit', recommendation: 'Ensure TLS is enforced and sensitive data is encrypted in the database.' },
@@ -91,51 +86,111 @@ function generateComplianceFallback(prompt: string): string {
   });
 }
 
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { framework, projectPath } = body;
+    const { searchParams } = new URL(request.url);
+    const ruleType = searchParams.get('ruleType');
+    const isEnabled = searchParams.get('isEnabled');
 
-    // Gather security data
-    const vulnerabilities = await (db as any).securityVulnerability.findMany({
-      where: projectPath ? { filePath: { startsWith: projectPath } } : {},
-    });
+    const where: Record<string, unknown> = {};
+    if (ruleType) where.ruleType = ruleType;
+    if (isEnabled !== null) where.isEnabled = isEnabled === 'true';
 
-    const exposedSecrets = await (db as any).exposedSecret.findMany({
-      where: { isRevoked: false },
-    });
-
-    const auditLogs = await (db as any).securityAuditLog.findMany({
-      where: { risk: { in: ['high', 'critical'] } },
-      take: 50,
+    const policies = await db.compliancePolicy.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
     });
 
-    const contextData = JSON.stringify({
-      vulnerabilities: vulnerabilities.length,
-      unresolvedVulnerabilities: vulnerabilities.filter(v => !v.isResolved).length,
-      exposedSecrets: exposedSecrets.length,
-      highRiskActions: auditLogs.length,
-      vulnerabilityBreakdown: {
-        critical: vulnerabilities.filter(v => v.severity === 'critical').length,
-        high: vulnerabilities.filter(v => v.severity === 'high').length,
-        medium: vulnerabilities.filter(v => v.severity === 'medium').length,
+    return NextResponse.json(policies);
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+
+    // If the request is for compliance analysis (has "framework" field), run AI analysis
+    if (body.framework !== undefined) {
+      const { framework, projectPath } = body;
+
+      const vulnerabilities = await db.securityVulnerability.findMany({
+        where: projectPath ? { filePath: { startsWith: projectPath } } : {},
+      });
+
+      const exposedSecrets = await db.exposedSecret.findMany({
+        where: { isRevoked: false },
+      });
+
+      const auditLogs = await db.auditLog.findMany({
+        where: { risk: { in: ['high', 'critical'] } },
+        take: 50,
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const contextData = JSON.stringify({
+        vulnerabilities: vulnerabilities.length,
+        unresolvedVulnerabilities: vulnerabilities.filter(v => !v.isResolved).length,
+        exposedSecrets: exposedSecrets.length,
+        highRiskActions: auditLogs.length,
+        vulnerabilityBreakdown: {
+          critical: vulnerabilities.filter(v => v.severity === 'critical').length,
+          high: vulnerabilities.filter(v => v.severity === 'high').length,
+          medium: vulnerabilities.filter(v => v.severity === 'medium').length,
+        },
+      });
+
+      const aiResult = await callAI(
+        `Perform a ${framework || 'general'} compliance check:\n\nProject data:\n${contextData}\n\nReturn compliance score, issues, and summary as JSON.`
+      );
+
+      let result;
+      try {
+        result = JSON.parse(aiResult);
+      } catch {
+        result = { score: 0, issues: [], summary: aiResult };
+      }
+
+      return NextResponse.json(result);
+    }
+
+    // Otherwise, create a CompliancePolicy
+    const { name, description, ruleType, config, severity, isEnabled } = body as {
+      name: string;
+      description: string;
+      ruleType: string;
+      config?: Record<string, unknown> | string;
+      severity?: string;
+      isEnabled?: boolean;
+    };
+
+    if (!name || !description || !ruleType) {
+      return NextResponse.json(
+        { error: 'name, description, and ruleType are required' },
+        { status: 400 }
+      );
+    }
+
+    const policy = await db.compliancePolicy.create({
+      data: {
+        name,
+        description,
+        ruleType,
+        config: typeof config === 'string' ? config : JSON.stringify(config || {}),
+        severity: severity || 'medium',
+        isEnabled: isEnabled ?? true,
       },
     });
 
-    const aiResult = await callAI(
-      `Perform a ${framework || 'general'} compliance check:\n\nProject data:\n${contextData}\n\nReturn compliance score, issues, and summary as JSON.`
-    );
-
-    let result;
-    try {
-      result = JSON.parse(aiResult);
-    } catch {
-      result = { score: 0, issues: [], summary: aiResult };
-    }
-
-    return NextResponse.json(result);
+    return NextResponse.json(policy, { status: 201 });
   } catch (error: unknown) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
   }
 }

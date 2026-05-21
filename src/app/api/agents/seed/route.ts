@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { AGENT_DEFINITIONS } from "@/lib/agent-definitions";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export async function POST() {
   try {
@@ -40,7 +40,7 @@ export async function POST() {
           });
           created++;
         }
-      } catch (err) {
+      } catch (err: unknown) {
         errors.push(`${def.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
@@ -52,8 +52,9 @@ export async function POST() {
       total: AGENT_DEFINITIONS.length,
       errors: errors.length > 0 ? errors : undefined,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("[AGENTS_SEED]", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

@@ -1,4 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
+
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  try {
+    // Return all active providers
+    const providers = await db.provider.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, baseUrl: true },
+    });
+    return NextResponse.json({ providers, total: providers.length });
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,18 +47,18 @@ export async function POST(req: NextRequest) {
     const data = await res.json();
     
     // Standard OpenAI response is { data: [{ id: "model-name", ... }] }
-    let models: any[] = [];
+    let models: Array<{ id: string; name: string; description: string }> = [];
     if (data.data && Array.isArray(data.data)) {
-      models = data.data.map((m: any) => ({
+      models = data.data.map((m: { id: string; owned_by?: string }) => ({
         id: m.id,
         name: m.id,
         description: m.owned_by || `Model from ${new URL(baseUrl).hostname}`
       }));
     } else if (Array.isArray(data)) {
       // Some providers return a flat array
-      models = data.map((m: any) => ({
-        id: typeof m === 'string' ? m : m.id || m.name,
-        name: typeof m === 'string' ? m : m.name || m.id,
+      models = data.map((m: string | { id?: string; name?: string }) => ({
+        id: typeof m === 'string' ? m : m.id || m.name || '',
+        name: typeof m === 'string' ? m : m.name || m.id || '',
         description: `Model from ${new URL(baseUrl).hostname}`
       }));
     }

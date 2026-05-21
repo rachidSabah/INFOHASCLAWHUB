@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     const engine = getResearchEngine();
     const result = await engine.research({ query, depth, model });
-    return NextResponse.json(result);
+    return NextResponse.json(result, { status: 201 });
   } catch (error: unknown) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },

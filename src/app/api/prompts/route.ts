@@ -71,9 +71,10 @@ export async function GET() {
     }
 
     return NextResponse.json(prompts);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("[PROMPTS_GET]", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    const message = error instanceof Error ? error.message : "Failed to fetch prompts";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -83,7 +84,7 @@ export async function POST(req: Request) {
     const { title, content, description, category } = body;
 
     if (!title || !content) {
-      return new NextResponse("Title and Content are required", { status: 400 });
+      return NextResponse.json({ error: "Title and Content are required" }, { status: 400 });
     }
 
     const prompt = await db.prompt.create({
@@ -95,9 +96,10 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json(prompt);
-  } catch (error) {
+    return NextResponse.json(prompt, { status: 201 });
+  } catch (error: unknown) {
     console.error("[PROMPTS_POST]", error);
-    return new NextResponse("Internal Error", { status: 500 });
+    const message = error instanceof Error ? error.message : "Failed to create prompt";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

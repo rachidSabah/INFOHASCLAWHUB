@@ -40,29 +40,25 @@ import {
 } from "lucide-react";
 import { cn, formatTime } from "@/lib/utils";
 
-interface TaskRunLog {
-  id: string;
-  timestamp: string;
-  status: "success" | "error";
-  result?: string;
-  conversationId?: string;
-  error?: string;
-}
-
-interface ScheduledTask {
+// Matches the CronTask Prisma model from the API
+interface CronTask {
   id: string;
   name: string;
-  agentId: string;
-  prompt: string;
-  schedule: string;
-  model?: string;
-  enabled: boolean;
+  description: string | null;
+  cronExpr: string;
+  taskType: string;
+  agentId: string | null;
+  config: string; // JSON string
+  status: string; // "active" | "paused" | "disabled" | "error"
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  lastResult: string | null; // JSON string: { success, output, duration, conversationId }
+  runCount: number;
+  failCount: number;
+  retryPolicy: string;
+  dependencies: string;
   createdAt: string;
-  lastRunAt?: string;
-  lastRunStatus?: "success" | "error";
-  lastRunResult?: string;
-  runHistory: TaskRunLog[];
-  nextRun?: string;
+  updatedAt: string;
 }
 
 interface SchedulerPanelProps {
@@ -71,70 +67,52 @@ interface SchedulerPanelProps {
 }
 
 const SCHEDULE_EXAMPLES = [
-  "every hour",
-  "every 30 minutes",
-  "daily at 09:00",
-  "daily at 6pm",
-  "weekdays at 08:00",
-  "every 15 minutes",
+  "*/5 * * * *",
+  "*/30 * * * *",
+  "0 * * * *",
+  "0 9 * * *",
+  "0 8 * * 1-5",
+  "*/15 * * * *",
 ];
 
-function parseSchedule(schedule: string): Date {
-  const now = new Date();
-  const s = schedule.toLowerCase().trim();
+const TASK_TYPES = [
+  { value: "agent_run", label: "Agent Run" },
+  { value: "repo_monitor", label: "Repo Monitor" },
+  { value: "health_check", label: "Health Check" },
+  { value: "auto_deploy", label: "Auto Deploy" },
+  { value: "issue_resolve", label: "Issue Resolve" },
+  { value: "custom", label: "Custom" },
+];
 
-  const everyMinutes = s.match(/^every\s+(\d+)\s*min(?:ute)?s?$/i);
-  if (everyMinutes) {
-    const mins = parseInt(everyMinutes[1], 10);
-    return new Date(now.getTime() + mins * 60 * 1000);
+function parseCronConfig(configStr: string): { prompt?: string; model?: string; [key: string]: unknown } {
+  try {
+    return JSON.parse(configStr);
+  } catch {
+    return {};
   }
+}
 
-  if (/^every\s*hour$/i.test(s)) {
-    return new Date(now.getTime() + 60 * 60 * 1000);
+function parseLastResult(lastResult: string | null): { success?: boolean; output?: string; conversationId?: string } | null {
+  if (!lastResult) return null;
+  try {
+    return JSON.parse(lastResult);
+  } catch {
+    return null;
   }
-
-  const dailyAtMatch = s.match(/^(?:daily|every\s*day)\s*(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
-  if (dailyAtMatch) {
-    let hour = parseInt(dailyAtMatch[1], 10);
-    const minute = parseInt(dailyAtMatch[2] || "0", 10);
-    const ampm = dailyAtMatch[3]?.toLowerCase();
-    if (ampm === "pm" && hour < 12) hour += 12;
-    if (ampm === "am" && hour === 12) hour = 0;
-    const next = new Date(now);
-    next.setHours(hour, minute, 0, 0);
-    if (next <= now) next.setDate(next.getDate() + 1);
-    return next;
-  }
-
-  const weekdaysMatch = s.match(/^weekdays\s*(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
-  if (weekdaysMatch) {
-    let hour = parseInt(weekdaysMatch[1], 10);
-    const minute = parseInt(weekdaysMatch[2] || "0", 10);
-    const ampm = weekdaysMatch[3]?.toLowerCase();
-    if (ampm === "pm" && hour < 12) hour += 12;
-    if (ampm === "am" && hour === 12) hour = 0;
-    const next = new Date(now);
-    next.setHours(hour, minute, 0, 0);
-    while (next <= now || next.getDay() === 0 || next.getDay() === 6) {
-      next.setDate(next.getDate() + 1);
-      if (next.getDay() !== 0 && next.getDay() !== 6) break;
-    }
-    return next;
-  }
-
-  return new Date(now.getTime() + 30 * 60 * 1000);
 }
 
 export function SchedulerPanel({ open, onOpenChange }: SchedulerPanelProps) {
-  const [tasks, setTasks] = useState<ScheduledTask[]>([]);
+  const [tasks, setTasks] = useState<CronTask[]>([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [running, setRunning] = useState<string | null>(null);
 
   const [formName, setFormName] = useState("");
+  const [formDescription, setFormDescription] = useState("");
   const [formPrompt, setFormPrompt] = useState("");
-  const [formSchedule, setFormSchedule] = useState("every hour");
+  const [formCronExpr, setFormCronExpr] = useState("0 * * * *");
+  const [formTaskType, setFormTaskType] = useState("agent_run");
   const [formAgentId, setFormAgentId] = useState("");
   const [formModel, setFormModel] = useState("");
   const formRef = useRef<HTMLDivElement>(null);
@@ -147,12 +125,11 @@ export function SchedulerPanel({ open, onOpenChange }: SchedulerPanelProps) {
       const res = await fetch("/api/scheduler/tasks");
       if (res.ok) {
         const data = await res.json();
-        setTasks(data.map((t: ScheduledTask) => ({
-          ...t,
-          nextRun: parseSchedule(t.schedule).toISOString(),
-        })));
+        setTasks(data);
       }
-    } catch {}
+    } catch {
+      // Ignore
+    }
   }, []);
 
   useEffect(() => {
@@ -167,8 +144,10 @@ export function SchedulerPanel({ open, onOpenChange }: SchedulerPanelProps) {
 
   const resetForm = () => {
     setFormName("");
+    setFormDescription("");
     setFormPrompt("");
-    setFormSchedule("every hour");
+    setFormCronExpr("0 * * * *");
+    setFormTaskType("agent_run");
     setFormAgentId("");
     setFormModel("");
     setEditingId(null);
@@ -176,23 +155,29 @@ export function SchedulerPanel({ open, onOpenChange }: SchedulerPanelProps) {
   };
 
   const handleSave = async () => {
-    if (!formName.trim() || !formPrompt.trim() || !formSchedule.trim()) {
-      toast.error("Name, prompt, and schedule are required");
+    if (!formName.trim() || !formCronExpr.trim() || !formTaskType) {
+      toast.error("Name, cron expression, and task type are required");
       return;
     }
 
     setLoading(true);
     try {
+      const config = JSON.stringify({
+        prompt: formPrompt,
+        model: formModel || undefined,
+      });
+
       if (editingId) {
         const res = await fetch(`/api/scheduler/tasks/${editingId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: formName,
-            prompt: formPrompt,
-            schedule: formSchedule,
-            agentId: formAgentId,
-            model: formModel || undefined,
+            description: formDescription || null,
+            cronExpr: formCronExpr,
+            taskType: formTaskType,
+            agentId: formAgentId || null,
+            config,
           }),
         });
         if (res.ok) {
@@ -208,10 +193,11 @@ export function SchedulerPanel({ open, onOpenChange }: SchedulerPanelProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: formName,
-            prompt: formPrompt,
-            schedule: formSchedule,
-            agentId: formAgentId,
-            model: formModel || undefined,
+            description: formDescription || null,
+            cronExpr: formCronExpr,
+            taskType: formTaskType,
+            agentId: formAgentId || null,
+            config,
           }),
         });
         if (res.ok) {
@@ -229,12 +215,15 @@ export function SchedulerPanel({ open, onOpenChange }: SchedulerPanelProps) {
     }
   };
 
-  const handleEdit = (task: ScheduledTask) => {
+  const handleEdit = (task: CronTask) => {
+    const config = parseCronConfig(task.config);
     setFormName(task.name);
-    setFormPrompt(task.prompt);
-    setFormSchedule(task.schedule);
-    setFormAgentId(task.agentId);
-    setFormModel(task.model || "");
+    setFormDescription(task.description || "");
+    setFormPrompt((config.prompt as string) || "");
+    setFormCronExpr(task.cronExpr);
+    setFormTaskType(task.taskType);
+    setFormAgentId(task.agentId || "");
+    setFormModel((config.model as string) || "");
     setEditingId(task.id);
     setShowForm(true);
   };
@@ -253,12 +242,13 @@ export function SchedulerPanel({ open, onOpenChange }: SchedulerPanelProps) {
     }
   };
 
-  const handleToggle = async (task: ScheduledTask) => {
+  const handleToggle = async (task: CronTask) => {
     try {
+      const newStatus = task.status === "active" ? "paused" : "active";
       const res = await fetch(`/api/scheduler/tasks/${task.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: !task.enabled }),
+        body: JSON.stringify({ status: newStatus }),
       });
       if (res.ok) {
         await loadTasks();
@@ -278,7 +268,7 @@ export function SchedulerPanel({ open, onOpenChange }: SchedulerPanelProps) {
       });
       const data = await res.json();
       if (data.success) {
-        toast.success(`Task completed`);
+        toast.success("Task completed");
         await loadTasks();
       } else {
         toast.error(data.error || "Task failed");
@@ -291,7 +281,7 @@ export function SchedulerPanel({ open, onOpenChange }: SchedulerPanelProps) {
     }
   };
 
-  const getAgentName = (agentId: string) => {
+  const getAgentName = (agentId: string | null) => {
     if (!agentId) return "Default";
     const agent = agents.find((a) => a.id === agentId);
     return agent?.name || "Unknown";
@@ -308,7 +298,7 @@ export function SchedulerPanel({ open, onOpenChange }: SchedulerPanelProps) {
             Scheduled Tasks
           </DialogTitle>
           <DialogDescription>
-            Schedule agents to run automatically at specific intervals
+            Schedule agents to run automatically using cron expressions
           </DialogDescription>
         </DialogHeader>
 
@@ -332,155 +322,155 @@ export function SchedulerPanel({ open, onOpenChange }: SchedulerPanelProps) {
               </div>
             )}
 
-            {tasks.map((task) => (
-              <div
-                key={task.id}
-                className={cn(
-                  "rounded-lg border p-4 transition-all",
-                  task.enabled ? "bg-card" : "bg-muted/30 opacity-60"
-                )}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="font-semibold text-sm truncate">{task.name}</h4>
-                      {task.enabled ? (
-                        <Badge variant="default" className="h-5 text-[10px] px-1.5">Active</Badge>
-                      ) : (
-                        <Badge variant="secondary" className="h-5 text-[10px] px-1.5">Paused</Badge>
-                      )}
-                      {task.lastRunStatus && (
+            {tasks.map((task) => {
+              const config = parseCronConfig(task.config);
+              const lastResult = parseLastResult(task.lastResult);
+              const isActive = task.status === "active";
+              const lastSuccess = lastResult?.success;
+
+              return (
+                <div
+                  key={task.id}
+                  className={cn(
+                    "rounded-lg border p-4 transition-all",
+                    isActive ? "bg-card" : "bg-muted/30 opacity-60"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-semibold text-sm truncate">{task.name}</h4>
                         <Badge
-                          variant={task.lastRunStatus === "success" ? "default" : "destructive"}
+                          variant={isActive ? "default" : "secondary"}
                           className="h-5 text-[10px] px-1.5"
                         >
-                          {task.lastRunStatus === "success" ? (
-                            <CheckCircle2 className="h-3 w-3 mr-0.5" />
-                          ) : (
-                            <XCircle className="h-3 w-3 mr-0.5" />
-                          )}
-                          {task.lastRunStatus}
+                          {task.status}
                         </Badge>
-                      )}
-                    </div>
+                        <Badge variant="outline" className="h-5 text-[10px] px-1.5">
+                          {task.taskType}
+                        </Badge>
+                        {task.runCount > 0 && lastResult && (
+                          <Badge
+                            variant={lastSuccess ? "default" : "destructive"}
+                            className="h-5 text-[10px] px-1.5"
+                          >
+                            {lastSuccess ? (
+                              <CheckCircle2 className="h-3 w-3 mr-0.5" />
+                            ) : (
+                              <XCircle className="h-3 w-3 mr-0.5" />
+                            )}
+                            {lastSuccess ? "success" : "error"}
+                          </Badge>
+                        )}
+                      </div>
 
-                    <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {task.schedule}
-                      </span>
-                      {task.agentId && (
+                      <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
-                          <Bot className="h-3 w-3" />
-                          {getAgentName(task.agentId)}
+                          <Clock className="h-3 w-3" />
+                          {task.cronExpr}
                         </span>
-                      )}
-                      {task.model && (
-                        <span className="flex items-center gap-1">
-                          <MessageSquare className="h-3 w-3" />
-                          {task.model}
-                        </span>
-                      )}
-                    </div>
+                        {task.agentId && (
+                          <span className="flex items-center gap-1">
+                            <Bot className="h-3 w-3" />
+                            {getAgentName(task.agentId)}
+                          </span>
+                        )}
+                        {config.model && (
+                          <span className="flex items-center gap-1">
+                            <MessageSquare className="h-3 w-3" />
+                            {config.model as string}
+                          </span>
+                        )}
+                      </div>
 
-                    <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">
-                      {task.prompt}
-                    </p>
+                      {(config.prompt || task.description) && (
+                        <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">
+                          {(config.prompt as string) || task.description}
+                        </p>
+                      )}
 
-                    <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground/70">
-                      {task.nextRun && (
+                      <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground/70">
+                        {task.nextRunAt && (
+                          <span>
+                            Next: {new Date(task.nextRunAt).toLocaleString()}
+                          </span>
+                        )}
+                        {task.lastRunAt && (
+                          <span>
+                            Last: {formatTime(task.lastRunAt)}
+                          </span>
+                        )}
                         <span>
-                          Next: {new Date(task.nextRun).toLocaleString()}
+                          Runs: {task.runCount} | Fails: {task.failCount}
                         </span>
-                      )}
-                      {task.lastRunAt && (
-                        <span>
-                          Last: {formatTime(task.lastRunAt)}
-                        </span>
-                      )}
-                    </div>
+                      </div>
 
-                    {task.runHistory.length > 0 && (
-                      <details className="mt-2">
-                        <summary className="text-[10px] text-muted-foreground cursor-pointer hover:text-foreground">
-                          Run history ({task.runHistory.length})
-                        </summary>
-                        <div className="mt-1.5 space-y-1 max-h-32 overflow-y-auto">
-                          {task.runHistory.slice(0, 5).map((log) => (
+                      {lastResult?.output && (
+                        <details className="mt-2">
+                          <summary className="text-[10px] text-muted-foreground cursor-pointer hover:text-foreground">
+                            Last result
+                          </summary>
+                          <div className="mt-1.5 space-y-1 max-h-32 overflow-y-auto">
                             <div
-                              key={log.id}
                               className={cn(
                                 "text-[10px] rounded px-2 py-1",
-                                log.status === "success"
+                                lastSuccess
                                   ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                                   : "bg-red-500/10 text-red-600 dark:text-red-400"
                               )}
                             >
-                              <div className="flex items-center gap-1">
-                                {log.status === "success" ? (
-                                  <CheckCircle2 className="h-3 w-3" />
-                                ) : (
-                                  <XCircle className="h-3 w-3" />
-                                )}
-                                {new Date(log.timestamp).toLocaleString()}
-                              </div>
-                              {log.result && (
-                                <p className="mt-0.5 line-clamp-2 opacity-80">{log.result}</p>
-                              )}
-                              {log.error && (
-                                <p className="mt-0.5 opacity-80">{log.error}</p>
-                              )}
+                              {lastResult.output}
                             </div>
-                          ))}
-                        </div>
-                      </details>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => handleRunNow(task.id)}
-                      disabled={running === task.id}
-                    >
-                      {running === task.id ? (
-                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Play className="h-3.5 w-3.5" />
+                          </div>
+                        </details>
                       )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => handleEdit(task)}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-destructive hover:text-destructive"
-                      onClick={() => handleDelete(task.id)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleRunNow(task.id)}
+                        disabled={running === task.id}
+                      >
+                        {running === task.id ? (
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Play className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleEdit(task)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-destructive hover:text-destructive"
+                        onClick={() => handleDelete(task.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/50">
+                    <Switch
+                      checked={isActive}
+                      onCheckedChange={() => handleToggle(task)}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {isActive ? "Enabled" : "Disabled"}
+                    </span>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/50">
-                  <Switch
-                    checked={task.enabled}
-                    onCheckedChange={() => handleToggle(task)}
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    {task.enabled ? "Enabled" : "Disabled"}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
 
             {showForm && (
               <div ref={formRef} className="rounded-lg border border-primary/30 bg-card p-4">
@@ -498,6 +488,15 @@ export function SchedulerPanel({ open, onOpenChange }: SchedulerPanelProps) {
                     />
                   </div>
                   <div>
+                    <Label className="text-xs">Description (optional)</Label>
+                    <Input
+                      value={formDescription}
+                      onChange={(e) => setFormDescription(e.target.value)}
+                      placeholder="What this task does"
+                      className="h-8 text-sm mt-1"
+                    />
+                  </div>
+                  <div>
                     <Label className="text-xs">Prompt</Label>
                     <Textarea
                       value={formPrompt}
@@ -509,11 +508,11 @@ export function SchedulerPanel({ open, onOpenChange }: SchedulerPanelProps) {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label className="text-xs">Schedule</Label>
+                      <Label className="text-xs">Cron Expression</Label>
                       <Input
-                        value={formSchedule}
-                        onChange={(e) => setFormSchedule(e.target.value)}
-                        placeholder="every hour"
+                        value={formCronExpr}
+                        onChange={(e) => setFormCronExpr(e.target.value)}
+                        placeholder="0 * * * *"
                         className="h-8 text-sm mt-1"
                       />
                       <div className="flex flex-wrap gap-1 mt-1.5">
@@ -523,17 +522,34 @@ export function SchedulerPanel({ open, onOpenChange }: SchedulerPanelProps) {
                             type="button"
                             className={cn(
                               "text-[10px] px-1.5 py-0.5 rounded-full border transition-colors",
-                              formSchedule === ex
+                              formCronExpr === ex
                                 ? "border-primary bg-primary/10 text-primary"
                                 : "border-border hover:border-primary/50 text-muted-foreground"
                             )}
-                            onClick={() => setFormSchedule(ex)}
+                            onClick={() => setFormCronExpr(ex)}
                           >
                             {ex}
                           </button>
                         ))}
                       </div>
                     </div>
+                    <div>
+                      <Label className="text-xs">Task Type</Label>
+                      <Select value={formTaskType} onValueChange={setFormTaskType}>
+                        <SelectTrigger className="h-8 text-sm mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TASK_TYPES.map((t) => (
+                            <SelectItem key={t.value} value={t.value}>
+                              {t.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs">Agent</Label>
                       <Select value={formAgentId} onValueChange={setFormAgentId}>
@@ -550,22 +566,22 @@ export function SchedulerPanel({ open, onOpenChange }: SchedulerPanelProps) {
                         </SelectContent>
                       </Select>
                     </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs">Model (optional)</Label>
-                    <Select value={formModel} onValueChange={setFormModel}>
-                      <SelectTrigger className="h-8 text-sm mt-1">
-                        <SelectValue placeholder="Use default model" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Use default</SelectItem>
-                        {allModels.map((m) => (
-                          <SelectItem key={m.id} value={m.id}>
-                            {m.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div>
+                      <Label className="text-xs">Model (optional)</Label>
+                      <Select value={formModel} onValueChange={setFormModel}>
+                        <SelectTrigger className="h-8 text-sm mt-1">
+                          <SelectValue placeholder="Use default model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Use default</SelectItem>
+                          {allModels.map((m) => (
+                            <SelectItem key={m.id} value={m.id}>
+                              {m.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 pt-1">
                     <Button size="sm" onClick={handleSave} disabled={loading}>

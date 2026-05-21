@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 function errorResponse(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
@@ -23,14 +25,14 @@ export async function GET(
     }
 
     return NextResponse.json(agent);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("[AGENT_GET]", error);
-    const errorMessage = error instanceof Error ? error.message : "Failed to fetch agent";
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return errorResponse(errorMessage, 500);
   }
 }
 
-export async function PATCH(
+export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
@@ -49,7 +51,10 @@ export async function PATCH(
     if (role !== undefined) data.role = role;
     if (systemPrompt !== undefined) data.systemPrompt = systemPrompt;
     if (avatar !== undefined) data.avatar = avatar;
-    if (skills !== undefined) data.skills = skills;
+    if (skills !== undefined) {
+      // skills must be stored as a JSON string
+      data.skills = typeof skills === "string" ? skills : JSON.stringify(skills);
+    }
     if (isActive !== undefined) data.isActive = isActive;
 
     if (Object.keys(data).length === 0) {
@@ -62,9 +67,9 @@ export async function PATCH(
     });
 
     return NextResponse.json(agent);
-  } catch (error) {
-    console.error("[AGENT_PATCH]", error);
-    const errorMessage = error instanceof Error ? error.message : "Failed to update agent";
+  } catch (error: unknown) {
+    console.error("[AGENT_PUT]", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return errorResponse(errorMessage, 500);
   }
 }
@@ -84,9 +89,9 @@ export async function DELETE(
     await db.agent.delete({ where: { id } });
 
     return NextResponse.json({ success: true });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("[AGENT_DELETE]", error);
-    const errorMessage = error instanceof Error ? error.message : "Failed to delete agent";
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return errorResponse(errorMessage, 500);
   }
 }

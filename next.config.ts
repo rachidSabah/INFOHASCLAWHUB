@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // output: "standalone", // Removed to fix server stability
   typescript: {
     ignoreBuildErrors: true,
   },

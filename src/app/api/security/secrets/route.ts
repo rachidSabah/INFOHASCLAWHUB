@@ -1,16 +1,16 @@
-import { db } from "@/lib/db";
+import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 
-let ZAI: any = null;
+export const dynamic = 'force-dynamic';
+
+let ZAI: unknown = null;
 async function getZAI() {
   if (!ZAI) {
     const mod = await import('z-ai-web-dev-sdk');
     ZAI = mod.default;
   }
-  return ZAI.create();
+  return (ZAI as any).create();
 }
-
-
 
 async function callAI(prompt: string): Promise<string> {
   try {
@@ -23,16 +23,13 @@ async function callAI(prompt: string): Promise<string> {
     });
     const result = completion.choices[0]?.message?.content;
     if (result && result.trim() && result.trim() !== '[]') return result;
-    // If AI returned empty, fall through to smart fallback
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('[SecuritySecrets] ZAI SDK error:', error);
-    // Fall through to smart fallback
   }
   return generateSecretsFallback(prompt);
 }
 
 function generateSecretsFallback(prompt: string): string {
-  // Extract file path and content from the prompt
   const filePathMatch = prompt.match(/File:\s*(.+)/);
   const contentMatch = prompt.match(/Content:\n([\s\S]*?)$/);
   const filePath = filePathMatch ? filePathMatch[1].trim() : 'unknown';
@@ -43,7 +40,6 @@ function generateSecretsFallback(prompt: string): string {
   if (content) {
     const lines = content.split('\n');
 
-    // Regex patterns for common secret types
     const patterns: Array<{ regex: RegExp; secretType: string; severity: string }> = [
       { regex: /(?:api[_-]?key|apikey)\s*[:=]\s*['"]([\w-]{8,})['"]/gi, secretType: 'api_key', severity: 'high' },
       { regex: /(?:secret[_-]?key|secretkey)\s*[:=]\s*['"]([\w-]{8,})['"]/gi, secretType: 'secret_key', severity: 'critical' },
@@ -74,7 +70,7 @@ function generateSecretsFallback(prompt: string): string {
             severity,
           });
         }
-        regex.lastIndex = 0; // Reset regex for next line
+        regex.lastIndex = 0;
       }
     }
   }
@@ -88,31 +84,34 @@ export async function GET(request: NextRequest) {
     const secretType = searchParams.get('secretType');
     const isRevoked = searchParams.get('isRevoked');
 
-    const where: any = {};
+    const where: Record<string, unknown> = {};
     if (secretType) where.secretType = secretType;
     if (isRevoked !== null) where.isRevoked = isRevoked === 'true';
 
-    const secrets = await (db as any).exposedSecret.findMany({
+    const secrets = await db.exposedSecret.findMany({
       where,
       orderBy: { createdAt: 'desc' },
     });
 
     return NextResponse.json(secrets);
   } catch (error: unknown) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { files } = body;
+    const { files } = body as { files?: Array<{ path: string; content: string }> };
 
     if (!files || !Array.isArray(files)) {
       return NextResponse.json({ error: 'files array is required' }, { status: 400 });
     }
 
-    const foundSecrets = [];
+    const foundSecrets: Record<string, unknown>[] = [];
 
     for (const file of files) {
       const aiResult = await callAI(
@@ -127,7 +126,7 @@ export async function POST(request: NextRequest) {
       }
 
       for (const secret of secrets) {
-        const created = await (db as any).exposedSecret.create({
+        const created = await db.exposedSecret.create({
           data: {
             filePath: secret.filePath || file.path,
             line: secret.line || 0,
@@ -141,6 +140,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ scanned: files.length, found: foundSecrets.length, secrets: foundSecrets });
   } catch (error: unknown) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
   }
 }
