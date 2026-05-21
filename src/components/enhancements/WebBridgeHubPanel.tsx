@@ -46,7 +46,7 @@ interface ProviderInfo {
   loginUrl: string; localStorageKey: string;
   models: { id: string; name: string; description: string }[];
   setupGuide: string[];
-  bridgeName: string;
+  bridgeName?: string;
 }
 
 const PROVIDERS: ProviderInfo[] = [
