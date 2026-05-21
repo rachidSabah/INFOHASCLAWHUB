@@ -5,7 +5,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const { id } = await params;
     const { targetColumnId } = await req.json();
-    await (db as any).$executeRawUnsafe("UPDATE KanbanCard SET columnId = ?, updatedAt = datetime('now') WHERE id = ?", targetColumnId, id);
+
+    if (!targetColumnId) {
+      return NextResponse.json({ error: "targetColumnId is required" }, { status: 400 });
+    }
+
+    await db.kanbanCard.update({
+      where: { id },
+      data: { columnId: targetColumnId },
+    });
     return NextResponse.json({ success: true });
-  } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
 }

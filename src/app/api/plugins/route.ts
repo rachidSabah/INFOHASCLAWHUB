@@ -42,9 +42,9 @@ export async function POST(request: NextRequest) {
       installs?: number;
     };
 
-    if (!name || !description || !author || !version || !category) {
+    if (!name) {
       return NextResponse.json(
-        { error: 'name, description, author, version, and category are required' },
+        { error: 'name is required' },
         { status: 400 }
       );
     }
@@ -52,10 +52,10 @@ export async function POST(request: NextRequest) {
     const plugin = await db.plugin.create({
       data: {
         name,
-        description,
-        author,
-        version,
-        category,
+        description: description || '',
+        author: author || 'unknown',
+        version: version || '1.0.0',
+        category: category || 'utility',
         manifest: typeof manifest === 'string' ? manifest : JSON.stringify(manifest || {}),
         isEnabled: isEnabled ?? false,
         isInstalled: isInstalled ?? false,

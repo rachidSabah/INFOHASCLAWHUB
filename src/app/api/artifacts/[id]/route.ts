@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const artifact = await db.artifact.findUnique({ where: { id } });
@@ -10,7 +10,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       where: { artifactId: id },
       orderBy: { version: "desc" },
     });
-    await db.artifact.update({ where: { id }, data: { viewCount: (artifact.viewCount || 0) + 1 } });
     return NextResponse.json({ ...artifact, versions });
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Failed" }, { status: 500 });
@@ -25,12 +24,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!current) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const newVersion = current.version + 1;
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (body.title !== undefined) updateData.title = body.title;
     if (body.type !== undefined) updateData.type = body.type;
     if (body.content !== undefined) updateData.content = body.content;
-    if (body.metadata !== undefined) updateData.metadata = body.metadata;
-    if (body.isPublic !== undefined) updateData.isPublic = body.isPublic;
+    if (body.metadata !== undefined) {
+      updateData.metadata = typeof body.metadata === "string" ? body.metadata : JSON.stringify(body.metadata);
+    }
     updateData.version = newVersion;
 
     const updated = await db.artifact.update({ where: { id }, data: updateData });

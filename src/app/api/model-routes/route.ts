@@ -1,24 +1,60 @@
 import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from 'next/server';
 
-
-
-
 export async function GET() {
   try {
-    const routes = await (db as any).modelRoute.findMany({ orderBy: { priority: 'desc' } });
+    const routes = await db.modelRoute.findMany({
+      orderBy: { priority: 'desc' },
+    });
     return NextResponse.json(routes);
   } catch (error: unknown) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const route = await (db as any).modelRoute.create({ data: body });
-    return NextResponse.json(route);
+    const { name, taskType, modelId, priority, fallbackIds, costPerToken, avgLatency, successRate, isEnabled } = body as {
+      name: string;
+      taskType: string;
+      modelId: string;
+      priority?: number;
+      fallbackIds?: string;
+      costPerToken?: number;
+      avgLatency?: number;
+      successRate?: number;
+      isEnabled?: boolean;
+    };
+
+    if (!name || !taskType || !modelId) {
+      return NextResponse.json(
+        { error: 'name, taskType, and modelId are required' },
+        { status: 400 }
+      );
+    }
+
+    const route = await db.modelRoute.create({
+      data: {
+        name,
+        taskType,
+        modelId,
+        ...(priority !== undefined ? { priority } : {}),
+        ...(fallbackIds ? { fallbackIds } : {}),
+        ...(costPerToken !== undefined ? { costPerToken } : {}),
+        ...(avgLatency !== undefined ? { avgLatency } : {}),
+        ...(successRate !== undefined ? { successRate } : {}),
+        ...(isEnabled !== undefined ? { isEnabled } : {}),
+      },
+    });
+    return NextResponse.json(route, { status: 201 });
   } catch (error: unknown) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
   }
 }

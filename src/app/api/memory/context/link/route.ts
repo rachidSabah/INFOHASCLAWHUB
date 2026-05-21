@@ -3,7 +3,7 @@ import { getUniversalMemory } from "@/lib/universal-memory";
 
 // ── POST /api/memory/context/link ─────────────────────────────────────────────
 // Link two memories together with a relation type and optional strength.
-// Body: { sourceId, targetId, relationType, strength? }
+// Body: { sourceId, targetId, relationType?, strength? }
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,9 +32,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!relationType || typeof relationType !== "string") {
+    const relationTypeValue = relationType || "reference";
+    if (typeof relationTypeValue !== "string") {
       return NextResponse.json(
-        { error: "Field 'relationType' is required and must be a string" },
+        { error: "Field 'relationType' must be a string" },
         { status: 400 }
       );
     }
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
 
     // ── Create Link ──
     const memory = getUniversalMemory();
-    const link = await memory.link(sourceId, targetId, relationType, strength ?? 1.0);
+    const link = await memory.link(sourceId, targetId, relationTypeValue, strength ?? 1.0);
 
     return NextResponse.json(link, { status: 201 });
   } catch (error: unknown) {

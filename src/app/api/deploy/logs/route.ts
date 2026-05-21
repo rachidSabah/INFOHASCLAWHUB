@@ -10,8 +10,21 @@ export async function GET(request: NextRequest) {
     const environmentId = searchParams.get('environmentId');
     const limit = parseInt(searchParams.get('limit') || '50');
 
+    // If no environmentId, return logs for all environments
     if (!environmentId) {
-      return NextResponse.json({ error: 'environmentId query parameter is required' }, { status: 400 });
+      const environments = await (db as any).deployEnvironment.findMany({
+        orderBy: { updatedAt: 'desc' },
+        take: 10,
+      });
+      const allLogs = environments.map((env: any) => ({
+        environmentId: env.id,
+        name: env.name,
+        type: env.type,
+        status: env.status,
+        deployCount: env.deployCount,
+        lastDeploy: env.lastDeploy?.toISOString() || null,
+      }));
+      return NextResponse.json({ environments: allLogs, count: allLogs.length });
     }
 
     const environment = await (db as any).deployEnvironment.findUnique({ where: { id: environmentId } });

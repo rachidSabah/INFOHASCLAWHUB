@@ -1,5 +1,52 @@
+import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
-import { pipelineStore } from "@/lib/pipeline-store";
+
+const SEED_PLUGINS = [
+  {
+    name: "web-search",
+    description: "Search the web for real-time information",
+    author: "ClawHub",
+    version: "1.0.0",
+    category: "tool",
+    manifest: JSON.stringify({ type: "tool", capabilities: ["search"] }),
+  },
+  {
+    name: "code-runner",
+    description: "Execute code snippets in a sandboxed environment",
+    author: "ClawHub",
+    version: "1.0.0",
+    category: "tool",
+    manifest: JSON.stringify({ type: "tool", capabilities: ["execute"] }),
+  },
+  {
+    name: "doc-generator",
+    description: "Generate documentation from code",
+    author: "ClawHub",
+    version: "1.0.0",
+    category: "utility",
+    manifest: JSON.stringify({ type: "utility", capabilities: ["docs"] }),
+  },
+];
+
+export async function POST() {
+  try {
+    const results = [];
+    for (const plugin of SEED_PLUGINS) {
+      const upserted = await db.plugin.upsert({
+        where: { name: plugin.name },
+        update: plugin,
+        create: { ...plugin, isEnabled: false, isInstalled: false },
+      });
+      results.push(upserted);
+    }
+    return NextResponse.json({ seeded: results.length, plugins: results }, { status: 201 });
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
+}
 
 export async function GET() {
   try {

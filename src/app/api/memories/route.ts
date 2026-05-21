@@ -42,17 +42,20 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { key, content, source } = body;
 
-    if (!key || !content) {
-      return errorResponse("Key and Content are required", 400);
+    if (!content) {
+      return errorResponse("Content is required", 400);
     }
 
-    if (typeof key !== "string" || typeof content !== "string") {
-      return errorResponse("Key and Content must be strings", 400);
+    if (typeof content !== "string") {
+      return errorResponse("Content must be a string", 400);
     }
+
+    // Auto-generate key if not provided
+    const keyValue = key || `memory-${Date.now()}`;
 
     const memory = await db.memory.create({
       data: {
-        key,
+        key: keyValue,
         content,
         source: source ?? "manual",
       },

@@ -10,8 +10,6 @@ async function getZAI() {
   return ZAI.create();
 }
 
-
-
 async function callAI(prompt: string): Promise<string> {
   try {
     const zai = await getZAI();
@@ -23,16 +21,13 @@ async function callAI(prompt: string): Promise<string> {
     });
     const result = completion.choices[0]?.message?.content;
     if (result && result.trim()) return result;
-    // If AI returned empty, fall through to smart fallback
   } catch (error) {
     console.error('[CodingIterate] ZAI SDK error:', error);
-    // Fall through to smart fallback
   }
   return generateIterationFallback(prompt);
 }
 
 function generateIterationFallback(prompt: string): string {
-  // Extract step info from the prompt
   const stepMatch = prompt.match(/Step:\s*(.+)/);
   const step = stepMatch ? stepMatch[1].trim() : 'Continue implementation';
   const iterationMatch = prompt.match(/Iteration:\s*(\d+)/);
@@ -51,7 +46,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const session = await (db as any).codingSession.findUnique({ where: { id } });
+    const session = await db.codingSession.findUnique({ where: { id } });
     if (!session) {
       return NextResponse.json({ error: 'Coding session not found' }, { status: 404 });
     }
@@ -92,7 +87,7 @@ export async function POST(
     const newIterations = session.iterations + 1;
     const isComplete = newIterations >= (plan.steps?.length || session.maxIterations);
 
-    const updated = await (db as any).codingSession.update({
+    const updated = await db.codingSession.update({
       where: { id },
       data: {
         iterations: newIterations,

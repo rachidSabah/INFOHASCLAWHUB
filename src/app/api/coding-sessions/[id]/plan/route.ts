@@ -10,8 +10,6 @@ async function getZAI() {
   return ZAI.create();
 }
 
-
-
 async function callAI(prompt: string): Promise<string> {
   try {
     const zai = await getZAI();
@@ -23,10 +21,8 @@ async function callAI(prompt: string): Promise<string> {
     });
     const result = completion.choices[0]?.message?.content;
     if (result && result.trim()) return result;
-    // If AI returned empty, fall through to smart fallback
   } catch (error) {
     console.error('[CodingPlan] ZAI SDK error:', error);
-    // Fall through to smart fallback
   }
   return generatePlanFallback(prompt);
 }
@@ -35,7 +31,6 @@ function generatePlanFallback(prompt: string): string {
   const steps: string[] = [];
   const lower = prompt.toLowerCase();
 
-  // Keyword-based step generation
   if (lower.includes('create') || lower.includes('build') || lower.includes('implement')) {
     steps.push('Analyze requirements and define scope', 'Set up project structure and dependencies', 'Implement core functionality', 'Add error handling and edge cases', 'Write tests for the implementation');
   }
@@ -55,7 +50,6 @@ function generatePlanFallback(prompt: string): string {
     steps.push('Assess current state and migration requirements', 'Back up existing data and configuration', 'Implement migration scripts', 'Test migration on a copy of production data', 'Execute migration and verify data integrity');
   }
 
-  // If no keywords matched, generate generic steps from the task description
   if (steps.length === 0) {
     steps.push(
       'Understand the requirements and define acceptance criteria',
@@ -76,7 +70,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const session = await (db as any).codingSession.findUnique({ where: { id } });
+    const session = await db.codingSession.findUnique({ where: { id } });
     if (!session) {
       return NextResponse.json({ error: 'Coding session not found' }, { status: 404 });
     }
@@ -92,7 +86,7 @@ export async function POST(
       plan = { steps: aiResult.split('\n').filter((s: string) => s.trim()) };
     }
 
-    const updated = await (db as any).codingSession.update({
+    const updated = await db.codingSession.update({
       where: { id },
       data: {
         status: 'planning',

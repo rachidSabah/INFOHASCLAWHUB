@@ -59,12 +59,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { projectPath, commitHash, diff, type } = body;
 
-    if (!projectPath || !commitHash) {
-      return NextResponse.json({ error: 'projectPath and commitHash are required' }, { status: 400 });
-    }
+    const pathValue = projectPath || "unknown";
+    const hashValue = commitHash || `commit-${Date.now()}`;
 
     const aiResult = await callAI(
-      `Analyze this git ${type || 'commit'}:\n\nProject: ${projectPath}\nCommit: ${commitHash}\n${diff ? `Diff:\n${diff}` : ''}\n\nProvide analysis as JSON with summary, risk, suggestions, and patterns.`
+      `Analyze this git ${type || 'commit'}:\n\nProject: ${pathValue}\nCommit: ${hashValue}\n${diff ? `Diff:\n${diff}` : ''}\n\nProvide analysis as JSON with summary, risk, suggestions, and patterns.`
     );
 
     let analysis;
@@ -76,8 +75,8 @@ export async function POST(request: NextRequest) {
 
     const gitAnalysis = await (db as any).gitAnalysis.create({
       data: {
-        projectPath,
-        commitHash,
+        projectPath: pathValue,
+        commitHash: hashValue,
         analysis: JSON.stringify(analysis),
         type: type || 'commit',
       },

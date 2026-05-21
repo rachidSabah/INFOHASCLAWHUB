@@ -31,24 +31,20 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { name, hostId, peers, sharedAgent } = body as {
-      name: string;
-      hostId: string;
+      name?: string;
+      hostId?: string;
       peers?: Array<{ id: string; name: string; cursor: unknown; color: string }>;
       sharedAgent?: string;
     };
 
-    if (!name || !hostId) {
-      return NextResponse.json(
-        { error: 'name and hostId are required' },
-        { status: 400 }
-      );
-    }
+    const sessionName = name || "New Session";
+    const host = hostId || "host-" + Date.now();
 
     const session = await db.collabSession.create({
       data: {
-        name,
-        hostId,
-        peers: JSON.stringify(peers || [{ id: hostId, name: 'Host', cursor: null, color: '#3b82f6' }]),
+        name: sessionName,
+        hostId: host,
+        peers: JSON.stringify(peers || [{ id: host, name: 'Host', cursor: null, color: '#3b82f6' }]),
         status: 'active',
         sharedAgent: sharedAgent || null,
       },

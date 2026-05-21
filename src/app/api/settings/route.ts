@@ -26,6 +26,27 @@ export async function GET() {
   }
 }
 
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const settings = body as Partial<AppSettings>;
+
+    // Upsert each setting key-value pair
+    for (const [key, value] of Object.entries(settings)) {
+      await db.settings.upsert({
+        where: { key },
+        update: { value: JSON.stringify(value) },
+        create: { key, value: JSON.stringify(value) },
+      });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Failed to save settings";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();

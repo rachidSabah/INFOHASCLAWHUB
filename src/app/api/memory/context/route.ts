@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUniversalMemory } from "@/lib/universal-memory";
+import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
 // ── GET /api/memory/context ────────────────────────────────────────────────────
-// Search memories with semantic similarity.
+// Search memories with semantic similarity, or list all if no query provided.
 // Query params: ?query=, ?types=, ?categories=, ?projectId=, ?agentId=, ?limit=
 
 export async function GET(req: NextRequest) {
@@ -12,13 +13,6 @@ export async function GET(req: NextRequest) {
     const { searchParams } = req.nextUrl;
 
     const query = searchParams.get("query") ?? "";
-    if (!query.trim()) {
-      return NextResponse.json(
-        { error: "Query parameter 'query' is required and must not be empty" },
-        { status: 400 }
-      );
-    }
-
     const typesParam = searchParams.get("types");
     const categoriesParam = searchParams.get("categories");
     const projectId = searchParams.get("projectId") ?? undefined;
@@ -31,13 +25,29 @@ export async function GET(req: NextRequest) {
     const categories = categoriesParam
       ? categoriesParam.split(",").map((c) => c.trim()).filter(Boolean)
       : undefined;
-    const limit = limitParam ? parseInt(limitParam, 10) : 10;
+    const limit = limitParam ? parseInt(limitParam, 10) : 50;
 
     if (isNaN(limit) || limit < 1) {
       return NextResponse.json(
         { error: "Parameter 'limit' must be a positive integer" },
         { status: 400 }
       );
+    }
+
+    // If no query, return a paginated list of all context memories
+    if (!query.trim()) {
+      const where: Record<string, unknown> = {};
+      if (types?.length) where.type = { in: types };
+      if (categories?.length) where.category = { in: categories };
+      if (projectId) where.projectId = projectId;
+      if (agentId) where.agentId = agentId;
+
+      const results = await db.contextMemory.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: limit,
+      });
+      return NextResponse.json({ results, count: results.length });
     }
 
     const memory = getUniversalMemory();
@@ -80,7 +90,7 @@ export async function GET(req: NextRequest) {
 
 // ── POST /api/memory/context ───────────────────────────────────────────────────
 // Store a new memory.
-// Body: { type, category, content, summary?, sourceId?, sourceType?, projectId?, agentId?, tags?, priority?, ttlHours? }
+// Body: { type?, category?, content, summary?, sourceId?, sourceType?, projectId?, agentId?, tags?, priority?, ttlHours? }
 
 export async function POST(req: NextRequest) {
   try {
@@ -99,14 +109,7 @@ export async function POST(req: NextRequest) {
       ttlHours,
     } = body;
 
-    // ── Validation ──
-    if (!type || typeof type !== "string") {
-      return NextResponse.json(
-        { error: "Field 'type' is required and must be a string" },
-        { status: 400 }
-      );
-    }
-
+    // ── Validation (with defaults for type and category) ──
     const validTypes = [
       "episodic",
       "semantic",
@@ -115,16 +118,10 @@ export async function POST(req: NextRequest) {
       "agent",
       "session",
     ];
-    if (!validTypes.includes(type)) {
+    const typeValue = type || "semantic";
+    if (typeof typeValue !== "string" || !validTypes.includes(typeValue)) {
       return NextResponse.json(
         { error: `Invalid type. Must be one of: ${validTypes.join(", ")}` },
-        { status: 400 }
-      );
-    }
-
-    if (!category || typeof category !== "string") {
-      return NextResponse.json(
-        { error: "Field 'category' is required and must be a string" },
         { status: 400 }
       );
     }
@@ -138,7 +135,8 @@ export async function POST(req: NextRequest) {
       "success",
       "research",
     ];
-    if (!validCategories.includes(category)) {
+    const categoryValue = category || "conversation";
+    if (typeof categoryValue !== "string" || !validCategories.includes(categoryValue)) {
       return NextResponse.json(
         {
           error: `Invalid category. Must be one of: ${validCategories.join(", ")}`,
@@ -178,14 +176,14 @@ export async function POST(req: NextRequest) {
     // ── Store ──
     const memory = getUniversalMemory();
     const stored = await memory.store({
-      type: type as
+      type: typeValue as
         | "episodic"
         | "semantic"
         | "procedural"
         | "project"
         | "agent"
         | "session",
-      category: category as
+      category: categoryValue as
         | "conversation"
         | "code"
         | "workflow"

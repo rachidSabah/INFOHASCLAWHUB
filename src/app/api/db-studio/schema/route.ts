@@ -9,8 +9,19 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const connectionId = searchParams.get('connectionId');
 
+    // If no connectionId, list all connections with their schemas
     if (!connectionId) {
-      return NextResponse.json({ error: 'connectionId query parameter is required' }, { status: 400 });
+      const connections = await (db as any).databaseConnection.findMany({
+        orderBy: { name: 'asc' },
+      });
+      const result = connections.map((c: any) => ({
+        connectionId: c.id,
+        name: c.name,
+        type: c.type,
+        schema: c.schemaSnapshot ? JSON.parse(c.schemaSnapshot) : null,
+        lastUpdated: c.updatedAt,
+      }));
+      return NextResponse.json({ connections: result, count: result.length });
     }
 
     const connection = await (db as any).databaseConnection.findUnique({ where: { id: connectionId } });

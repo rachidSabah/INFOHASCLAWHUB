@@ -22,23 +22,18 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { issueUrl, issueTitle, issueBody, repoUrl, maxIterations } = body as {
       issueUrl?: string;
-      issueTitle: string;
+      issueTitle?: string;
       issueBody?: string;
       repoUrl?: string;
       maxIterations?: number;
     };
 
-    if (!issueTitle) {
-      return NextResponse.json(
-        { error: 'issueTitle is required' },
-        { status: 400 }
-      );
-    }
+    const title = issueTitle || "Untitled Issue";
 
     const pipeline = await db.issuePipeline.create({
       data: {
         issueUrl,
-        issueTitle,
+        issueTitle: title,
         issueBody,
         repoUrl,
         maxIterations: maxIterations ?? 5,

@@ -5,18 +5,67 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const columnId = searchParams.get("columnId");
-    if (!columnId) return NextResponse.json({ error: "columnId required" }, { status: 400 });
-    const cards = await (db as any).$queryRawUnsafe("SELECT * FROM KanbanCard WHERE columnId = ? ORDER BY \"order\" ASC", columnId);
+    if (!columnId) {
+      return NextResponse.json({ error: "columnId required" }, { status: 400 });
+    }
+    const cards = await db.kanbanCard.findMany({
+      where: { columnId },
+      orderBy: { order: "asc" },
+    });
     return NextResponse.json(cards);
-  } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const id = crypto.randomUUID();
-    const mx = await (db as any).$queryRawUnsafe("SELECT COALESCE(MAX(\"order\"), -1)+1 as nx FROM KanbanCard WHERE columnId = ?", body.columnId);
-    await (db as any).$executeRawUnsafe("INSERT INTO KanbanCard (id, columnId, title, description, priority, labels, assignee, status, subtasks, \"order\", createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))", id, body.columnId, body.title || "", body.description || "", body.priority || "medium", body.labels || "[]", body.assignee || "", body.status || "backlog", body.subtasks || "[]", mx[0]?.nx || 0);
-    return NextResponse.json({ id }, { status: 201 });
-  } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+    const { columnId, title, description, priority, labels, status, subtasks } = body as {
+      columnId: string;
+      title: string;
+      description?: string;
+      priority?: string;
+      labels?: string;
+      status?: string;
+      subtasks?: string;
+    };
+
+    if (!columnId || !title) {
+      return NextResponse.json(
+        { error: "columnId and title are required" },
+        { status: 400 }
+      );
+    }
+
+    // Get the next order value
+    const maxOrder = await db.kanbanCard.aggregate({
+      where: { columnId },
+      _max: { order: true },
+    });
+    const nextOrder = (maxOrder._max.order ?? -1) + 1;
+
+    const card = await db.kanbanCard.create({
+      data: {
+        columnId,
+        title,
+        description: description || "",
+        priority: priority || "medium",
+        labels: labels || "[]",
+        status: status || "backlog",
+        subtasks: subtasks || "[]",
+        order: nextOrder,
+      },
+    });
+
+    return NextResponse.json(card, { status: 201 });
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
 }

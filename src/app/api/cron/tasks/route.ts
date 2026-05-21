@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { name, description, cronExpr, taskType, agentId, config, retryPolicy, dependencies } = body;
 
-    // Validate required fields
+    // Validate required fields (name required, cronExpr and taskType have defaults)
     if (!name || typeof name !== "string") {
       return NextResponse.json(
         { error: "name is required and must be a string" },
@@ -38,16 +38,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!cronExpr || typeof cronExpr !== "string") {
+    const cronExprValue = cronExpr || "*/5 * * * *";
+    if (typeof cronExprValue !== "string") {
       return NextResponse.json(
-        { error: "cronExpr is required and must be a string" },
+        { error: "cronExpr must be a string" },
         { status: 400 },
       );
     }
 
-    if (!taskType || typeof taskType !== "string") {
+    const taskTypeValue = taskType || "custom";
+    if (typeof taskTypeValue !== "string") {
       return NextResponse.json(
-        { error: "taskType is required and must be a string" },
+        { error: "taskType must be a string" },
         { status: 400 },
       );
     }
@@ -56,10 +58,10 @@ export async function POST(req: NextRequest) {
     const task = await engine.createTask({
       name,
       description: description ?? undefined,
-      cronExpr,
-      taskType,
+      cronExpr: cronExprValue,
+      taskType: taskTypeValue,
       agentId: agentId ?? undefined,
-      config: config ?? undefined,
+      config: config ?? {},
       retryPolicy: retryPolicy ?? undefined,
       dependencies: dependencies ?? undefined,
     });

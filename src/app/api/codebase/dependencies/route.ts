@@ -9,13 +9,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const projectPath = searchParams.get('projectPath');
 
-    if (!projectPath) {
-      return NextResponse.json({ error: 'projectPath query parameter is required' }, { status: 400 });
-    }
+    // If no projectPath, return all indexed symbols
+    const where: Record<string, unknown> = {};
+    if (projectPath) where.projectPath = projectPath;
 
-    const symbols = await (db as any).codeIndex.findMany({
-      where: { projectPath },
-    });
+    const symbols = await (db as any).codeIndex.findMany({ where });
 
     // Build a simple dependency graph from imports/exports
     const files = [...new Set(symbols.map(s => s.filePath))];
@@ -34,7 +32,7 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    return NextResponse.json({ projectPath, files: files.length, graph });
+    return NextResponse.json({ projectPath: projectPath || "all", files: files.length, graph });
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }

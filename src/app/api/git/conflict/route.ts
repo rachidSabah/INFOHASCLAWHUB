@@ -68,12 +68,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { projectPath, filePath, ours, theirs, base } = body;
 
-    if (!filePath || !ours || !theirs) {
-      return NextResponse.json({ error: 'filePath, ours, and theirs are required' }, { status: 400 });
-    }
+    const fp = filePath || "unknown";
+    const oursValue = ours || "";
+    const theirsValue = theirs || "";
 
     const aiResult = await callAI(
-      `Resolve this merge conflict:\n\nFile: ${filePath}\n${base ? `Base version:\n${base}\n` : ''}Our version:\n${ours}\n\nTheir version:\n${theirs}\n\nProvide a merged resolution as JSON with resolvedCode, strategy, and explanation.`
+      `Resolve this merge conflict:\n\nFile: ${fp}\n${base ? `Base version:\n${base}\n` : ''}Our version:\n${oursValue}\n\nTheir version:\n${theirsValue}\n\nProvide a merged resolution as JSON with resolvedCode, strategy, and explanation.`
     );
 
     let resolution;

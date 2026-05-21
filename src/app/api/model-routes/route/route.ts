@@ -1,20 +1,17 @@
 import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from 'next/server';
 
-
-
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { taskType } = body;
+    const { taskType } = body as { taskType: string };
 
     if (!taskType) {
       return NextResponse.json({ error: 'taskType is required' }, { status: 400 });
     }
 
     // Find the best matching route for this task type
-    const routes = await (db as any).modelRoute.findMany({
+    const routes = await db.modelRoute.findMany({
       where: { taskType, isEnabled: true },
       orderBy: { priority: 'desc' },
     });

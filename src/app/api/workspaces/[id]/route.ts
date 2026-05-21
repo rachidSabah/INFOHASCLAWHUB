@@ -16,11 +16,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { id } = await params;
     const body = await req.json();
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (body.name !== undefined) updateData.name = body.name;
     if (body.description !== undefined) updateData.description = body.description;
-    if (body.artifacts !== undefined) updateData.artifacts = body.artifacts;
-    if (body.members !== undefined) updateData.members = body.members;
+    if (body.isActive !== undefined) updateData.isActive = body.isActive;
     const updated = await db.workspace.update({ where: { id }, data: updateData });
     return NextResponse.json(updated);
   } catch (error: unknown) {

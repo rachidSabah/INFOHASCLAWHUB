@@ -37,8 +37,29 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { taskType, agentId, constraints } = body;
+
+    // If no taskType, return general recommendations from GET-style logic
     if (!taskType) {
-      return NextResponse.json({ error: "taskType is required" }, { status: 400 });
+      const experiences = await db.agentExperience.findMany({
+        orderBy: { score: "desc" },
+        take: 20,
+      });
+
+      const byTask = new Map<string, Array<{ strategy: string; score: number }>>();
+      for (const exp of experiences) {
+        const list = byTask.get(exp.taskType) || [];
+        list.push({ strategy: exp.strategy, score: exp.score });
+        byTask.set(exp.taskType, list);
+      }
+
+      const recommendations: Array<{ taskType: string; bestStrategy: string; avgScore: number; sampleSize: number }> = [];
+      for (const [tt, strategies] of byTask) {
+        const avgScore = strategies.reduce((s, x) => s + x.score, 0) / strategies.length;
+        const best = strategies.sort((a, b) => b.score - a.score)[0];
+        recommendations.push({ taskType: tt, bestStrategy: best.strategy, avgScore, sampleSize: strategies.length });
+      }
+
+      return NextResponse.json({ recommendations, totalExperiences: experiences.length });
     }
     
     // Find best strategy for this task type from past experiences

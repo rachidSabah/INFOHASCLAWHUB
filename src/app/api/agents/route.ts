@@ -25,13 +25,15 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { name, role, systemPrompt, avatar, skills } = body;
 
-    if (!name || !role || !systemPrompt) {
-      return errorResponse("Missing required fields: name, role, systemPrompt", 400);
+    if (!name || !systemPrompt) {
+      return errorResponse("Missing required fields: name, systemPrompt", 400);
     }
 
-    if (typeof name !== "string" || typeof role !== "string" || typeof systemPrompt !== "string") {
-      return errorResponse("Invalid field types: name, role, systemPrompt must be strings", 400);
+    if (typeof name !== "string" || typeof systemPrompt !== "string") {
+      return errorResponse("Invalid field types: name and systemPrompt must be strings", 400);
     }
+
+    const roleValue = role || "assistant";
 
     // skills must be stored as a JSON string
     const skillsValue: string | null = skills
@@ -43,7 +45,7 @@ export async function POST(req: Request) {
     const agent = await db.agent.create({
       data: {
         name,
-        role,
+        role: roleValue,
         systemPrompt,
         avatar: avatar ?? null,
         skills: skillsValue,

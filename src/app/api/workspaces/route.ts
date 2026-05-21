@@ -12,14 +12,22 @@ export async function GET() {
     });
     return NextResponse.json(workspaces);
   } catch (error: unknown) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed" }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed" },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
     const { name, description } = await req.json();
-    if (!name) return NextResponse.json({ error: "Name required" }, { status: 400 });
+    if (!name) {
+      return NextResponse.json(
+        { error: "Name required" },
+        { status: 400 }
+      );
+    }
 
     const workspace = await db.workspace.create({
       data: { name, description: description || null },
@@ -27,6 +35,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(workspace, { status: 201 });
   } catch (error: unknown) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed" }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed" },
+      { status: 500 }
+    );
   }
 }

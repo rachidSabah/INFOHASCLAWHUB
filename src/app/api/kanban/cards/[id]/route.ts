@@ -5,24 +5,43 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { id } = await params;
     const body = await req.json();
-    const sets: string[] = [];
-    const vals: any[] = [];
-    for (const f of ["title", "description", "priority", "labels", "assignee", "status", "gitBranch", "prLink", "subtasks", "tokenUsage", "dueDate", "logs", "artifacts"]) {
-      if (body[f] !== undefined) { sets.push(`"${f}" = ?`); vals.push(typeof body[f] === "object" ? JSON.stringify(body[f]) : body[f]); }
+    const updateData: Record<string, unknown> = {};
+
+    // Only update fields that exist in the KanbanCard model
+    if (body.title !== undefined) updateData.title = body.title;
+    if (body.description !== undefined) updateData.description = body.description;
+    if (body.priority !== undefined) updateData.priority = body.priority;
+    if (body.labels !== undefined) updateData.labels = typeof body.labels === "object" ? JSON.stringify(body.labels) : body.labels;
+    if (body.status !== undefined) updateData.status = body.status;
+    if (body.subtasks !== undefined) updateData.subtasks = typeof body.subtasks === "object" ? JSON.stringify(body.subtasks) : body.subtasks;
+    if (body.order !== undefined) updateData.order = body.order;
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: "No fields to update" }, { status: 400 });
     }
-    if (sets.length === 0) return NextResponse.json({ error: "No fields to update" }, { status: 400 });
-    sets.push("updatedAt = datetime('now')");
-    vals.push(id);
-    await (db as any).$executeRawUnsafe(`UPDATE KanbanCard SET ${sets.join(", ")} WHERE id = ?`, ...vals);
-    const card = await (db as any).$queryRawUnsafe("SELECT * FROM KanbanCard WHERE id = ?", id);
-    return NextResponse.json(card[0]);
-  } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+
+    const card = await db.kanbanCard.update({
+      where: { id },
+      data: updateData,
+    });
+    return NextResponse.json(card);
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    await (db as any).$executeRawUnsafe("DELETE FROM KanbanCard WHERE id = ?", id);
+    await db.kanbanCard.delete({ where: { id } });
     return NextResponse.json({ success: true });
-  } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
 }
