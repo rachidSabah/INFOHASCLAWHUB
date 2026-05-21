@@ -217,6 +217,17 @@ const HINTS: Record<string, { title: string; steps: string[] }> = {
       "6. Self-Heal tab: Run diagnostics to detect and auto-fix system issues",
     ],
   },
+  "Pipeline Templates": {
+    title: "One-Click Pipeline Launch Pad",
+    steps: [
+      "1. Browse 7 preconfigured pipeline templates organized by category",
+      "2. Each template shows step count, approval gates, and a mini flow preview",
+      "3. Click 'View Steps' to expand the full step flow diagram with agent assignments",
+      "4. Click 'Launch Pipeline' to create the pipeline — then run it from Agent Orchestration",
+      "5. Use 'Seed All Pipelines' to create all templates at once via the API",
+      "6. Categories: Development, Security, Research, Data, Operations, Product",
+    ],
+  },
   "Research Mode": {
     title: "Deep Research + Citations + Hallucination Detection",
     steps: [

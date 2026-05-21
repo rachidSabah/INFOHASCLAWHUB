@@ -51,6 +51,10 @@ import { MCPHubPanel } from "./enhancements/MCPHubPanel";
 import { ComplianceEnginePanel } from "./enhancements/ComplianceEnginePanel";
 import { CollaborationPanel } from "./enhancements/CollaborationPanel";
 
+// Preconfigured System Panels
+import { PrebuiltAgentsPanel } from "./enhancements/PrebuiltAgentsPanel";
+import { PipelineTemplatesPanel } from "./enhancements/PipelineTemplatesPanel";
+
 export function TopBar() {
   const { toggleSidebar, setSettingsOpen } = useUIStore();
   const { settings, updateSetting, modelGroups, fetchModels } = useSettingsStore();
@@ -103,6 +107,10 @@ export function TopBar() {
   const [mcpHubOpen, setMcpHubOpen] = useState(false);
   const [complianceEngineOpen, setComplianceEngineOpen] = useState(false);
   const [collaborationOpen, setCollaborationOpen] = useState(false);
+
+  // Preconfigured System panel open states
+  const [prebuiltAgentsOpen, setPrebuiltAgentsOpen] = useState(false);
+  const [pipelineTemplatesOpen, setPipelineTemplatesOpen] = useState(false);
 
   const agentRef = useRef<HTMLDivElement>(null);
   const skillRef = useRef<HTMLDivElement>(null);
@@ -462,6 +470,14 @@ export function TopBar() {
             <button onClick={() => { setCollaborationOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
               <Radio className="h-3.5 w-3.5 text-indigo-500" /><div><span className="font-medium">Collaboration</span><p className="text-[10px] text-muted-foreground">Real-time multiplayer sessions</p></div>
             </button>
+            <div className="border-t border-border my-1" />
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1">Tier 7: Preconfigured OS</p>
+            <button onClick={() => { setPrebuiltAgentsOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Bot className="h-3.5 w-3.5 text-amber-500" /><div><span className="font-medium">Prebuilt Agents</span><p className="text-[10px] text-muted-foreground">One-click agent activation</p></div>
+            </button>
+            <button onClick={() => { setPipelineTemplatesOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Workflow className="h-3.5 w-3.5 text-emerald-500" /><div><span className="font-medium">Pipeline Templates</span><p className="text-[10px] text-muted-foreground">7 production-ready pipelines</p></div>
+            </button>
           </div>
         )}
       </div>
@@ -569,6 +585,10 @@ export function TopBar() {
       <MCPHubPanel open={mcpHubOpen} onOpenChange={setMcpHubOpen} />
       <ComplianceEnginePanel open={complianceEngineOpen} onOpenChange={setComplianceEngineOpen} />
       <CollaborationPanel open={collaborationOpen} onOpenChange={setCollaborationOpen} />
+
+      {/* Preconfigured System Panels */}
+      <PrebuiltAgentsPanel open={prebuiltAgentsOpen} onOpenChange={setPrebuiltAgentsOpen} />
+      <PipelineTemplatesPanel open={pipelineTemplatesOpen} onOpenChange={setPipelineTemplatesOpen} />
     </div>
   );
 }
