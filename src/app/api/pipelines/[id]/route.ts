@@ -10,7 +10,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const pipeline = await db.agentPipeline.findUnique({ where: { id } });
+    const pipeline = await (db as any).agentPipeline.findUnique({ where: { id } });
     if (!pipeline) {
       return NextResponse.json({ error: 'Pipeline not found' }, { status: 404 });
     }
@@ -27,7 +27,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const pipeline = await db.agentPipeline.update({ where: { id }, data: body });
+    const pipeline = await (db as any).agentPipeline.update({ where: { id }, data: body });
     return NextResponse.json(pipeline);
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
@@ -40,7 +40,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    await db.agentPipeline.delete({ where: { id } });
+    await (db as any).agentPipeline.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });

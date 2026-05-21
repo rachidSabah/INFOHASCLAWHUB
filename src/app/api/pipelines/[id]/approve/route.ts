@@ -11,7 +11,7 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const pipeline = await db.agentPipeline.findUnique({ where: { id } });
+    const pipeline = await (db as any).agentPipeline.findUnique({ where: { id } });
     if (!pipeline) {
       return NextResponse.json({ error: 'Pipeline not found' }, { status: 404 });
     }
@@ -19,7 +19,7 @@ export async function POST(
     const results = pipeline.results ? JSON.parse(pipeline.results) : [];
     results.push({ step: currentStep, approved: true, timestamp: new Date().toISOString() });
     const nextStep = currentStep + 1;
-    const updated = await db.agentPipeline.update({
+    const updated = await (db as any).agentPipeline.update({
       where: { id },
       data: {
         currentStep: nextStep,

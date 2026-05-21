@@ -51,7 +51,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const session = await db.codingSession.findUnique({ where: { id } });
+    const session = await (db as any).codingSession.findUnique({ where: { id } });
     if (!session) {
       return NextResponse.json({ error: 'Coding session not found' }, { status: 404 });
     }
@@ -92,7 +92,7 @@ export async function POST(
     const newIterations = session.iterations + 1;
     const isComplete = newIterations >= (plan.steps?.length || session.maxIterations);
 
-    const updated = await db.codingSession.update({
+    const updated = await (db as any).codingSession.update({
       where: { id },
       data: {
         iterations: newIterations,

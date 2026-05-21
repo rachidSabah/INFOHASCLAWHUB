@@ -10,7 +10,7 @@ export async function POST(
     const body = await request.json();
     const checkpointId = body.checkpointId;
 
-    const session = await db.codingSession.findUnique({ where: { id } });
+    const session = await (db as any).codingSession.findUnique({ where: { id } });
     if (!session) {
       return NextResponse.json({ error: 'Coding session not found' }, { status: 404 });
     }
@@ -28,7 +28,7 @@ export async function POST(
     // If no checkpointId provided, rollback to the latest checkpoint
     if (!checkpointId) {
       const latestCheckpoint = checkpoints[checkpoints.length - 1];
-      const updated = await db.codingSession.update({
+      const updated = await (db as any).codingSession.update({
         where: { id },
         data: {
           iterations: checkpoints.length,
@@ -51,7 +51,7 @@ export async function POST(
     }
 
     const rollbackIterations = targetIndex + 1;
-    const updated = await db.codingSession.update({
+    const updated = await (db as any).codingSession.update({
       where: { id },
       data: {
         iterations: rollbackIterations,
