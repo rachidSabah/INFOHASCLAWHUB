@@ -211,9 +211,11 @@ The Hybrid Router benchmarks all configured providers in real time, scoring them
 
 ## Integration Ecosystem
 
-### WhatsApp Integration
+### Chat Bot Integrations (WhatsApp, Telegram, Discord)
 
-Full WhatsApp Web integration via Baileys — QR code pairing, message send/receive, bot mode with per-channel personality configuration.
+Unified messaging across all major chat platforms — WhatsApp, Telegram, and Discord — with full bot mode, per-channel personality, broadcast messaging, and real-time status monitoring.
+
+**WhatsApp** — Full WhatsApp Web integration via Baileys with QR code pairing, message send/receive, bot mode, and personality configuration per channel.
 
 | Endpoint | Function |
 |----------|----------|
@@ -222,6 +224,21 @@ Full WhatsApp Web integration via Baileys — QR code pairing, message send/rece
 | `/api/whatsapp/status` | Check connection status |
 | `/api/whatsapp/disconnect` | End the WhatsApp session |
 | `/api/whatsapp/bot` | Configure bot mode and personality |
+
+**Telegram** — Native Telegram Bot API integration with command handling, inline queries, group management, and AI-powered auto-responses.
+
+**Discord** — Full Discord bot integration with slash commands, server management, channel monitoring, and AI-driven conversation capabilities.
+
+All platforms share the Comms Hub endpoints for unified management:
+
+| Endpoint | Function |
+|----------|----------|
+| `/api/bots/connections` | List and create bot connections |
+| `/api/bots/connections/[id]/connect` | Establish connection |
+| `/api/bots/connections/[id]/send` | Send message |
+| `/api/bots/connections/[id]/toggle` | Toggle connection on/off |
+| `/api/bots/connections/[id]/status` | Connection status |
+| `/api/bots/broadcast` | Broadcast to all channels |
 
 ### MCP (Model Context Protocol)
 
@@ -575,6 +592,8 @@ INFOHASCLAWHUB/
 │   │   │   ├── self-improving/         # Agent self-improvement loop
 │   │   │   ├── ui-builder/             # Visual UI builder
 │   │   │   ├── whatsapp/               # WhatsApp integration
+│   │   │   ├── telegram/               # Telegram bot integration
+│   │   │   ├── discord/                # Discord bot integration
 │   │   │   └── ...                     # Additional routes
 │   │   ├── globals.css
 │   │   ├── layout.tsx
@@ -593,7 +612,7 @@ INFOHASCLAWHUB/
 │   │   ├── AgentRunnerPanel.tsx        # Agent execution
 │   │   ├── SchedulerPanel.tsx          # Cron scheduling UI
 │   │   ├── MCPServerPanel.tsx          # MCP server management
-│   │   ├── WhatsAppPanel.tsx           # WhatsApp integration
+│   │   ├── WhatsAppPanel.tsx           # WhatsApp/Telegram/Discord integration
 │   │   ├── TokenDashboard.tsx          # Token usage analytics
 │   │   ├── SystemMonitor.tsx           # System resource monitor
 │   │   ├── DoctorPanel.tsx             # Health diagnostics
@@ -617,6 +636,8 @@ INFOHASCLAWHUB/
 │       ├── tokens.ts                   # Token counting (tiktoken)
 │       ├── mcp.ts                      # MCP protocol client
 │       ├── whatsapp.ts                 # WhatsApp Web (Baileys)
+│       ├── telegram.ts                 # Telegram Bot API
+│       ├── discord.ts                  # Discord bot client
 │       ├── artifact-store.ts           # Artifact state management
 │       ├── events.ts                   # Event bus / pub-sub
 │       ├── updater.ts                  # Auto-update system
