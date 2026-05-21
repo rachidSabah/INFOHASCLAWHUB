@@ -217,6 +217,42 @@ async function queryLLM(
   let accumulatedText = "";
 
   if (isCustomProvider && providerData) {
+    const pName = providerData.name?.toLowerCase() || "";
+    
+    // Gemini uses a different API format
+    if (pName.includes("gemini") || providerData.baseUrl?.includes("generativelanguage")) {
+      const geminiModel = targetModel || "gemini-2.0-flash";
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${providerData.apiKey}`;
+      
+      const contents = [
+        ...conversationHistory.map((msg: any) => ({
+          role: msg.role === "user" ? "user" : "model",
+          parts: [{ text: msg.content }]
+        })),
+        { role: "user", parts: [{ text: prompt }] }
+      ];
+
+      const response = await fetch(geminiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents,
+          ...(finalSystemPrompt ? { systemInstruction: { parts: [{ text: finalSystemPrompt }] } } : {}),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Gemini API error: ${response.status} ${errorText}`);
+      }
+
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: text })}\n\n`));
+      return text;
+    }
+
+    // OpenAI-compatible providers
     const baseUrl = (providerData.baseUrl?.replace(/\/$/, "") || "https://api.openai.com/v1").replace("://localhost", "://127.0.0.1");
     const url = `${baseUrl}/chat/completions`;
 
