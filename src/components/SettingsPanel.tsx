@@ -491,7 +491,7 @@ export function SettingsPanel() {
 
   return (
     <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-      <DialogContent className="sm:max-w-[700px] max-h-[85vh] overflow-hidden flex flex-col p-0">
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-hidden flex flex-col p-0">
         <DialogHeader className="p-6 pb-0">
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5" />
@@ -523,7 +523,7 @@ export function SettingsPanel() {
               ))}
             </TabsList>
 
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 min-h-0 overflow-y-auto p-6">
               <TabsContent value="general" className="space-y-4 mt-0 border-0 p-0 focus-visible:ring-0">
                 <div className="space-y-2">
                   <Label htmlFor="systemPrompt">Default System Instructions</Label>
