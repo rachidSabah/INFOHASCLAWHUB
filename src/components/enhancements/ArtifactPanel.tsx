@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import {
   Sparkles, FileText, Sheet, Presentation, Code2, Image, Download,
   Share2, Trash2, Copy, ExternalLink, Loader2, Eye, History, Plus,
-  LayoutGrid, FileSpreadsheet, FileSlides, FileCode2, GripHorizontal,
+  LayoutGrid, FileSpreadsheet, FileCode2, GripHorizontal,
   MonitorPlay, PenTool, X,
 } from "lucide-react";
 
@@ -42,7 +42,7 @@ const ARTIFACT_TYPES = [
   { type: "document", label: "Document", icon: FileText, prompt: "document" },
   { type: "report", label: "Report", icon: FileText, prompt: "report" },
   { type: "spreadsheet", label: "Spreadsheet", icon: FileSpreadsheet, prompt: "spreadsheet" },
-  { type: "presentation", label: "Presentation", icon: FileSlides, prompt: "presentation" },
+  { type: "presentation", label: "Presentation", icon: Presentation, prompt: "presentation" },
   { type: "markdown", label: "Markdown", icon: FileText, prompt: "markdown document" },
   { type: "code", label: "Code", icon: FileCode2, prompt: "code artifact" },
   { type: "diagram", label: "Diagram", icon: GripHorizontal, prompt: "diagram" },
