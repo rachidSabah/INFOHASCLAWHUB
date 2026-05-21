@@ -210,7 +210,7 @@ export function SettingsPanel() {
   const [localSettings, setLocalSettings] = useState(settings);
   const [providers, setProviders] = useState<Provider[]>([]);
   
-  const availableModels = modelGroups.flatMap(g => g.models);
+  const availableModels = modelGroups.flatMap(g => g.models).filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i);
   const [isAddingProvider, setIsAddingProvider] = useState(false);
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
   const [newProvider, setNewProvider] = useState({ name: "", baseUrl: "", apiKey: "" });
@@ -500,7 +500,7 @@ export function SettingsPanel() {
         </DialogHeader>
 
         <div className="flex flex-col md:flex-row gap-0 mt-4 flex-1 overflow-hidden">
-          <Tabs defaultValue="general" orientation="vertical" className="w-full flex flex-col md:flex-row h-full overflow-hidden">
+          <Tabs defaultValue="general" orientation="vertical" className="w-full flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
             <TabsList className="flex md:flex-col h-full bg-muted/30 border-r p-2 md:w-48 justify-start gap-1 rounded-none shrink-0">
               {[
                 { id: "general", label: "General", icon: MessageSquare },
