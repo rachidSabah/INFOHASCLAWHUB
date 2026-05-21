@@ -414,7 +414,26 @@ export function TopBar() {
       <button
         onClick={() => {
           const store = useArtifactPreviewStore.getState();
-          store.setOpen(!store.isOpen);
+          if (!store.isOpen) {
+            store.setOpen(true);
+            if (store.tabs.length === 0) {
+              const msgs = useChatStore.getState().messages;
+              const lastAssistant = [...msgs].reverse().find(m => m.role === "assistant");
+              if (lastAssistant?.content) {
+                store.addTab({
+                  id: `tab-${Date.now()}`,
+                  title: lastAssistant.content.split("\n")[0]?.replace(/^#+\s*/, "").slice(0, 60) || "Response",
+                  type: "markdown",
+                  content: lastAssistant.content,
+                  isPinned: false,
+                  isStreaming: false,
+                  createdAt: Date.now(),
+                });
+              }
+            }
+          } else {
+            store.setOpen(false);
+          }
         }}
         className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
         title="Toggle Artifact Preview Panel"

@@ -5,43 +5,39 @@ interface DetectedArtifact {
 }
 
 const DETECTION_PATTERNS: Array<{ regex: RegExp; type: DetectedArtifact["type"]; weight: number }> = [
-  { regex: /```(html|jsx|tsx|js|ts|javascript|typescript|react)\n/, type: "code", weight: 5 },
-  { regex: /```mermaid\n/, type: "diagram", weight: 3 },
-  { regex: /<html|<!DOCTYPE html|<div|<section|<table|<svg|<canvas/i, type: "html", weight: 3 },
-  { regex: /```mermaid/, type: "diagram", weight: 2 },
-  { regex: /\|.*\|.*\|\n\|[-: ]+\|/i, type: "spreadsheet", weight: 3 },
-  { regex: /^#{1,3}\s/, type: "document", weight: 2 },
-  { regex: /slide \d|Slide \d|Presentation/i, type: "presentation", weight: 3 },
-  { regex: /flowchart|graph\s+(TD|LR|TB|RL)/i, type: "diagram", weight: 4 },
-  { regex: /function\s+\w+\s*\(|const\s+\w+\s*=\s*(\(|function)|class\s+\w+/, type: "code", weight: 3 },
-  { regex: /import\s+.*\s+from\s+['"]/, type: "code", weight: 3 },
-  { regex: /export\s+(default\s+)?(function|class|const|interface)/, type: "code", weight: 3 },
+  { regex: /```(html|jsx|tsx|js|ts|javascript|typescript|react|css)\n/, type: "code", weight: 6 },
+  { regex: /<!DOCTYPE html|<html\b/i, type: "html", weight: 6 },
+  { regex: /```mermaid\n/, type: "diagram", weight: 5 },
+  { regex: /flowchart|graph\s+(TD|LR|TB|RL)/i, type: "diagram", weight: 5 },
   { regex: /useState|useEffect|useCallback|useMemo|useRef/, type: "code", weight: 4 },
+  { regex: /export\s+(default\s+)?(function|class|const|interface)/, type: "code", weight: 3 },
+  { regex: /import\s+.*\s+from\s+['"]/, type: "code", weight: 3 },
+  { regex: /function\s+\w+\s*\(|const\s+\w+\s*=\s*(\(|function)|class\s+\w+/, type: "code", weight: 2 },
+  { regex: /\|.*\|.*\|\n\|[-: ]+\|/i, type: "spreadsheet", weight: 4 },
+  { regex: /<div|<section|<table|<svg|<canvas/i, type: "html", weight: 2 },
+  { regex: /slide \d|Slide \d|Presentation/i, type: "presentation", weight: 3 },
+  { regex: /^#{1,3}\s/m, type: "document", weight: 1 },
+  { regex: /```mermaid/, type: "diagram", weight: 2 },
   { regex: /```css/, type: "code", weight: 1 },
 ];
 
-const CONTENT_LENGTH_THRESHOLD = 200;
-
-export function detectArtifact(content: string, chunk: string): DetectedArtifact | null {
-  if (content.length < CONTENT_LENGTH_THRESHOLD) return null;
-
-  const fullContent = content + chunk;
+export function detectArtifact(content: string, _chunk: string): DetectedArtifact | null {
   const scores: Record<string, number> = {};
+  scores["markdown"] = 1;
 
   for (const { regex, type, weight } of DETECTION_PATTERNS) {
-    if (regex.test(fullContent)) {
+    if (regex.test(content)) {
       scores[type] = (scores[type] || 0) + weight;
     }
   }
 
-  if (fullContent.length > 500) {
-    scores["markdown"] = (scores["markdown"] || 0) + 1;
+  if (content.length > 800) {
+    scores["markdown"] = (scores["markdown"] || 0) + 2;
   }
 
-  if (Object.keys(scores).length === 0) return null;
+  let bestType = "markdown";
+  let bestScore = 1;
 
-  let bestType = "";
-  let bestScore = 0;
   for (const [type, score] of Object.entries(scores)) {
     if (score > bestScore) {
       bestScore = score;
@@ -49,45 +45,31 @@ export function detectArtifact(content: string, chunk: string): DetectedArtifact
     }
   }
 
-  if (bestScore < 2) return null;
-
-  const title = generateTitle(fullContent, bestType as DetectedArtifact["type"]);
+  const title = generateTitle(content, bestType as DetectedArtifact["type"]);
 
   return {
     type: bestType as DetectedArtifact["type"],
     title,
-    confidence: Math.min(bestScore / 8, 1),
+    confidence: Math.min(bestScore / 10, 1),
   };
 }
 
 function generateTitle(content: string, type: string): string {
   const lines = content.split("\n").filter((l) => l.trim());
   const firstLine = lines[0]?.replace(/^[#*\s`>-]+/, "").trim();
-
   if (firstLine && firstLine.length > 3 && firstLine.length < 80) {
     return firstLine.slice(0, 60);
   }
-
   const typeNames: Record<string, string> = {
-    document: "Document",
-    code: "Code Artifact",
-    sandbox: "App Preview",
-    spreadsheet: "Spreadsheet",
-    presentation: "Presentation",
-    diagram: "Diagram",
-    markdown: "Markdown",
-    html: "HTML Preview",
-    canvas: "Canvas",
-    image: "Image",
-    chart: "Chart",
+    document: "Document", code: "Code", sandbox: "Sandbox", spreadsheet: "Spreadsheet",
+    presentation: "Presentation", diagram: "Diagram", markdown: "Response", html: "HTML",
+    canvas: "Canvas", image: "Image", chart: "Chart",
   };
-
   return `${typeNames[type] || "Artifact"} - ${new Date().toLocaleTimeString()}`;
 }
 
 export function shouldAutoOpen(artifact: DetectedArtifact | null, contentLength: number): boolean {
+  if (contentLength < 80) return false;
   if (!artifact) return false;
-  if (contentLength < 300) return false;
-  if (artifact.confidence < 0.3) return false;
   return true;
 }
