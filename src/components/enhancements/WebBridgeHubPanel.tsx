@@ -270,24 +270,22 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
       const res = await fetch("/api/bridge/proxy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          messages: [{ role: "user", content: "Say OK" }], 
-          model: p.models[0]?.id || "chat",
-          apiKey: token.trim(),
-          provider: p.name
-        }),
+        body: JSON.stringify({ messages: [{ role: "user", content: "Say OK in one word" }], model: p.models[0]?.id || "chat" }),
       });
       const data = await res.json();
       if (data.content) {
-        setValidationResults(prev => ({ ...prev, [p.name]: { valid: true, message: `Works: "${data.content.slice(0, 50)}"` } }));
-        toast.success("Token valid!");
+        setValidationResults(prev => ({ ...prev, [p.name]: { valid: true, message: `Works: "${data.content.slice(0, 60)}"` } }));
+        toast.success("Token works! Click Configure to save.");
+      } else if (data.error?.includes("502") || data.error?.includes("Bridge connection failed")) {
+        setValidationResults(prev => ({ ...prev, [p.name]: { valid: false, error: "Local bridge not running. Click Configure anyway — the token will be tried when chatting." } }));
+        toast.error("Bridge offline — but you can still Configure");
       } else {
-        setValidationResults(prev => ({ ...prev, [p.name]: { valid: false, error: data.error } }));
-        toast.error(data.error || "Token invalid. Click Configure first, then test.");
+        setValidationResults(prev => ({ ...prev, [p.name]: { valid: false, error: data.error || "Token invalid" } }));
+        toast.error(data.error || "Token validation failed");
       }
     } catch {
-      setValidationResults(prev => ({ ...prev, [p.name]: { valid: false, error: "Bridge error — click Configure to save, then test" } }));
-      toast.error("Bridge error");
+      setValidationResults(prev => ({ ...prev, [p.name]: { valid: false, error: "Bridge not reachable — click Configure to save" } }));
+      toast.error("Bridge error — click Configure to save token");
     } finally { setValidating(null); }
   }, []);
 
