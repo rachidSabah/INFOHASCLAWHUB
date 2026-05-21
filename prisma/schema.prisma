@@ -703,3 +703,349 @@ model KanbanCard {
 
   @@index([columnId])
 }
+
+// ============================================================
+// RUFLO-PARITY MODELS — Swarm, SONA, Federation, Encryption,
+// AIDefence, CostTracker, GoalPlanner, KnowledgeGraph, Workers,
+// Verification
+// ============================================================
+
+// R1: Swarm Coordination (Queen-led, mesh, hierarchical topologies)
+model Swarm {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  topology    String   @default("hierarchical") // "hierarchical" | "mesh" | "ring" | "star" | "custom"
+  consensus   String   @default("raft") // "raft" | "byzantine" | "gossip" | "paxos"
+  queenAgentId String? // Lead agent in hierarchical topology
+  agents      String   @default("[]") // JSON: { agentId, role, status }[]
+  maxAgents   Int      @default(10)
+  status      String   @default("idle") // "idle" | "forming" | "active" | "disbanding" | "error"
+  taskQueue   String   @default("[]") // JSON: { task, assignedTo, priority, status }[]
+  consensusLog String  @default("[]") // JSON: { round, proposal, votes, decision }[]
+  config      String   @default("{}") // JSON: topology-specific config
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([topology])
+}
+
+// R2: SONA Neural Pattern (Self-Learning)
+model SONAPattern {
+  id           String   @id @default(cuid())
+  patternType  String // "trajectory" | "reasoning" | "strategy" | "feedback" | "optimization"
+  agentId      String?
+  taskType     String
+  inputContext String // JSON: context that triggered this pattern
+  action       String // What the agent did
+  outcome      String // "success" | "partial" | "failure"
+  score        Float   @default(0) // 0-1 effectiveness
+  neuralWeights String @default("{}") // JSON: learned weight adjustments
+  reasoning    String? // Why this approach was chosen
+  adaptations  String  @default("[]") // JSON: list of adaptations made
+  usageCount   Int     @default(0)
+  successCount Int     @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([patternType])
+  @@index([agentId])
+  @@index([taskType])
+  @@index([score])
+}
+
+// R2b: Reasoning Bank
+model ReasoningEntry {
+  id           String   @id @default(cuid())
+  agentId      String?
+  taskType     String
+  question     String // The question/problem
+  reasoning    String // Chain-of-thought reasoning
+  conclusion   String // Final answer/decision
+  confidence   Float   @default(0) // 0-1
+  model        String? // Which model produced this
+  validated    Boolean  @default(false) // Has been validated by outcome
+  tags         String   @default("[]") // JSON: string[]
+  createdAt    DateTime @default(now())
+
+  @@index([agentId])
+  @@index([taskType])
+  @@index([validated])
+}
+
+// R3: Zero-Trust Federation
+model FederationPeer {
+  id             String    @id @default(cuid())
+  name           String
+  endpoint       String // wss:// or https://
+  publicKey      String? // ed25519 public key for verification
+  trustLevel     String    @default("untrusted") // "untrusted" | "limited" | "trusted" | "full"
+  trustScore     Float     @default(0) // 0-1 composite: 0.4*success + 0.2*uptime + 0.2*threat + 0.2*integrity
+  status         String    @default("disconnected") // "disconnected" | "connecting" | "connected" | "suspended" | "evicted"
+  mtlsCert       String? // mTLS certificate
+  lastHandshake  DateTime?
+  successCount   Int       @default(0)
+  errorCount     Int       @default(0)
+  uptimeScore    Float     @default(0) // 0-1
+  threatScore    Float     @default(0) // 0-1
+  integrityScore Float     @default(0) // 0-1
+  piiPolicy      String    @default("block") // "block" | "redact" | "hash" | "pass"
+  complianceMode String    @default("none") // "none" | "hipaa" | "soc2" | "gdpr"
+  metadata       String    @default("{}") // JSON: additional peer info
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([endpoint])
+  @@index([trustLevel])
+  @@index([status])
+}
+
+model FederationMessage {
+  id          String   @id @default(cuid())
+  peerId      String
+  direction   String // "inbound" | "outbound"
+  messageType String // "task_request" | "task_result" | "discovery" | "heartbeat" | "consensus"
+  payload     String // JSON: message payload
+  piiScanned  Boolean  @default(false)
+  piiDetected String  @default("[]") // JSON: list of PII types detected
+  signed      Boolean  @default(false)
+  signature   String?
+  createdAt   DateTime @default(now())
+
+  @@index([peerId])
+  @@index([direction])
+  @@index([createdAt])
+}
+
+// R4: Encryption at Rest
+model EncryptionVault {
+  id           String   @id @default(cuid())
+  storeName    String   @unique // e.g. "sessions", "terminals", "memory"
+  algorithm    String   @default("aes-256-gcm") // Encryption algorithm
+  keyDerivation String  @default("pbkdf2") // "pbkdf2" | "scrypt" | "argon2"
+  isActive     Boolean  @default(false) // Encryption enabled for this store
+  encryptedAt  DateTime?
+  version      Int      @default(1) // Schema version for migration
+  metadata     String   @default("{}") // JSON: vault metadata
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+model EncryptedRecord {
+  id          String   @id @default(cuid())
+  vaultId     String
+  recordType  String // "session" | "terminal" | "memory" | "secret" | "config"
+  recordId    String? // Reference to the original record
+  iv          String // Initialization vector (base64)
+  authTag     String // GCM auth tag (base64)
+  ciphertext  String // Encrypted data (base64)
+  magic       String  @default("RFE1") // Magic bytes for format identification
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([vaultId])
+  @@index([recordType])
+}
+
+// R5: AIDefence (Prompt injection, PII, safety)
+model AIDefenceEvent {
+  id            String   @id @default(cuid())
+  eventType     String // "prompt_injection" | "pii_detected" | "unsafe_content" | "data_exfiltration" | "command_injection" | "path_traversal"
+  severity      String   @default("medium") // "low" | "medium" | "high" | "critical"
+  source        String // "user_input" | "api_request" | "agent_output" | "file_upload"
+  input         String // The flagged content (truncated)
+  action        String // "blocked" | "redacted" | "flagged" | "allowed_with_warning"
+  ruleId        String // Which rule triggered
+  details       String? // JSON: detailed analysis
+  agentId       String?
+  sessionId     String?
+  isResolved    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@index([eventType])
+  @@index([severity])
+  @@index([isResolved])
+}
+
+model DefenceRule {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String
+  ruleType    String // "prompt_injection" | "pii" | "safety" | "command_injection" | "path_traversal" | "data_exfil"
+  pattern     String // Regex or detection pattern
+  action      String // "block" | "redact" | "flag" | "hash"
+  sensitivity String   @default("medium") // "low" | "medium" | "high" | "paranoid"
+  isEnabled   Boolean  @default(true)
+  falsePositives Int   @default(0)
+  truePositives  Int   @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([ruleType])
+  @@index([isEnabled])
+}
+
+// R6: Cost Tracker (Token budgets, cost alerts)
+model CostBudget {
+  id             String   @id @default(cuid())
+  name           String
+  scope          String // "global" | "provider" | "agent" | "project" | "user"
+  scopeId        String? // Reference ID for the scope
+  period         String   @default("monthly") // "daily" | "weekly" | "monthly"
+  tokenLimit     Int? // Max tokens per period
+  costLimit      Float? // Max cost per period
+  currentTokens  Int      @default(0) // Tokens used this period
+  currentCost    Float    @default(0) // Cost this period
+  alertThreshold Float    @default(0.8) // Alert at 80% of limit
+  isEnabled      Boolean  @default(true)
+  lastResetAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([scope])
+  @@index([isEnabled])
+}
+
+model CostAlert {
+  id         String   @id @default(cuid())
+  budgetId   String
+  alertType  String // "threshold" | "limit_reached" | "anomaly" | "spike"
+  message    String
+  threshold  Float? // Percentage that triggered
+  currentSpend Float?
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([budgetId])
+  @@index([isRead])
+}
+
+// R7: Goal Planner (GOAP A* decomposition)
+model GoalPlan {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  status      String   @default("planning") // "planning" | "executing" | "completed" | "failed" | "cancelled"
+  goalState   String // JSON: desired end state
+  currentState String @default("{}") // JSON: current state
+  planTree    String  @default("[]") // JSON: { id, action, preconditions, effects, status, assignedAgent, children[] }[]
+  strategy    String  @default("astar") // "astar" | "bfs" | "dfs" | "greedy"
+  maxDepth    Int     @default(10)
+  iterations  Int     @default(0)
+  score       Float   @default(0) // Plan quality score
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+}
+
+model GoalAction {
+  id          String   @id @default(cuid())
+  planId      String
+  name        String
+  description String?
+  preconditions String @default("[]") // JSON: state requirements
+  effects     String  @default("[]") // JSON: state changes
+  cost        Float   @default(1.0) // Action cost for A*
+  status      String  @default("pending") // "pending" | "in_progress" | "completed" | "failed" | "skipped"
+  assignedAgent String?
+  toolMapping String? // JSON: mapping to MCP/tool call
+  order       Int     @default(0)
+  result      String? // JSON: action result
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([planId])
+  @@index([status])
+}
+
+// R8: Knowledge Graph (Entity relationships)
+model KnowledgeEntity {
+  id          String   @id @default(cuid())
+  name        String
+  entityType  String // "concept" | "person" | "project" | "technology" | "domain" | "resource" | "event"
+  description String?
+  properties  String  @default("{}") // JSON: arbitrary properties
+  embedding   String? // JSON vector for semantic search
+  confidence  Float   @default(1.0) // 0-1
+  sourceId    String? // Where this entity came from
+  sourceType  String? // "conversation" | "document" | "agent" | "manual"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([entityType])
+}
+
+model KnowledgeRelation {
+  id           String   @id @default(cuid())
+  sourceId     String // KnowledgeEntity id
+  targetId     String // KnowledgeEntity id
+  relationType String // "depends_on" | "related_to" | "part_of" | "owns" | "uses" | "produces" | "blocks" | "supports"
+  properties   String  @default("{}") // JSON: relation properties
+  weight       Float   @default(1.0) // 0-1 strength
+  bidirectional Boolean @default(false)
+  confidence   Float   @default(1.0)
+  createdAt    DateTime @default(now())
+
+  @@index([sourceId])
+  @@index([targetId])
+  @@index([relationType])
+}
+
+// R9: Background Workers (Auto-triggered)
+model BackgroundWorker {
+  id           String    @id @default(cuid())
+  name         String
+  workerType   String // "audit" | "optimize" | "testgaps" | "security_scan" | "memory_cleanup" | "cost_report" | "health_check" | "provider_benchmark" | "knowledge_index" | "agent_training" | "compliance_check" | "backup"
+  description  String?
+  cronExpr     String // Schedule expression
+  status       String    @default("idle") // "idle" | "running" | "paused" | "error" | "disabled"
+  lastRunAt    DateTime?
+  nextRunAt    DateTime?
+  lastResult   String? // JSON: { success, output, duration }
+  runCount     Int       @default(0)
+  successCount Int       @default(0)
+  errorCount   Int       @default(0)
+  config       String    @default("{}") // JSON: worker-specific config
+  autoTrigger  Boolean   @default(true) // Auto-trigger on schedule
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([workerType])
+  @@index([status])
+}
+
+// R10: Cryptographic Verification
+model VerificationWitness {
+  id          String   @id @default(cuid())
+  filePath    String
+  fileHash    String // SHA-256 hash
+  algorithm   String  @default("sha256")
+  signature   String? // Ed25519 signature
+  publicKey   String? // Public key used for signing
+  commitHash  String? // Git commit at time of signing
+  verified    Boolean  @default(false)
+  verifiedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  @@unique([filePath])
+  @@index([verified])
+}
+
+model VerificationReport {
+  id           String   @id @default(cuid())
+  status       String   @default("pending") // "pending" | "passed" | "failed" | "error"
+  totalFiles   Int      @default(0)
+  verifiedFiles Int     @default(0)
+  failedFiles  Int      @default(0)
+  details      String   @default("[]") // JSON: { filePath, expected, actual, match }[]
+  signature    String? // Ed25519 signature of the report
+  createdAt    DateTime @default(now())
+
+  @@index([status])
+}

@@ -6,6 +6,7 @@ import { ClawHubLogo, ClawHubText } from "./ClawHubLogo";
 import {
   PanelLeft, Settings, Bot, Zap, ChevronDown, Check, BarChart3, Activity, ArrowUpCircle, HeartPulse,
   Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu, Server, Layout, GitMerge, GitFork, Sparkles, Wifi, LayoutTemplate, PanelRight,
+  Brain, Lock, AlertTriangle, DollarSign, Target, Network, Wrench, FileCheck, Users,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -54,6 +55,18 @@ import { CollaborationPanel } from "./enhancements/CollaborationPanel";
 // Preconfigured System Panels
 import { PrebuiltAgentsPanel } from "./enhancements/PrebuiltAgentsPanel";
 import { PipelineTemplatesPanel } from "./enhancements/PipelineTemplatesPanel";
+
+// Ruflo-Parity Panels (Tier 8)
+import { SwarmCoordinationPanel } from "./enhancements/SwarmCoordinationPanel";
+import { SONALearningPanel } from "./enhancements/SONALearningPanel";
+import { FederationPanel } from "./enhancements/FederationPanel";
+import { EncryptionVaultPanel } from "./enhancements/EncryptionVaultPanel";
+import { AIDefencePanel } from "./enhancements/AIDefencePanel";
+import { CostTrackerPanel } from "./enhancements/CostTrackerPanel";
+import { GoalPlannerPanel } from "./enhancements/GoalPlannerPanel";
+import { KnowledgeGraphPanel } from "./enhancements/KnowledgeGraphPanel";
+import { BackgroundWorkersPanel } from "./enhancements/BackgroundWorkersPanel";
+import { VerificationPanel } from "./enhancements/VerificationPanel";
 
 export function TopBar() {
   const { toggleSidebar, setSettingsOpen } = useUIStore();
@@ -111,6 +124,18 @@ export function TopBar() {
   // Preconfigured System panel open states
   const [prebuiltAgentsOpen, setPrebuiltAgentsOpen] = useState(false);
   const [pipelineTemplatesOpen, setPipelineTemplatesOpen] = useState(false);
+
+  // Ruflo-Parity panel open states (Tier 8)
+  const [swarmOpen, setSwarmOpen] = useState(false);
+  const [sonaOpen, setSonaOpen] = useState(false);
+  const [federationOpen, setFederationOpen] = useState(false);
+  const [encryptionOpen, setEncryptionOpen] = useState(false);
+  const [aiDefenceOpen, setAiDefenceOpen] = useState(false);
+  const [costTrackerOpen, setCostTrackerOpen] = useState(false);
+  const [goalPlannerOpen, setGoalPlannerOpen] = useState(false);
+  const [knowledgeGraphOpen, setKnowledgeGraphOpen] = useState(false);
+  const [bgWorkersOpen, setBgWorkersOpen] = useState(false);
+  const [verificationOpen, setVerificationOpen] = useState(false);
 
   const agentRef = useRef<HTMLDivElement>(null);
   const skillRef = useRef<HTMLDivElement>(null);
@@ -478,6 +503,38 @@ export function TopBar() {
             <button onClick={() => { setPipelineTemplatesOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
               <Workflow className="h-3.5 w-3.5 text-emerald-500" /><div><span className="font-medium">Pipeline Templates</span><p className="text-[10px] text-muted-foreground">7 production-ready pipelines</p></div>
             </button>
+            <div className="border-t border-border my-1" />
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1">Tier 8: Enterprise AI Engine</p>
+            <button onClick={() => { setSwarmOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Users className="h-3.5 w-3.5 text-violet-500" /><div><span className="font-medium">Swarm Coordination</span><p className="text-[10px] text-muted-foreground">Queen-led swarms with consensus</p></div>
+            </button>
+            <button onClick={() => { setSonaOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Brain className="h-3.5 w-3.5 text-cyan-500" /><div><span className="font-medium">SONA Self-Learning</span><p className="text-[10px] text-muted-foreground">Neural patterns & trajectory learning</p></div>
+            </button>
+            <button onClick={() => { setFederationOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Network className="h-3.5 w-3.5 text-emerald-500" /><div><span className="font-medium">Zero-Trust Federation</span><p className="text-[10px] text-muted-foreground">Cross-machine mTLS & PII scanning</p></div>
+            </button>
+            <button onClick={() => { setEncryptionOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Lock className="h-3.5 w-3.5 text-rose-500" /><div><span className="font-medium">Encryption Vault</span><p className="text-[10px] text-muted-foreground">AES-256-GCM at-rest encryption</p></div>
+            </button>
+            <button onClick={() => { setAiDefenceOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <AlertTriangle className="h-3.5 w-3.5 text-red-500" /><div><span className="font-medium">AI Defence</span><p className="text-[10px] text-muted-foreground">Injection block, PII detect, safety</p></div>
+            </button>
+            <button onClick={() => { setCostTrackerOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <DollarSign className="h-3.5 w-3.5 text-amber-500" /><div><span className="font-medium">Cost Tracker</span><p className="text-[10px] text-muted-foreground">Budgets, alerts & spending analytics</p></div>
+            </button>
+            <button onClick={() => { setGoalPlannerOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Target className="h-3.5 w-3.5 text-indigo-500" /><div><span className="font-medium">Goal Planner</span><p className="text-[10px] text-muted-foreground">GOAP A* goal decomposition</p></div>
+            </button>
+            <button onClick={() => { setKnowledgeGraphOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Network className="h-3.5 w-3.5 text-purple-500" /><div><span className="font-medium">Knowledge Graph</span><p className="text-[10px] text-muted-foreground">Entity relationships & traversal</p></div>
+            </button>
+            <button onClick={() => { setBgWorkersOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Wrench className="h-3.5 w-3.5 text-slate-500" /><div><span className="font-medium">Background Workers</span><p className="text-[10px] text-muted-foreground">12 auto-triggered workers</p></div>
+            </button>
+            <button onClick={() => { setVerificationOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <FileCheck className="h-3.5 w-3.5 text-green-500" /><div><span className="font-medium">Verification</span><p className="text-[10px] text-muted-foreground">Ed25519 file signing & verification</p></div>
+            </button>
           </div>
         )}
       </div>
@@ -589,6 +646,18 @@ export function TopBar() {
       {/* Preconfigured System Panels */}
       <PrebuiltAgentsPanel open={prebuiltAgentsOpen} onOpenChange={setPrebuiltAgentsOpen} />
       <PipelineTemplatesPanel open={pipelineTemplatesOpen} onOpenChange={setPipelineTemplatesOpen} />
+
+      {/* Ruflo-Parity Panels (Tier 8) */}
+      <SwarmCoordinationPanel open={swarmOpen} onOpenChange={setSwarmOpen} />
+      <SONALearningPanel open={sonaOpen} onOpenChange={setSonaOpen} />
+      <FederationPanel open={federationOpen} onOpenChange={setFederationOpen} />
+      <EncryptionVaultPanel open={encryptionOpen} onOpenChange={setEncryptionOpen} />
+      <AIDefencePanel open={aiDefenceOpen} onOpenChange={setAiDefenceOpen} />
+      <CostTrackerPanel open={costTrackerOpen} onOpenChange={setCostTrackerOpen} />
+      <GoalPlannerPanel open={goalPlannerOpen} onOpenChange={setGoalPlannerOpen} />
+      <KnowledgeGraphPanel open={knowledgeGraphOpen} onOpenChange={setKnowledgeGraphOpen} />
+      <BackgroundWorkersPanel open={bgWorkersOpen} onOpenChange={setBgWorkersOpen} />
+      <VerificationPanel open={verificationOpen} onOpenChange={setVerificationOpen} />
     </div>
   );
 }
