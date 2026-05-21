@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { ClawHubLogo, ClawHubText } from "./ClawHubLogo";
 import {
   PanelLeft, Settings, Bot, Zap, ChevronDown, Check, BarChart3, Activity, ArrowUpCircle, HeartPulse,
-  Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu, Server, Layout, GitMerge, GitFork, Sparkles, Wifi,
+  Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu, Server, Layout, GitMerge, GitFork, Sparkles, Wifi, LayoutTemplate,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -36,6 +36,7 @@ import { ArchitectureMapper } from "./enhancements/ArchitectureMapper";
 import { ConsensusPanel } from "./enhancements/ConsensusPanel";
 import ArtifactPanel from "./enhancements/ArtifactPanel";
 import NetworkInfoPanel from "./enhancements/NetworkInfoPanel";
+import VisualCanvasPanel from "./enhancements/VisualCanvasPanel";
 
 export function TopBar() {
   const { toggleSidebar, setSettingsOpen } = useUIStore();
@@ -76,6 +77,7 @@ export function TopBar() {
   const [consensusOpen, setConsensusOpen] = useState(false);
   const [artifactsOpen, setArtifactsOpen] = useState(false);
   const [networkInfoOpen, setNetworkInfoOpen] = useState(false);
+  const [canvasOpen, setCanvasOpen] = useState(false);
 
   const agentRef = useRef<HTMLDivElement>(null);
   const skillRef = useRef<HTMLDivElement>(null);
@@ -313,7 +315,7 @@ export function TopBar() {
           className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border",
             powerToolsOpen ? "border-primary/30 bg-primary/5 text-primary" : "border-border hover:border-primary/20 hover:bg-muted/30 text-muted-foreground"
           )}
-          title="Power Tools — 18 AI Enhancement Features"
+          title="Power Tools — 19 AI Enhancement Features"
         >
           <Rocket className="h-3.5 w-3.5" />
           <span>Power Tools</span>
@@ -400,6 +402,9 @@ export function TopBar() {
             <button onClick={() => { setNetworkInfoOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
               <Wifi className="h-3.5 w-3.5 text-blue-500" /><div><span className="font-medium">LAN Network Access</span><p className="text-[10px] text-muted-foreground">Multi-device WiFi access</p></div>
             </button>
+            <button onClick={() => { setCanvasOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <LayoutTemplate className="h-3.5 w-3.5 text-indigo-500" /><div><span className="font-medium">Visual Canvas</span><p className="text-[10px] text-muted-foreground">Fabric-like design editor</p></div>
+            </button>
           </div>
         )}
       </div>
@@ -463,6 +468,7 @@ export function TopBar() {
       <ConsensusPanel open={consensusOpen} onOpenChange={setConsensusOpen} />
       <ArtifactPanel open={artifactsOpen} onOpenChange={setArtifactsOpen} />
       <NetworkInfoPanel open={networkInfoOpen} onOpenChange={setNetworkInfoOpen} />
+      <VisualCanvasPanel open={canvasOpen} onOpenChange={setCanvasOpen} />
     </div>
   );
 }
