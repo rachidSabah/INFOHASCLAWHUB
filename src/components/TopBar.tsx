@@ -39,6 +39,18 @@ import NetworkInfoPanel from "./enhancements/NetworkInfoPanel";
 import VisualCanvasPanel from "./enhancements/VisualCanvasPanel";
 import { useArtifactPreviewStore } from "@/lib/artifact-store";
 
+// Next-Gen Enhancement Panels
+import { UniversalMemoryPanel } from "./enhancements/UniversalMemoryPanel";
+import { CronSchedulerPanel } from "./enhancements/CronSchedulerPanel";
+import { ResearchModePanel } from "./enhancements/ResearchModePanel";
+import { IssuePipelinePanel } from "./enhancements/IssuePipelinePanel";
+import { SelfImprovingPanel } from "./enhancements/SelfImprovingPanel";
+import { HybridRouterPanel } from "./enhancements/HybridRouterPanel";
+import { LiveSandboxPanel } from "./enhancements/LiveSandboxPanel";
+import { MCPHubPanel } from "./enhancements/MCPHubPanel";
+import { ComplianceEnginePanel } from "./enhancements/ComplianceEnginePanel";
+import { CollaborationPanel } from "./enhancements/CollaborationPanel";
+
 export function TopBar() {
   const { toggleSidebar, setSettingsOpen } = useUIStore();
   const { settings, updateSetting, modelGroups, fetchModels } = useSettingsStore();
@@ -79,6 +91,18 @@ export function TopBar() {
   const [artifactsOpen, setArtifactsOpen] = useState(false);
   const [networkInfoOpen, setNetworkInfoOpen] = useState(false);
   const [canvasOpen, setCanvasOpen] = useState(false);
+
+  // Next-Gen panel open states
+  const [universalMemoryOpen, setUniversalMemoryOpen] = useState(false);
+  const [cronSchedulerOpen, setCronSchedulerOpen] = useState(false);
+  const [researchModeOpen, setResearchModeOpen] = useState(false);
+  const [issuePipelineOpen, setIssuePipelineOpen] = useState(false);
+  const [selfImprovingOpen, setSelfImprovingOpen] = useState(false);
+  const [hybridRouterOpen, setHybridRouterOpen] = useState(false);
+  const [liveSandboxOpen, setLiveSandboxOpen] = useState(false);
+  const [mcpHubOpen, setMcpHubOpen] = useState(false);
+  const [complianceEngineOpen, setComplianceEngineOpen] = useState(false);
+  const [collaborationOpen, setCollaborationOpen] = useState(false);
 
   const agentRef = useRef<HTMLDivElement>(null);
   const skillRef = useRef<HTMLDivElement>(null);
@@ -406,6 +430,38 @@ export function TopBar() {
             <button onClick={() => { setCanvasOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
               <LayoutTemplate className="h-3.5 w-3.5 text-indigo-500" /><div><span className="font-medium">Visual Canvas</span><p className="text-[10px] text-muted-foreground">Fabric-like design editor</p></div>
             </button>
+            <div className="border-t border-border my-1" />
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1">Tier 6: Next-Gen OS</p>
+            <button onClick={() => { setUniversalMemoryOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Sparkles className="h-3.5 w-3.5 text-rose-500" /><div><span className="font-medium">Universal Memory</span><p className="text-[10px] text-muted-foreground">Cross-session context & vector recall</p></div>
+            </button>
+            <button onClick={() => { setCronSchedulerOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Activity className="h-3.5 w-3.5 text-amber-500" /><div><span className="font-medium">Cron Scheduler</span><p className="text-[10px] text-muted-foreground">Always-on agents & scheduled tasks</p></div>
+            </button>
+            <button onClick={() => { setResearchModeOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Search className="h-3.5 w-3.5 text-cyan-500" /><div><span className="font-medium">Deep Research</span><p className="text-[10px] text-muted-foreground">Citations, sources & hallucination detect</p></div>
+            </button>
+            <button onClick={() => { setIssuePipelineOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <GitBranch className="h-3.5 w-3.5 text-emerald-500" /><div><span className="font-medium">Issue → Deploy</span><p className="text-[10px] text-muted-foreground">GitHub issue to deployed code</p></div>
+            </button>
+            <button onClick={() => { setSelfImprovingOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Sparkles className="h-3.5 w-3.5 text-violet-500" /><div><span className="font-medium">Self-Improving Agents</span><p className="text-[10px] text-muted-foreground">Prompt optimization & reflection</p></div>
+            </button>
+            <button onClick={() => { setHybridRouterOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Cpu className="h-3.5 w-3.5 text-blue-500" /><div><span className="font-medium">Hybrid Router</span><p className="text-[10px] text-muted-foreground">Local ↔ Cloud provider racing</p></div>
+            </button>
+            <button onClick={() => { setLiveSandboxOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Code2 className="h-3.5 w-3.5 text-teal-500" /><div><span className="font-medium">Live Sandbox</span><p className="text-[10px] text-muted-foreground">Instant app preview & deploy</p></div>
+            </button>
+            <button onClick={() => { setMcpHubOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Puzzle className="h-3.5 w-3.5 text-purple-500" /><div><span className="font-medium">MCP Hub</span><p className="text-[10px] text-muted-foreground">Model Context Protocol registry</p></div>
+            </button>
+            <button onClick={() => { setComplianceEngineOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Shield className="h-3.5 w-3.5 text-red-500" /><div><span className="font-medium">Compliance Engine</span><p className="text-[10px] text-muted-foreground">Audit logs, policies & scanning</p></div>
+            </button>
+            <button onClick={() => { setCollaborationOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Radio className="h-3.5 w-3.5 text-indigo-500" /><div><span className="font-medium">Collaboration</span><p className="text-[10px] text-muted-foreground">Real-time multiplayer sessions</p></div>
+            </button>
           </div>
         )}
       </div>
@@ -501,6 +557,18 @@ export function TopBar() {
       <ArtifactPanel open={artifactsOpen} onOpenChange={setArtifactsOpen} />
       <NetworkInfoPanel open={networkInfoOpen} onOpenChange={setNetworkInfoOpen} />
       <VisualCanvasPanel open={canvasOpen} onOpenChange={setCanvasOpen} />
+
+      {/* Next-Gen Enhancement Panels */}
+      <UniversalMemoryPanel open={universalMemoryOpen} onOpenChange={setUniversalMemoryOpen} />
+      <CronSchedulerPanel open={cronSchedulerOpen} onOpenChange={setCronSchedulerOpen} />
+      <ResearchModePanel open={researchModeOpen} onOpenChange={setResearchModeOpen} />
+      <IssuePipelinePanel open={issuePipelineOpen} onOpenChange={setIssuePipelineOpen} />
+      <SelfImprovingPanel open={selfImprovingOpen} onOpenChange={setSelfImprovingOpen} />
+      <HybridRouterPanel open={hybridRouterOpen} onOpenChange={setHybridRouterOpen} />
+      <LiveSandboxPanel open={liveSandboxOpen} onOpenChange={setLiveSandboxOpen} />
+      <MCPHubPanel open={mcpHubOpen} onOpenChange={setMcpHubOpen} />
+      <ComplianceEnginePanel open={complianceEngineOpen} onOpenChange={setComplianceEngineOpen} />
+      <CollaborationPanel open={collaborationOpen} onOpenChange={setCollaborationOpen} />
     </div>
   );
 }
