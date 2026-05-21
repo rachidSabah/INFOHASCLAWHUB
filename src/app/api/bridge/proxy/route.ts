@@ -43,46 +43,23 @@ export async function POST(req: NextRequest) {
     }
 
     const baseUrl = (provider.baseUrl || "http://localhost:8000/v1").replace(/\/$/, "");
-
-    // If action is list_models, query the provider for available models
-    if (action === "list_models") {
-      try {
-        const modelsRes = await fetch(`${baseUrl}/models`, {
-          headers: { Authorization: `Bearer ${provider.apiKey}` },
-          signal: AbortSignal.timeout(10000),
-        });
-        if (modelsRes.ok) {
-          const data = await modelsRes.json();
-          const models = (data.data || []).map((m: any) => ({
-            id: m.id || m.name, name: m.id || m.name || "model"
-          }));
-          return NextResponse.json({ provider: provider.name, models });
-        }
-        // Try list endpoint
-        const listRes = await fetch(`${baseUrl}/v1/models`, {
-          headers: { Authorization: `Bearer ${provider.apiKey}` },
-          signal: AbortSignal.timeout(10000),
-        });
-        if (listRes.ok) {
-          const data = await listRes.json();
-          const models = (data.data || []).map((m: any) => ({
-            id: m.id || m.name, name: m.id || m.name || "model"
-          }));
-          return NextResponse.json({ provider: provider.name, models });
-        }
-      } catch {}
-      // Fallback: return prebuilt models
-      return NextResponse.json({ provider: provider.name, models: [], fallback: true });
-    }
-
-    if (!messages) {
-      return NextResponse.json({ error: "messages required" }, { status: 400 });
-    }
-
-    // Chat completion
     const apiUrl = baseUrl.endsWith("/v1") ? `${baseUrl}/chat/completions` : `${baseUrl}/v1/chat/completions`;
     let cleanModel = model?.includes("/") ? model.split("/").pop() : model || "chat";
-    
+
+    // Dynamic model mapping per provider based on actual API compatibility
+    const providerKey = provider.name.toLowerCase();
+    if (providerKey.includes("deepseek")) {
+      cleanModel = "deepseek-chat"; // DeepSeek API accepts this
+    } else if (providerKey.includes("kimi") || providerKey.includes("moonshot")) {
+      cleanModel = "moonshot-v1-8k"; // Kimi API accepts this
+    } else if (providerKey.includes("qwen")) {
+      cleanModel = "qwen-plus"; // Qwen API
+    } else if (providerKey.includes("z.ai") || providerKey.includes("glm") || providerKey.includes("bigmodel")) {
+      cleanModel = "glm-4-flash"; // Z.AI API accepts this
+    } else if (providerKey.includes("gemini")) {
+      cleanModel = "gemini-2.0-flash"; // Gemini API
+    }
+
     console.log(`[Bridge] ${provider.name} → ${apiUrl}, model: ${cleanModel}`);
 
     const res = await fetch(apiUrl, {
