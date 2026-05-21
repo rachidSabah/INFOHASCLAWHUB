@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { ClawHubLogo, ClawHubText } from "./ClawHubLogo";
 import {
   PanelLeft, Settings, Bot, Zap, ChevronDown, Check, BarChart3, Activity, ArrowUpCircle, HeartPulse,
-  Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu, Server, Layout, GitMerge, GitFork, Sparkles, Wifi, LayoutTemplate,
+  Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu, Server, Layout, GitMerge, GitFork, Sparkles, Wifi, LayoutTemplate, PanelRight,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -37,6 +37,7 @@ import { ConsensusPanel } from "./enhancements/ConsensusPanel";
 import ArtifactPanel from "./enhancements/ArtifactPanel";
 import NetworkInfoPanel from "./enhancements/NetworkInfoPanel";
 import VisualCanvasPanel from "./enhancements/VisualCanvasPanel";
+import { useArtifactPreviewStore } from "@/lib/artifact-store";
 
 export function TopBar() {
   const { toggleSidebar, setSettingsOpen } = useUIStore();
@@ -408,6 +409,18 @@ export function TopBar() {
           </div>
         )}
       </div>
+
+      {/* Doctor */}
+      <button
+        onClick={() => {
+          const store = useArtifactPreviewStore.getState();
+          store.setOpen(!store.isOpen);
+        }}
+        className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+        title="Toggle Artifact Preview Panel"
+      >
+        <PanelRight className="h-4 w-4" />
+      </button>
 
       {/* Doctor */}
       <button

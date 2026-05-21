@@ -12,6 +12,8 @@ import { OnboardingWizard } from "@/components/OnboardingWizard";
 import { UpdateChecker } from "@/components/UpdateChecker";
 import { SchedulerBackground } from "@/components/SchedulerBackground";
 import { CommandPalette } from "@/components/CommandPalette";
+import ArtifactPreviewPanel from "@/components/enhancements/ArtifactPreviewPanel";
+import { useArtifactPreviewStore } from "@/lib/artifact-store";
 import { useChatStore, useSettingsStore, useUIStore, useAgentStore, useSkillStore, usePromptStore } from "@/lib/stores";
 import { cn } from "@/lib/utils";
 import { X, MessageSquare } from "lucide-react";
@@ -276,6 +278,9 @@ function DashboardContent() {
         <ChatWindow />
         <ChatInput />
       </div>
+
+      {/* Artifact Preview Panel */}
+      <ArtifactPreviewPanel />
 
       {/* Prompt Sidebar */}
       <div className="shrink-0 hidden xl:block h-full">

@@ -204,6 +204,31 @@ export function ChatInput() {
               if (data.type === "chunk") {
                 fullContent += data.content;
                 setStreamingContent(fullContent);
+                try {
+                  const { detectArtifact, shouldAutoOpen } = await import("@/lib/artifact-detector");
+                  const { useArtifactPreviewStore } = await import("@/lib/artifact-store");
+                  const detected = detectArtifact(fullContent, data.content);
+                  if (shouldAutoOpen(detected, fullContent.length)) {
+                    const store = useArtifactPreviewStore.getState();
+                    if (!store.isOpen) {
+                      const previewTab = {
+                        id: `auto-${Date.now()}`,
+                        title: detected!.title,
+                        type: detected!.type,
+                        content: fullContent,
+                        isPinned: false,
+                        isStreaming: true,
+                        createdAt: Date.now(),
+                      };
+                      store.addTab(previewTab);
+                    } else {
+                      const active = store.tabs.find(t => t.id === store.activeTabId);
+                      if (active) {
+                        store.updateTab(active.id, { content: fullContent, isStreaming: true });
+                      }
+                    }
+                  }
+                } catch {}
               } else if (data.type === "tool_call") {
                 const { setStreamingContent } = useChatStore.getState();
                 setStreamingContent(fullContent + `\n\n*Running tool: ${data.toolName}...*`);
@@ -217,6 +242,14 @@ export function ChatInput() {
                 });
               } else if (data.type === "done") {
                 clearStreamingContent();
+                try {
+                  const { useArtifactPreviewStore } = await import("@/lib/artifact-store");
+                  const store = useArtifactPreviewStore.getState();
+                  const active = store.tabs.find(t => t.id === store.activeTabId);
+                  if (active) {
+                    store.updateTab(active.id, { content: fullContent, isStreaming: false });
+                  }
+                } catch {}
                 try {
                   const res = await fetch(`/api/conversations/${convId}/messages`, {
                     method: "POST",
