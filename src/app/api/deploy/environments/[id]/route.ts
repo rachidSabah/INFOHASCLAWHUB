@@ -10,7 +10,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const environment = await db.deployEnvironment.findUnique({ where: { id } });
+    const environment = await (db as any).deployEnvironment.findUnique({ where: { id } });
     if (!environment) {
       return NextResponse.json({ error: 'Deploy environment not found' }, { status: 404 });
     }
@@ -27,7 +27,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const environment = await db.deployEnvironment.update({ where: { id }, data: body });
+    const environment = await (db as any).deployEnvironment.update({ where: { id }, data: body });
     return NextResponse.json(environment);
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
@@ -40,7 +40,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    await db.deployEnvironment.delete({ where: { id } });
+    await (db as any).deployEnvironment.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });

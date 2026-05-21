@@ -10,7 +10,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const connection = await db.databaseConnection.findUnique({ where: { id } });
+    const connection = await (db as any).databaseConnection.findUnique({ where: { id } });
     if (!connection) {
       return NextResponse.json({ error: 'Database connection not found' }, { status: 404 });
     }
@@ -27,7 +27,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const connection = await db.databaseConnection.update({ where: { id }, data: body });
+    const connection = await (db as any).databaseConnection.update({ where: { id }, data: body });
     return NextResponse.json(connection);
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
@@ -40,7 +40,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    await db.databaseConnection.delete({ where: { id } });
+    await (db as any).databaseConnection.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });

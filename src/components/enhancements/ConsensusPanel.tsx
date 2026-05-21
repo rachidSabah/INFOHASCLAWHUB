@@ -220,7 +220,7 @@ export function ConsensusPanel({ open, onOpenChange }: ConsensusPanelProps) {
         }
         saveWinStats(newStats);
       }
-      toast.success(`Consensus winner: ${responses.find(r => r.provider === (scores[0]?.provider))?.model || scores[0]?.provider || "Unknown"}`);
+      toast.success("Consensus voting complete. View results in the panel.");
     } catch {
       // Fallback entirely to local scoring
       const scores = responses.map((r) => {

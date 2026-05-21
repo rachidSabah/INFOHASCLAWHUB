@@ -1,33 +1,18 @@
-import { db } from "@/lib/db";
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
+import { pipelineStore } from "@/lib/pipeline-store";
 
-
-
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const body = await request.json();
-    const pipeline = await db.agentPipeline.findUnique({ where: { id } });
-    if (!pipeline) {
-      return NextResponse.json({ error: 'Pipeline not found' }, { status: 404 });
+    const p = pipelineStore.get(id);
+    if (!p) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const steps = JSON.parse(p.steps || "[]");
+    if (p.currentStep < steps.length) {
+      steps[p.currentStep].status = "approved";
+      p.currentStep += 1;
+      p.steps = JSON.stringify(steps);
     }
-    const currentStep = body.step ?? pipeline.currentStep;
-    const results = pipeline.results ? JSON.parse(pipeline.results) : [];
-    results.push({ step: currentStep, approved: true, timestamp: new Date().toISOString() });
-    const nextStep = currentStep + 1;
-    const updated = await db.agentPipeline.update({
-      where: { id },
-      data: {
-        currentStep: nextStep,
-        results: JSON.stringify(results),
-      },
-    });
-    return NextResponse.json(updated);
-  } catch (error: unknown) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
-  }
+    p.updatedAt = new Date().toISOString();
+    return NextResponse.json(p);
+  } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
 }

@@ -10,7 +10,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const route = await db.modelRoute.findUnique({ where: { id } });
+    const route = await (db as any).modelRoute.findUnique({ where: { id } });
     if (!route) {
       return NextResponse.json({ error: 'Model route not found' }, { status: 404 });
     }
@@ -27,7 +27,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const route = await db.modelRoute.update({ where: { id }, data: body });
+    const route = await (db as any).modelRoute.update({ where: { id }, data: body });
     return NextResponse.json(route);
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
@@ -40,7 +40,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    await db.modelRoute.delete({ where: { id } });
+    await (db as any).modelRoute.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });

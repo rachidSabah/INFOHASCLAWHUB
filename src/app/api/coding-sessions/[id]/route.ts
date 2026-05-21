@@ -10,7 +10,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const session = await db.codingSession.findUnique({ where: { id } });
+    const session = await (db as any).codingSession.findUnique({ where: { id } });
     if (!session) {
       return NextResponse.json({ error: 'Coding session not found' }, { status: 404 });
     }
@@ -27,7 +27,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const session = await db.codingSession.update({ where: { id }, data: body });
+    const session = await (db as any).codingSession.update({ where: { id }, data: body });
     return NextResponse.json(session);
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
@@ -40,7 +40,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    await db.codingSession.delete({ where: { id } });
+    await (db as any).codingSession.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });

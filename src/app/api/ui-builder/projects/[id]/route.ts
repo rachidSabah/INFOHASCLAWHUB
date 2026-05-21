@@ -10,7 +10,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const project = await db.uIBuilderProject.findUnique({ where: { id } });
+    const project = await (db as any).uiBuilderProject.findUnique({ where: { id } });
     if (!project) {
       return NextResponse.json({ error: 'UI Builder project not found' }, { status: 404 });
     }
@@ -27,7 +27,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const project = await db.uIBuilderProject.update({ where: { id }, data: body });
+    const project = await (db as any).uiBuilderProject.update({ where: { id }, data: body });
     return NextResponse.json(project);
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
@@ -40,7 +40,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    await db.uIBuilderProject.delete({ where: { id } });
+    await (db as any).uiBuilderProject.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });

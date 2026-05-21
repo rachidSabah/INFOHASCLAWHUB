@@ -46,10 +46,6 @@ const FALLBACK_MODELS: Record<string, { id: string; name: string; description: s
     { id: "glm-4-air", name: "GLM-4 Air (via Web)", description: "Balanced GLM via web token" },
     { id: "glm-4-plus", name: "GLM-4 Plus (via Web)", description: "Powerful GLM via web token" },
   ],
-  "ds2api-web-to-api-bridge": [
-    { id: "deepseek-chat", name: "DeepSeek Chat (V3 via ds2api)", description: "Free DeepSeek V3 through web-to-API bridge" },
-    { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1 via ds2api)", description: "Free DeepSeek R1 reasoning through web-to-API bridge" },
-  ],
   "qwen-qw2api": [
     { id: "qwen-plus", name: "Qwen Plus (via qw2api)", description: "Free Qwen Plus through web-to-API bridge" },
     { id: "qwen-max", name: "Qwen Max (via qw2api)", description: "Free Qwen Max through web-to-API bridge" },
