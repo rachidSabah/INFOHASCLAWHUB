@@ -70,9 +70,22 @@ class SessionEngine {
         }
       }
 
-      const context = browser.contexts ? browser.contexts()[0] : browser;
-      const page = context.pages ? await context.newPage() : await browser.newPage();
+      const context: any = browser.contexts ? browser.contexts()[0] : browser;
+      // Use existing page if available, otherwise create and navigate
+      let page = context.pages ? context.pages().find((p: any) => !p.url().includes("about:blank") && !p.url().includes("chrome://")) : null;
+      if (!page) {
+        page = context.pages ? await context.newPage() : await browser.newPage();
+      }
       this.contexts.set(provider.name, { context, page });
+
+      // Navigate to provider (if not already there)
+      const currentUrl = page.url();
+      if (!currentUrl.includes(provider.url)) {
+        console.log(`[SessionEngine] Navigating to ${provider.url}`);
+        await page.goto(provider.url, { waitUntil: "domcontentloaded", timeout: 30000 });
+      } else {
+        console.log(`[SessionEngine] Already on ${provider.url}, capturing traffic...`);
+      }
 
       // Websocket auth interception
       page.on("websocket", (ws) => {
@@ -125,9 +138,7 @@ class SessionEngine {
         }
       });
 
-      // Navigate to provider
-      await page.goto(provider.url, { waitUntil: "domcontentloaded", timeout: 30000 });
-      console.log(`[SessionEngine] ${provider.name} page loaded. Waiting for user login...`);
+      console.log(`[SessionEngine] ${provider.name} ready. Waiting for API requests...`);
 
       // Wait for token to be captured (up to 60 seconds)
       for (let i = 0; i < 30; i++) {
