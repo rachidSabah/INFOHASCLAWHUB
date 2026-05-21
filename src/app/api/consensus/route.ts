@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export async function GET() {
+  return NextResponse.json({ message: "POST with { prompt, models: string[] } to run consensus across multiple AI providers", supported: true });
+}
+
 interface ConsensusResult {
   model: string;
   content: string;

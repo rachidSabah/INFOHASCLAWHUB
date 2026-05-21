@@ -311,3 +311,39 @@ model GitAnalysis {
   type        String // "commit" | "pr" | "conflict" | "review"
   createdAt   DateTime @default(now())
 }
+
+// Kanban Board
+model KanbanBoard {
+  id        String         @id @default(cuid())
+  name      String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  columns   KanbanColumn[]
+}
+
+model KanbanColumn {
+  id        String       @id @default(cuid())
+  boardId   String
+  name      String
+  color     String       @default("#6b7280")
+  order     Int          @default(0)
+  createdAt DateTime     @default(now())
+  board     KanbanBoard  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards     KanbanCard[]
+}
+
+model KanbanCard {
+  id          String       @id @default(cuid())
+  columnId    String
+  title       String
+  description String?
+  priority    String       @default("medium")
+  labels      String       @default("[]")
+  assignee    String?
+  status      String       @default("backlog")
+  subtasks    String       @default("[]")
+  order       Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  column      KanbanColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+}
