@@ -23,8 +23,8 @@ export async function POST(req: NextRequest) {
         deepseek: ["deepseek"], qwen: ["qwen"], glm: ["glm", "z.ai", "chatglm", "zhipu"],
         kimi: ["kimi", "moonshot"], gemini: ["gemini"],
       };
-      for (const [key, hints] of Object.entries(hints)) {
-        if (hints.some(h => modelLower.includes(h))) {
+      for (const [key, patterns] of Object.entries(hints)) {
+        if (patterns.some(h => modelLower.includes(h))) {
           provider = providers.find((p: any) => p.name?.toLowerCase().includes(key));
           if (provider) break;
         }
