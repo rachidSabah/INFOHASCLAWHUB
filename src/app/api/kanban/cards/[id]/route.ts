@@ -7,7 +7,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const body = await req.json();
     const sets: string[] = [];
     const vals: any[] = [];
-    for (const f of ["title", "description", "priority", "labels", "assignee", "status", "gitBranch", "prLink", "subtasks", "tokenUsage"]) {
+    for (const f of ["title", "description", "priority", "labels", "assignee", "status", "gitBranch", "prLink", "subtasks", "tokenUsage", "dueDate", "logs", "artifacts"]) {
       if (body[f] !== undefined) { sets.push(`"${f}" = ?`); vals.push(typeof body[f] === "object" ? JSON.stringify(body[f]) : body[f]); }
     }
     if (sets.length === 0) return NextResponse.json({ error: "No fields to update" }, { status: 400 });

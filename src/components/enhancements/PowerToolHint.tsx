@@ -162,6 +162,17 @@ const HINTS: Record<string, { title: string; steps: string[] }> = {
       "5. View the activity log for all remote interactions",
     ],
   },
+  "Kanban Board": {
+    title: "Task Management + Agent Assignments",
+    steps: [
+      "1. Drag-and-drop cards between 8 columns (Backlog → Completed/Failed)",
+      "2. Click any card to edit details, priority, labels, assignee, and due date",
+      "3. Manage subtasks with checklists and track progress per card",
+      "4. Link git branches, PRs, token usage, logs, and artifacts in the Meta tab",
+      "5. Assign agents to cards for AI-driven execution tracking",
+      "6. Cards auto-refresh every 5 seconds for a real-time feel",
+    ],
+  },
   "Browser Token Extractor": {
     title: "Extract DeepSeek Session Tokens from Browser",
     steps: [
