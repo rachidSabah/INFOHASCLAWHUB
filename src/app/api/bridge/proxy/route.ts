@@ -7,76 +7,65 @@ import { NextRequest, NextResponse } from "next/server";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { messages, model, provider: providerName, action } = body;
+    const { messages, model } = body;
 
-    // Find the provider
-    let provider: any = null;
-    const providers = await db.provider.findMany({ where: { isActive: true } });
+    if (!messages) return NextResponse.json({ error: "messages required" }, { status: 400 });
 
-    // Smart provider matching
     const modelLower = (model || "").toLowerCase();
-    if (providerName) {
-      provider = providers.find((p: any) => p.name?.toLowerCase().includes(providerName.toLowerCase()));
-    }
-    if (!provider) {
-      const hints: Record<string, string[]> = {
-        deepseek: ["deepseek"], qwen: ["qwen"], glm: ["glm", "z.ai", "chatglm", "zhipu", "bigmodel"],
-        kimi: ["kimi", "moonshot"], gemini: ["gemini"],
-      };
-      for (const [key, patterns] of Object.entries(hints)) {
-        if (patterns.some(h => (modelLower || "").includes(h))) {
-          provider = providers.find((p: any) => p.name?.toLowerCase().includes(key));
-          if (provider) break;
-        }
-      }
-    }
-    if (!provider) provider = providers.find((p: any) => p.apiKey && p.apiKey.length > 10);
-    if (!provider?.apiKey) {
-      const modelHint = (model || "").toLowerCase();
-      const providerName = modelHint.includes("moonshot") || modelHint.includes("kimi") ? "Kimi" : 
-                          modelHint.includes("qwen") ? "Qwen" :
-                          modelHint.includes("glm") || modelHint.includes("z.ai") ? "Z.AI/GLM" :
-                          modelHint.includes("gemini") ? "Gemini" : "DeepSeek";
-      return NextResponse.json({ 
-        error: `${providerName} not configured. Go to WebBridge → ${providerName} tab → paste token → click Configure first.` 
+    const providerHint = modelLower.includes("moonshot") || modelLower.includes("kimi") ? "kimi" :
+                        modelLower.includes("qwen") ? "qwen" :
+                        modelLower.includes("glm") || modelLower.includes("bigmodel") ? "z-ai" : "deepseek";
+
+    // Route through Playwright session engine
+    const { sessionEngine } = await import("@/lib/session-engine");
+    
+    // Try to launch/capture a session
+    const session = await sessionEngine.launchProvider(providerHint);
+    
+    if (!session.token) {
+      return NextResponse.json({
+        error: `No active ${providerHint} session. Click "Launch & Capture" in WebBridge first.`,
+        provider: providerHint,
       }, { status: 401 });
     }
 
-    const baseUrl = (provider.baseUrl || "http://localhost:8000/v1").replace(/\/$/, "");
-    const apiUrl = baseUrl.endsWith("/v1") ? `${baseUrl}/chat/completions` : `${baseUrl}/v1/chat/completions`;
-    let cleanModel = model?.includes("/") ? model.split("/").pop() : model || "chat";
+    // Use the captured token to configure a provider
+    const providers = await db.provider.findMany({ where: { isActive: true } });
+    const provider = providers.find((p: any) => p.name?.toLowerCase().includes(providerHint)) ||
+                    (providerHint === "deepseek" ? providers.find((p: any) => p.name?.toLowerCase().includes("deepseek")) : null);
 
-    // Dynamic model mapping per provider based on actual API compatibility
-    const providerKey = provider.name.toLowerCase();
-    if (providerKey.includes("deepseek")) {
-      cleanModel = "deepseek-chat"; // DeepSeek API accepts this
-    } else if (providerKey.includes("kimi") || providerKey.includes("moonshot")) {
-      cleanModel = "moonshot-v1-8k"; // Kimi API accepts this
-    } else if (providerKey.includes("qwen")) {
-      cleanModel = "qwen-plus"; // Qwen API
-    } else if (providerKey.includes("z.ai") || providerKey.includes("glm") || providerKey.includes("bigmodel")) {
-      cleanModel = "glm-4-flash"; // Z.AI API accepts this
-    } else if (providerKey.includes("gemini")) {
-      cleanModel = "gemini-2.0-flash"; // Gemini API
+    if (!provider?.baseUrl) {
+      return NextResponse.json({ error: `Configure ${providerHint} provider first` }, { status: 400 });
     }
 
-    console.log(`[Bridge] ${provider.name} → ${apiUrl}, model: ${cleanModel}`);
+    const baseUrl = provider.baseUrl.replace(/\/$/, "");
+    const apiUrl = baseUrl.endsWith("/v1") ? `${baseUrl}/chat/completions` : `${baseUrl}/v1/chat/completions`;
+
+    // Map model per provider
+    let cleanModel = model?.includes("/") ? model.split("/").pop() : "chat";
+    if (providerHint === "deepseek") cleanModel = "deepseek-chat";
+    else if (providerHint === "kimi") cleanModel = "moonshot-v1-8k";
+    else if (providerHint === "qwen") cleanModel = "qwen-plus";
+    else if (providerHint === "z-ai") cleanModel = "glm-4-flash";
 
     const res = await fetch(apiUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${provider.apiKey}` },
-      body: JSON.stringify({ model: cleanModel, messages, temperature: 0.7, max_tokens: 4096, stream: false }),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({ model: cleanModel, messages, temperature: 0.7, max_tokens: 2048, stream: false }),
       signal: AbortSignal.timeout(60000),
     });
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      console.error(`[Bridge] ${res.status}: ${errText.slice(0, 200)}`);
-      return NextResponse.json({ error: `API error ${res.status}: ${errText.slice(0, 100)}` }, { status: res.status });
+      return NextResponse.json({ error: `${providerHint} API ${res.status}: ${errText.slice(0, 150)}` }, { status: res.status });
     }
 
     const data = await res.json();
-    return NextResponse.json({ content: data.choices?.[0]?.message?.content || "", model: cleanModel, provider: provider.name, usage: data.usage });
+    return NextResponse.json({
+      content: data.choices?.[0]?.message?.content || "",
+      model: cleanModel,
+      provider: provider.name,
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
