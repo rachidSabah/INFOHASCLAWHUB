@@ -270,7 +270,7 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
       const res = await fetch("/api/bridge/proxy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [{ role: "user", content: "Say OK" }], model: p.models[0]?.id || "chat" }),
+        body: JSON.stringify({ messages: [{ role: "user", content: "Say OK" }], model: p.models[0]?.id || "chat", provider: p.name.toLowerCase().split("(")[0].trim().replace(/\s+/g, "-") }),
       });
       const data = await res.json();
       if (data.content) {
@@ -303,9 +303,11 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
         body: JSON.stringify({ name: provider.name, baseUrl: provider.baseUrl, apiKey: token, isActive: true }),
       });
       setConfigured(prev => [...prev, provider.name]);
-      toast.success(`"${provider.name}" configured! Models will appear in the dropdown.`);
+      toast.success(`"${provider.name}" configured! Models in dropdown.`);
       setApiKey("");
-      setTimeout(async () => { try { await fetch("/api/models?t=" + Date.now()); } catch {} }, 1000);
+      // Refresh models immediately + after delay
+      try { const r = await fetch("/api/models?t=" + Date.now()); if (r.ok) { const data = await r.json(); console.log("Models refreshed:", data.length, "groups"); } } catch {}
+      setTimeout(async () => { try { await fetch("/api/models?t=" + Date.now()); } catch {} }, 2000);
     } catch { toast.error("Failed to configure provider"); }
   }, [apiKey, provider]);
 

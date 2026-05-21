@@ -16,20 +16,29 @@ export async function POST(req: NextRequest) {
     // Find the provider by name or use the first active web bridge provider
     let provider: any = null;
     const providers = await db.provider.findMany({ where: { isActive: true } });
-    
-    if (providerName) {
-      provider = providers.find((p: any) => 
-        p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-") === providerName ||
-        p.name.toLowerCase().includes(providerName.toLowerCase())
-      );
-    }
-    
-    // Fallback: try any DeepSeek/Qwen/Kimi/GLM provider
+
+    // Smart provider matching: use model prefix to find correct provider
     if (!provider) {
-      for (const name of ["deepseek", "qwen", "kimi", "glm", "z.ai", "moonshot"]) {
-        provider = providers.find((p: any) => p.name?.toLowerCase().includes(name));
-        if (provider) break;
+      const modelLower = (model || "").toLowerCase();
+      const providerHints: Record<string, string[]> = {
+        deepseek: ["deepseek"],
+        qwen: ["qwen"],
+        glm: ["glm", "z.ai", "chatglm", "zhipu"],
+        kimi: ["kimi", "moonshot"],
+        gemini: ["gemini"],
+      };
+      
+      for (const [key, hints] of Object.entries(providerHints)) {
+        if (hints.some(h => modelLower.includes(h) || (providerName && providerName.includes(key)))) {
+          provider = providers.find((p: any) => p.name?.toLowerCase().includes(key));
+          if (provider) break;
+        }
       }
+    }
+
+    // Fallback: try any provider with an API key
+    if (!provider) {
+      provider = providers.find((p: any) => p.apiKey && p.apiKey.length > 10);
     }
 
     if (!provider?.apiKey) {
