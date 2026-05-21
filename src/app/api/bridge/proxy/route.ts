@@ -8,63 +8,44 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { messages, model } = body;
-
     if (!messages) return NextResponse.json({ error: "messages required" }, { status: 400 });
 
-    const modelLower = (model || "").toLowerCase();
-    const providerHint = modelLower.includes("moonshot") || modelLower.includes("kimi") ? "kimi" :
-                        modelLower.includes("qwen") ? "qwen" :
-                        modelLower.includes("glm") || modelLower.includes("bigmodel") ? "z-ai" : "deepseek";
-
-    // Route through Playwright session engine
-    const { sessionEngine } = await import("@/lib/session-engine");
-    
-    // Try to launch/capture a session
-    const session = await sessionEngine.launchProvider(providerHint);
-    
-    if (!session.token) {
-      return NextResponse.json({
-        error: `No active ${providerHint} session. Click "Launch & Capture" in WebBridge first.`,
-        provider: providerHint,
-      }, { status: 401 });
-    }
-
-    // Use the captured token to configure a provider
+    // Find ANY configured provider
     const providers = await db.provider.findMany({ where: { isActive: true } });
-    const provider = providers.find((p: any) => p.name?.toLowerCase().includes(providerHint)) ||
-                    (providerHint === "deepseek" ? providers.find((p: any) => p.name?.toLowerCase().includes("deepseek")) : null);
-
-    if (!provider?.baseUrl) {
-      return NextResponse.json({ error: `Configure ${providerHint} provider first` }, { status: 400 });
+    let provider = providers.find((p: any) => p.apiKey && p.apiKey.length > 10);
+    
+    if (!provider?.apiKey) {
+      return NextResponse.json({ error: "No provider configured. Go to WebBridge → paste token → Configure." }, { status: 401 });
     }
 
-    const baseUrl = provider.baseUrl.replace(/\/$/, "");
+    const baseUrl = (provider.baseUrl || "http://localhost:8000/v1").replace(/\/$/, "");
     const apiUrl = baseUrl.endsWith("/v1") ? `${baseUrl}/chat/completions` : `${baseUrl}/v1/chat/completions`;
 
     // Map model per provider
+    const pKey = provider.name?.toLowerCase() || "";
     let cleanModel = model?.includes("/") ? model.split("/").pop() : "chat";
-    if (providerHint === "deepseek") cleanModel = "deepseek-chat";
-    else if (providerHint === "kimi") cleanModel = "moonshot-v1-8k";
-    else if (providerHint === "qwen") cleanModel = "qwen-plus";
-    else if (providerHint === "z-ai") cleanModel = "glm-4-flash";
+    if (pKey.includes("deepseek")) cleanModel = "deepseek-chat";
+    else if (pKey.includes("kimi") || pKey.includes("moonshot")) cleanModel = "moonshot-v1-8k";
+    else if (pKey.includes("qwen")) cleanModel = "qwen-plus";
+    else if (pKey.includes("z.ai") || pKey.includes("glm")) cleanModel = "glm-4-flash";
+    else if (pKey.includes("gemini")) cleanModel = "gemini-2.0-flash";
 
     const res = await fetch(apiUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.token}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${provider.apiKey}` },
       body: JSON.stringify({ model: cleanModel, messages, temperature: 0.7, max_tokens: 2048, stream: false }),
       signal: AbortSignal.timeout(60000),
     });
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      return NextResponse.json({ error: `${providerHint} API ${res.status}: ${errText.slice(0, 150)}` }, { status: res.status });
+      return NextResponse.json({ error: `${res.status}: ${errText.slice(0, 150)}` }, { status: res.status });
     }
 
     const data = await res.json();
     return NextResponse.json({
       content: data.choices?.[0]?.message?.content || "",
-      model: cleanModel,
-      provider: provider.name,
+      model: cleanModel, provider: provider.name,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
