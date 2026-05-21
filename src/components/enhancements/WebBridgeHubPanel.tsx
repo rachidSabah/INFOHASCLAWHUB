@@ -583,7 +583,7 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                       <div className="p-2 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
                         <p className="text-[10px] font-semibold text-emerald-600 mb-1">Console Script (No F12 searching)</p>
                         <p className="text-[9px] text-muted-foreground mb-1.5">
-                          Open {new URL(p.loginUrl).hostname} → F12 → Console → Paste → Enter → token auto-copied
+                          Open {new URL(p.loginUrl).hostname} → F12 → Console → type "allow pasting" → Paste → Enter
                         </p>
                         <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 w-full"
                           onClick={() => {
