@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { ClawHubLogo, ClawHubText } from "./ClawHubLogo";
 import {
   PanelLeft, Settings, Bot, Zap, ChevronDown, Check, BarChart3, Activity, ArrowUpCircle, HeartPulse,
-  Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu, Server, Layout, GitMerge, GitFork,
+  Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu, Server, Layout, GitMerge, GitFork, Sparkles, Wifi,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -34,6 +34,8 @@ import { KanbanPanel } from "./enhancements/KanbanPanel";
 import { VoiceCodePipeline } from "./enhancements/VoiceCodePipeline";
 import { ArchitectureMapper } from "./enhancements/ArchitectureMapper";
 import { ConsensusPanel } from "./enhancements/ConsensusPanel";
+import ArtifactPanel from "./enhancements/ArtifactPanel";
+import NetworkInfoPanel from "./enhancements/NetworkInfoPanel";
 
 export function TopBar() {
   const { toggleSidebar, setSettingsOpen } = useUIStore();
@@ -72,6 +74,8 @@ export function TopBar() {
   const [webBridgeOpen, setWebBridgeOpen] = useState(false);
   const [kanbanOpen, setKanbanOpen] = useState(false);
   const [consensusOpen, setConsensusOpen] = useState(false);
+  const [artifactsOpen, setArtifactsOpen] = useState(false);
+  const [networkInfoOpen, setNetworkInfoOpen] = useState(false);
 
   const agentRef = useRef<HTMLDivElement>(null);
   const skillRef = useRef<HTMLDivElement>(null);
@@ -309,7 +313,7 @@ export function TopBar() {
           className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border",
             powerToolsOpen ? "border-primary/30 bg-primary/5 text-primary" : "border-border hover:border-primary/20 hover:bg-muted/30 text-muted-foreground"
           )}
-          title="Power Tools — 16 AI Enhancement Features"
+          title="Power Tools — 18 AI Enhancement Features"
         >
           <Rocket className="h-3.5 w-3.5" />
           <span>Power Tools</span>
@@ -388,6 +392,14 @@ export function TopBar() {
                 <Server className="h-3.5 w-3.5 text-blue-500" /><div><span className="font-medium">Web Bridges</span><p className="text-[10px] text-muted-foreground">Free AI via browser tokens</p></div>
               </button>
             </div>
+            <div className="border-t border-border my-1" />
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1">Tier 5: New Generation</p>
+            <button onClick={() => { setArtifactsOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Sparkles className="h-3.5 w-3.5 text-purple-500" /><div><span className="font-medium">AI Artifacts Studio</span><p className="text-[10px] text-muted-foreground">Doc, sheet, slide, canvas AI</p></div>
+            </button>
+            <button onClick={() => { setNetworkInfoOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+              <Wifi className="h-3.5 w-3.5 text-blue-500" /><div><span className="font-medium">LAN Network Access</span><p className="text-[10px] text-muted-foreground">Multi-device WiFi access</p></div>
+            </button>
           </div>
         )}
       </div>
@@ -449,6 +461,8 @@ export function TopBar() {
       <WebBridgeHubPanel open={webBridgeOpen} onOpenChange={setWebBridgeOpen} />
       <KanbanPanel open={kanbanOpen} onOpenChange={setKanbanOpen} />
       <ConsensusPanel open={consensusOpen} onOpenChange={setConsensusOpen} />
+      <ArtifactPanel open={artifactsOpen} onOpenChange={setArtifactsOpen} />
+      <NetworkInfoPanel open={networkInfoOpen} onOpenChange={setNetworkInfoOpen} />
     </div>
   );
 }
