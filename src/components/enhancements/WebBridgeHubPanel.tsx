@@ -432,12 +432,12 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                         const res = await fetch("/api/bridge/proxy", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ messages: [{ role: "user", content: "hi" }], model: p.models[0]?.id || "chat", provider: p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") }),
+                          body: JSON.stringify({ messages: [{ role: "user", content: "hi" }], model: p.models[0]?.id || "chat" }),
                         });
                         const data = await res.json();
-                        if (data.content) toast.success(`Bridge works! Model: ${data.model}`);
+                        if (data.content) toast.success(`Bridge works! Response: "${data.content.slice(0, 50)}..."`);
                         else toast.error(data.error || "Bridge failed");
-                      } catch { toast.error("Bridge not reachable"); }
+                      } catch { toast.error("Bridge not reachable — server may be restarting"); }
                     }}>
                       <Zap className="h-3 w-3 mr-1" /> Test
                     </Button>
