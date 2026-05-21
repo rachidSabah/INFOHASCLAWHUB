@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
   },
   reactStrictMode: false,
   serverExternalPackages: ["@whiskeysockets/baileys", "ws", "bufferutil", "utf-8-validate", "better-sqlite3", "playwright", "playwright-core"],
+  experimental: {
+    serverComponentsExternalPackages: ["@whiskeysockets/baileys", "ws", "bufferutil", "utf-8-validate", "better-sqlite3", "playwright", "playwright-core"],
+  },
   async headers() {
     return [
       {

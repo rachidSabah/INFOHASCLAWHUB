@@ -1,33 +1,21 @@
-import { db } from "@/lib/db";
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
+import path from "path";
+function getDb() { const Database = require("better-sqlite3"); return new Database(path.join(process.cwd(), "prisma", "db", "app.db")); }
 
-
-
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const db = getDb();
   try {
     const { id } = await params;
-    const body = await request.json();
-    const pipeline = await (db as any).agentPipeline.findUnique({ where: { id } });
-    if (!pipeline) {
-      return NextResponse.json({ error: 'Pipeline not found' }, { status: 404 });
+    const body = await _req.json().catch(() => ({}));
+    const pipeline = db.prepare("SELECT * FROM AgentPipeline WHERE id = ?").get(id) as any;
+    if (!pipeline) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const steps = JSON.parse(pipeline.steps || "[]");
+    if (pipeline.currentStep < steps.length) {
+      steps[pipeline.currentStep].status = "approved";
+      db.prepare("UPDATE AgentPipeline SET steps = ?, currentStep = currentStep + 1, updatedAt = datetime('now') WHERE id = ?")
+        .run(JSON.stringify(steps), id);
     }
-    const currentStep = body.step ?? pipeline.currentStep;
-    const results = pipeline.results ? JSON.parse(pipeline.results) : [];
-    results.push({ step: currentStep, approved: true, timestamp: new Date().toISOString() });
-    const nextStep = currentStep + 1;
-    const updated = await (db as any).agentPipeline.update({
-      where: { id },
-      data: {
-        currentStep: nextStep,
-        results: JSON.stringify(results),
-      },
-    });
-    return NextResponse.json(updated);
-  } catch (error: unknown) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
-  }
+    return NextResponse.json(db.prepare("SELECT * FROM AgentPipeline WHERE id = ?").get(id));
+  } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+  finally { db.close(); }
 }

@@ -1,48 +1,37 @@
-import { db } from "@/lib/db";
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
+import path from "path";
+function getDb() { const Database = require("better-sqlite3"); return new Database(path.join(process.cwd(), "prisma", "db", "app.db")); }
 
-
-
-
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const db = getDb();
   try {
     const { id } = await params;
-    const pipeline = await (db as any).agentPipeline.findUnique({ where: { id } });
-    if (!pipeline) {
-      return NextResponse.json({ error: 'Pipeline not found' }, { status: 404 });
-    }
-    return NextResponse.json(pipeline);
-  } catch (error: unknown) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
-  }
+    const p = db.prepare("SELECT * FROM AgentPipeline WHERE id = ?").get(id);
+    if (!p) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(p);
+  } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+  finally { db.close(); }
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const db = getDb();
   try {
     const { id } = await params;
-    const body = await request.json();
-    const pipeline = await (db as any).agentPipeline.update({ where: { id }, data: body });
-    return NextResponse.json(pipeline);
-  } catch (error: unknown) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
-  }
+    const body = await req.json();
+    if (body.name) db.prepare("UPDATE AgentPipeline SET name = ?, updatedAt = datetime('now') WHERE id = ?").run(body.name, id);
+    if (body.description) db.prepare("UPDATE AgentPipeline SET description = ?, updatedAt = datetime('now') WHERE id = ?").run(body.description, id);
+    if (body.steps) db.prepare("UPDATE AgentPipeline SET steps = ?, updatedAt = datetime('now') WHERE id = ?").run(body.steps, id);
+    return NextResponse.json(db.prepare("SELECT * FROM AgentPipeline WHERE id = ?").get(id));
+  } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+  finally { db.close(); }
 }
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const db = getDb();
   try {
     const { id } = await params;
-    await (db as any).agentPipeline.delete({ where: { id } });
+    db.prepare("DELETE FROM AgentPipeline WHERE id = ?").run(id);
     return NextResponse.json({ success: true });
-  } catch (error: unknown) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
-  }
+  } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+  finally { db.close(); }
 }
