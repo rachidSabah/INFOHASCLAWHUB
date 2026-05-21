@@ -21,64 +21,79 @@ class SessionEngine {
   private tokens: CapturedToken[] = [];
   private discoveredModels: DiscoveredModel[] = [];
 
+  private modelAliases: Map<string, string> = new Map(); // alias → canonical
+  private sessionCache = new Map<string, { token: string; expires: number }>();
+
   async launchProvider(providerName: string): Promise<{ token?: string; models: DiscoveredModel[]; error?: string }> {
     const provider = PROVIDERS.find(p => p.name === providerName);
     if (!provider) return { models: [], error: `Unknown provider: ${providerName}` };
+
+    // Check cache first
+    const cached = this.sessionCache.get(providerName);
+    if (cached && cached.expires > Date.now()) {
+      const models = this.getDiscoveredModels(providerName);
+      return { token: cached.token, models };
+    }
 
     try {
       console.log(`[SessionEngine] Launching ${provider.name}...`);
       const browser = await chromium.launchPersistentContext(CHROME_PROFILE, {
         headless: false,
         channel: "chrome",
-        args: ["--disable-blink-features=AutomationControlled"],
+        args: ["--disable-blink-features=AutomationControlled", "--disable-dev-shm-usage"],
       });
 
       const page = await browser.newPage();
       this.contexts.set(provider.name, { context: browser, page });
 
-      // Intercept API requests to capture tokens and models
+      // Websocket auth interception
+      page.on("websocket", (ws) => {
+        const url = ws.url();
+        if (url.includes(provider.apiPath)) {
+          console.log(`[SessionEngine] WS auth for ${provider.name}: ${url.slice(0, 100)}`);
+        }
+      });
+
+      // Live request interception
       page.on("request", async (request) => {
         const url = request.url();
         const headers = await request.allHeaders();
 
-        if (url.includes(provider.apiPath) || url.includes("chat/completions") || url.includes("generate")) {
+        if (url.includes(provider.apiPath) || url.includes("chat/completions") || url.includes("generate") || url.includes("paas/v4")) {
           const auth = headers["authorization"] || headers["Authorization"] || "";
+
+          // Capture Bearer token
           if (auth && auth.startsWith("Bearer ")) {
             const token = auth.replace("Bearer ", "");
-            const existingModels = JSON.parse(request.postData() || "{}")?.model;
-            if (token && token.length > 50) {
-              this.tokens.push({
-                token,
-                model: existingModels || "unknown",
-                timestamp: Date.now(),
-                headers,
-              });
-              console.log(`[SessionEngine] Captured token for ${provider.name}: ${token.slice(0, 30)}...`);
+            if (token.length > 20) {
+              this.tokens.push({ token, model: "", timestamp: Date.now(), headers });
+              // Cache with 50-minute expiry
+              this.sessionCache.set(provider.name, { token, expires: Date.now() + 50 * 60 * 1000 });
+              console.log(`[SessionEngine] ${provider.name} token captured: ${token.slice(0, 30)}...`);
             }
           }
-        }
 
-        // Discover models from API responses
-        if (url.includes("/models") || url.includes("chat/completions")) {
-          request.response().then(async (response) => {
+          // Capture CSRF tokens
+          const csrf = headers["x-csrf-token"] || headers["x-csrftoken"] || headers["csrf-token"];
+          if (csrf) {
+            this.tokens.push({ token: csrf, model: "csrf", timestamp: Date.now(), headers });
+          }
+
+          // Auto-refresh: re-intercept when token changes
+          const responseHandler = async (response: any) => {
             try {
-              const body = await response?.text();
-              if (body && body.includes("model")) {
-                const data = JSON.parse(body);
-                const models = data.data || data.models || [];
-                for (const m of models) {
-                  const modelId = typeof m === "string" ? m : m.id || m.name;
-                  if (modelId && !this.discoveredModels.find(d => d.id === modelId)) {
-                    this.discoveredModels.push({
-                      id: modelId,
-                      name: typeof m === "string" ? modelId : (m.name || modelId),
-                      provider: provider.name,
-                    });
-                  }
+              const respHeaders = response?.headers() || {};
+              const newAuth = respHeaders["authorization"] || respHeaders["set-authorization"] || "";
+              if (newAuth && newAuth.startsWith("Bearer ")) {
+                const newToken = newAuth.replace("Bearer ", "");
+                if (newToken !== this.sessionCache.get(provider.name)?.token) {
+                  this.sessionCache.set(provider.name, { token: newToken, expires: Date.now() + 50 * 60 * 1000 });
+                  console.log(`[SessionEngine] ${provider.name} token refreshed`);
                 }
               }
             } catch {}
-          }).catch(() => {});
+          };
+          request.response()?.then(responseHandler).catch(() => {});
         }
       });
 
@@ -115,6 +130,22 @@ class SessionEngine {
 
   getCapturedToken(providerName: string): CapturedToken | undefined {
     return this.tokens.reverse().find(t => t.timestamp > Date.now() - 300000);
+  }
+
+  normalizeModel(model: string, providerName: string): string {
+    // Canonical aliases from discovered models
+    if (this.modelAliases.has(model)) return this.modelAliases.get(model)!;
+
+    // Auto-learn aliases from discovered models
+    const discovered = this.discoveredModels.find(m => 
+      m.provider === providerName && (m.id === model || m.name === model)
+    );
+    if (discovered) {
+      this.modelAliases.set(model, discovered.id);
+      return discovered.id;
+    }
+
+    return model;
   }
 
   getDiscoveredModels(providerName: string): DiscoveredModel[] {
