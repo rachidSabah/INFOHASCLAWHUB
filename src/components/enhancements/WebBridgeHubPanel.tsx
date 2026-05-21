@@ -118,12 +118,13 @@ const PROVIDERS: ProviderInfo[] = [
     models: [
       { id: "moonshot-v1-8k", name: "Moonshot v1 8K", description: "Free via web token" },
       { id: "moonshot-v1-32k", name: "Moonshot v1 32K", description: "Extended via web token" },
+      { id: "moonshot-v1-128k", name: "Moonshot v1 128K", description: "Ultra-long via web token" },
     ],
     setupGuide: [
-      "Log into kimi.moonshot.cn in your browser",
-      "Start Kimi bridge on localhost:8200",
-      "F12 → Network → find API request headers",
-      "Copy the Bearer token and paste below",
+      "Log into kimi.com or kimi.moonshot.cn",
+      "F12 → Network → find Authorization: Bearer eyJ...",
+      "Or F12 → Application → Cookies → kimi.com → find kimi-auth",
+      "Paste the Bearer token below and click Configure",
     ],
   },
   {

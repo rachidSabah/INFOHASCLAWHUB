@@ -496,7 +496,7 @@ export async function GET() {
     { name: "deepseek", domains: ["chat.deepseek.com", ".deepseek.com", "deepseek.com"] },
     { name: "qwen", domains: ["chat.qwen.ai", ".qwen.ai", "qwen.ai"] },
     { name: "gemini", domains: ["gemini.google.com", "aistudio.google.com"] },
-    { name: "kimi", domains: ["kimi.moonshot.cn", ".moonshot.cn", "moonshot.cn"] },
+    { name: "kimi", domains: ["www.kimi.com", ".kimi.com", "kimi.com", "kimi.moonshot.cn", ".moonshot.cn", "moonshot.cn"] },
     { name: "z-ai", domains: ["chat.z.ai", ".z.ai", "z.ai"] },
   ];
 
