@@ -579,15 +579,21 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                         </Button>
                       </div>
 
-                      {/* Console Script — 100% reliable */}
+                      {/* Console Script */}
                       <div className="p-2 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
-                        <p className="text-[10px] font-semibold text-emerald-600 mb-1">📋 Quick Console Script (No F12 searching)</p>
+                        <p className="text-[10px] font-semibold text-emerald-600 mb-1">Console Script (No F12 searching)</p>
                         <p className="text-[9px] text-muted-foreground mb-1.5">
-                          Open {new URL(p.loginUrl).hostname} → F12 → Console → paste this script → token auto-copied
+                          Open {new URL(p.loginUrl).hostname} → F12 → Console → Paste → Enter → token auto-copied
                         </p>
-                        <code className="text-[8px] bg-muted/50 p-1.5 rounded block break-all font-mono leading-relaxed max-h-20 overflow-y-auto">
-                          {`(()=>{const k='${p.localStorageKey || "token"}';const t=localStorage[k]||Object.entries(localStorage).find(([k])=>k.includes('token')||k.includes('auth')||k.includes('session'))?.[1];if(t){copy(t);alert('✅ Token copied! Return to dashboard and paste.')}else{alert('❌ No token found. Log in and send a message first.')}})()`}
-                        </code>
+                        <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1 w-full"
+                          onClick={() => {
+                            const providerKey = ["deepseek","qwen","gemini","kimi","z-ai"][activeProvider];
+                            const storageKey = p.localStorageKey || "token";
+                            const script = `(()=>{const t=localStorage.getItem('${storageKey}')||Object.values(localStorage).find(v=>typeof v==='string'&&v.length>50&&(v.startsWith('eyJ')||v.startsWith('sk-')||v.startsWith('AIza')));if(t){navigator.clipboard.writeText(t).then(()=>alert('Token copied!'));console.log('Token:',t)}else{const c=document.cookie.split(';').find(c=>c.includes('token')||c.includes('auth')||c.includes('session'));if(c){const v=c.split('=')[1];navigator.clipboard.writeText(v).then(()=>alert('Token from cookie copied!'));console.log('Cookie token:',v)}else{alert('No token found. Login and send a message first.')}}})()`;
+                            navigator.clipboard.writeText(script).then(() => toast.success("Script copied! Paste in browser console"));
+                          }}>
+                          <Copy className="h-3 w-3 mr-1" /> Copy Script to Clipboard
+                        </Button>
                       </div>
 
                       {/* Validation Result */}
