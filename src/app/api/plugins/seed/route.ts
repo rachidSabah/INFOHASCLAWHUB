@@ -52,7 +52,12 @@ export async function POST() {
       { name: "AI-Powered Code Refactor", description: "Analyze → Plan → Refactor → Test → Review", steps: JSON.stringify([{ agentId: "agent1", order: 0, description: "Analyze codebase for improvement areas", approvalRequired: false }, { agentId: "agent1", order: 1, description: "Generate refactoring plan", approvalRequired: true }, { agentId: "agent1", order: 2, description: "Apply refactoring changes", approvalRequired: false }, { agentId: "agent1", order: 3, description: "Run test suite", approvalRequired: false }, { agentId: "agent1", order: 4, description: "Code review of changes", approvalRequired: true }]), status: "draft", currentStep: 0 },
     ];
     for (const p of prebuiltPipelines) {
-      try { await (db as any).agentPipeline.create({ data: p }); } catch {}
+      try { 
+        await (db as any).$executeRawUnsafe(
+          `INSERT INTO AgentPipeline (id, name, description, steps, status, currentStep, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+          crypto.randomUUID(), p.name, p.description, p.steps, p.status, p.currentStep
+        );
+      } catch {}
     }
 
     // Seed prebuilt model routes
