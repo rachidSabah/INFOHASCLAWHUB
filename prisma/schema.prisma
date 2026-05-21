@@ -311,3 +311,319 @@ model GitAnalysis {
   type        String // "commit" | "pr" | "conflict" | "review"
   createdAt   DateTime @default(now())
 }
+
+// ============================================================
+// NEXT-GEN ENHANCEMENT MODELS
+// ============================================================
+
+// P0-1: Universal Context Memory
+model ContextMemory {
+  id            String   @id @default(cuid())
+  type          String // "episodic" | "semantic" | "procedural" | "project" | "agent" | "session"
+  category      String // "conversation" | "code" | "workflow" | "preference" | "error" | "success" | "research"
+  content       String
+  summary       String? // Compressed/summarized version
+  embedding     String? // JSON vector for semantic retrieval
+  sourceId      String? // Origin: conversationId, agentId, sessionId, etc.
+  sourceType    String? // "conversation" | "agent" | "session" | "manual"
+  projectId     String? // Project association
+  agentId       String? // Agent association
+  tags          String   @default("[]") // JSON: string[]
+  priority      Int      @default(0) // Higher = more important
+  accessCount   Int      @default(0) // How many times retrieved
+  relevanceScore Float? // Computed relevance
+  expiresAt     DateTime? // Optional TTL for aging
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([type])
+  @@index([category])
+  @@index([projectId])
+  @@index([agentId])
+  @@index([priority])
+}
+
+model MemoryLink {
+  id           String   @id @default(cuid())
+  sourceId     String // ContextMemory id
+  targetId     String // ContextMemory id
+  relationType String // "continuation" | "reference" | "contradiction" | "refinement" | "derived"
+  strength     Float   @default(1.0) // 0-1 link strength
+  createdAt    DateTime @default(now())
+
+  @@index([sourceId])
+  @@index([targetId])
+}
+
+// P0-2: Cron Scheduling + Always-On Agents
+model CronTask {
+  id            String    @id @default(cuid())
+  name          String
+  description   String?
+  cronExpr      String // e.g. "*/5 * * * *"
+  taskType      String // "agent_run" | "repo_monitor" | "health_check" | "auto_deploy" | "issue_resolve" | "custom"
+  agentId       String?
+  config        String // JSON: task-specific config
+  status        String    @default("active") // "active" | "paused" | "disabled" | "error"
+  lastRunAt     DateTime?
+  nextRunAt     DateTime?
+  lastResult    String? // JSON: { success, output, duration }
+  runCount      Int       @default(0)
+  failCount     Int       @default(0)
+  retryPolicy   String    @default("{}") // JSON: { maxRetries, backoffMs }
+  dependencies  String    @default("[]") // JSON: task IDs that must complete first
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status])
+  @@index([taskType])
+}
+
+model AgentWorker {
+  id            String    @id @default(cuid())
+  name          String
+  agentId       String // Reference to Agent
+  status        String    @default("idle") // "idle" | "running" | "waiting" | "error" | "stopped"
+  currentTask   String? // Description of current task
+  pid           Int? // Process ID if running
+  lastHeartbeat DateTime?
+  totalTasks    Int       @default(0)
+  successCount  Int       @default(0)
+  errorCount    Int       @default(0)
+  config        String    @default("{}") // JSON: worker config
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status])
+}
+
+// P1-1: Self-Improving Agents
+model AgentExperience {
+  id             String   @id @default(cuid())
+  agentId        String
+  taskType       String // "code_gen" | "debug" | "review" | "deploy" | "research" | "general"
+  prompt         String // The prompt that was used
+  strategy       String // Which strategy/model was chosen
+  outcome        String // "success" | "partial" | "failure"
+  score          Float // 0-1 quality score
+  duration       Float? // ms
+  tokensUsed     Int?
+  resultSnippet  String? // First 500 chars of result
+  learnings      String? // JSON: extracted patterns
+  improvedPrompt String? // Optimized prompt based on this experience
+  createdAt      DateTime @default(now())
+
+  @@index([agentId])
+  @@index([taskType])
+  @@index([outcome])
+  @@index([score])
+}
+
+model PromptTemplate {
+  id          String   @id @default(cuid())
+  taskType    String
+  agentRole   String?
+  template    String
+  version     Int      @default(1)
+  score       Float    @default(0)
+  usageCount  Int      @default(0)
+  successRate Float    @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([taskType])
+  @@index([agentRole])
+}
+
+// P1-2: Research Mode + Citations
+model ResearchSession {
+  id            String   @id @default(cuid())
+  query         String
+  status        String   @default("searching") // "searching" | "analyzing" | "synthesizing" | "completed" | "failed"
+  sources       String   @default("[]") // JSON: { url, title, snippet, credibility, type }[]
+  citations     String   @default("[]") // JSON: { id, sourceId, text, relevance }[]
+  findings      String? // Markdown synthesis
+  confidence    Float? // 0-1 overall confidence
+  depth         String   @default("standard") // "quick" | "standard" | "deep"
+  model         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([status])
+}
+
+model Citation {
+  id              String   @id @default(cuid())
+  researchId      String
+  sourceUrl       String?
+  sourceTitle     String
+  sourceType      String // "web" | "code" | "doc" | "paper" | "repo"
+  snippet         String
+  relevanceScore  Float    @default(0)
+  credibility     Float    @default(0)
+  verifiedAt      DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([researchId])
+  @@index([sourceType])
+}
+
+// P1-3: Issue → Deploy Pipeline
+model IssuePipeline {
+  id            String    @id @default(cuid())
+  issueUrl      String? // GitHub issue URL
+  issueTitle    String
+  issueBody     String?
+  repoUrl       String?
+  status        String    @default("planning") // "planning" | "coding" | "testing" | "reviewing" | "pr_created" | "deployed" | "failed"
+  plan          String? // JSON: { steps }
+  branchName    String?
+  prUrl         String?
+  prNumber      Int?
+  deployUrl     String?
+  testResults   String? // JSON
+  reviewNotes   String?
+  iterations    Int       @default(0)
+  maxIterations Int       @default(5)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status])
+}
+
+// P2-1: Live App Sandbox
+model Sandbox {
+  id           String    @id @default(cuid())
+  name         String
+  framework    String    @default("nextjs") // "nextjs" | "react" | "html" | "vue"
+  status       String    @default("creating") // "creating" | "running" | "stopped" | "error"
+  port         Int?
+  containerId  String?
+  previewUrl   String?
+  files        String    @default("{}") // JSON: { path: content }
+  envVars      String    @default("{}") // JSON: { key: value }
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status])
+}
+
+// P2-2: MCP Hub
+model MCPRegistry {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  description  String
+  version      String
+  author       String
+  transport    String // "stdio" | "http" | "websocket"
+  endpoint     String? // URL for remote servers
+  capabilities String   @default("[]") // JSON: string[]
+  authType     String? // "none" | "api_key" | "oauth"
+  authConfig   String? // JSON: auth details
+  isEnabled    Boolean  @default(false)
+  isVerified   Boolean  @default(false)
+  rating       Float    @default(0)
+  installs     Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isEnabled])
+}
+
+// P2-3: Hybrid Local ↔ Cloud Router
+model ProviderScore {
+  id              String   @id @default(cuid())
+  providerName    String
+  modelId         String
+  taskType        String // "code" | "analysis" | "creative" | "reasoning" | "embedding" | "chat"
+  avgLatency      Float    @default(0) // ms
+  avgTokensPerSec Float    @default(0)
+  successRate     Float    @default(0) // 0-1
+  costPer1kTokens Float    @default(0)
+  contextLength   Int      @default(0)
+  qualityScore    Float    @default(0) // 0-1 from evaluations
+  privacyLevel    String   @default("cloud") // "local" | "hybrid" | "cloud"
+  lastEvaluated   DateTime @default(now())
+  sampleSize      Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([providerName, modelId, taskType])
+  @@index([taskType])
+  @@index([providerName])
+}
+
+// P3-1: Verified Plugin Marketplace V2
+model VerifiedPlugin {
+  id             String   @id @default(cuid())
+  name           String   @unique
+  description    String
+  author         String
+  version        String
+  category       String // "integration" | "tool" | "agent" | "theme" | "utility" | "mcp"
+  manifest       String // JSON: full manifest
+  signature      String? // Cryptographic signature
+  checksum       String? // Content hash for verification
+  permissions    String   @default("[]") // JSON: requested permissions
+  sandboxLevel   String   @default("restricted") // "full" | "restricted" | "minimal"
+  isEnabled      Boolean  @default(false)
+  isInstalled    Boolean  @default(false)
+  isVerified     Boolean  @default(false)
+  securityScan   String? // JSON: { passed, issues[] }
+  rating         Float    @default(0)
+  installs       Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([category])
+  @@index([isVerified])
+}
+
+// P3-2: Real-Time Collaboration
+model CollabSession {
+  id          String   @id @default(cuid())
+  name        String
+  hostId      String // User ID of session host
+  peers       String   @default("[]") // JSON: { id, name, cursor, color }[]
+  status      String   @default("active") // "active" | "ended"
+  sharedAgent String? // Agent ID shared in session
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+}
+
+// P3-4: Compliance Engine
+model AuditLog {
+  id          String   @id @default(cuid())
+  actor       String // User/agent who performed action
+  action      String // What was done
+  resource    String // What was accessed
+  result      String // "success" | "denied" | "error"
+  risk        String   @default("low") // "low" | "medium" | "high" | "critical"
+  details     String? // JSON: additional context
+  ipAddress   String?
+  sessionId   String?
+  createdAt   DateTime @default(now())
+
+  @@index([actor])
+  @@index([action])
+  @@index([risk])
+  @@index([createdAt])
+}
+
+model CompliancePolicy {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String
+  ruleType    String // "rbac" | "data_access" | "secret_scan" | "gdpr" | "soc2" | "custom"
+  config      String // JSON: rule configuration
+  severity    String   @default("medium") // "low" | "medium" | "high" | "critical"
+  isEnabled   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([ruleType])
+  @@index([isEnabled])
+}

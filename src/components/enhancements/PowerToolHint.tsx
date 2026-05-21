@@ -206,6 +206,28 @@ const HINTS: Record<string, { title: string; steps: string[] }> = {
       "6. Trace dependency chains by clicking linked files",
     ],
   },
+  "Cron Scheduler": {
+    title: "Cron Scheduling + Always-On Agents",
+    steps: [
+      "1. Tasks tab: Click 'Create Task' to schedule a new cron job",
+      "2. Set the cron expression, task type, and optional agent ID",
+      "3. Use Play/Pause to control task execution, Zap to run now",
+      "4. Workers tab: Register workers that poll for tasks assigned to agents",
+      "5. Start/Stop workers and send heartbeats to keep them alive",
+      "6. Self-Heal tab: Run diagnostics to detect and auto-fix system issues",
+    ],
+  },
+  "Research Mode": {
+    title: "Deep Research + Citations + Hallucination Detection",
+    steps: [
+      "1. Enter your research query in the text area",
+      "2. Choose depth: Quick (fast), Standard (balanced), or Deep (comprehensive)",
+      "3. Click 'Start Research' — AI searches, analyzes, and synthesizes sources",
+      "4. Review findings with citation markers, sources with credibility scores",
+      "5. 'Detect Hallucinations' to flag potentially fabricated claims",
+      "6. 'Verify Citations' to check if sources still exist and are accurate",
+    ],
+  },
 };
 
 interface PowerToolHintProps {
