@@ -8,6 +8,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     if (!p) return NextResponse.json({ error: "Not found" }, { status: 404 });
     p.status = "running";
     p.updatedAt = new Date().toISOString();
+    pipelineStore.set(id, p);
     return NextResponse.json(p);
   } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
 }
