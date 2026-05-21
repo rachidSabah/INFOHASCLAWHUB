@@ -36,15 +36,26 @@ class SessionEngine {
     }
 
     try {
-      console.log(`[SessionEngine] Launching ${provider.name}...`);
-      const browser = await chromium.launchPersistentContext(CHROME_PROFILE, {
-        headless: false,
-        channel: "chrome",
-        args: ["--disable-blink-features=AutomationControlled", "--disable-dev-shm-usage"],
-      });
+      console.log(`[SessionEngine] Launching ${provider.name} via CDP...`);
+      
+      // Connect to existing Chrome via CDP instead of launching new browser
+      let browser: any;
+      try {
+        browser = await chromium.connectOverCDP("http://localhost:9222");
+        console.log("[SessionEngine] Connected to existing Chrome via CDP");
+      } catch {
+        // Fallback: launch new context if CDP not available
+        console.log("[SessionEngine] CDP not available, launching persistent context");
+        browser = await chromium.launchPersistentContext(CHROME_PROFILE, {
+          headless: false,
+          channel: "chrome",
+          args: ["--disable-blink-features=AutomationControlled", "--remote-debugging-port=9222"],
+        });
+      }
 
-      const page = await browser.newPage();
-      this.contexts.set(provider.name, { context: browser, page });
+      const context = browser.contexts ? browser.contexts()[0] : browser;
+      const page = context.pages ? await context.newPage() : await browser.newPage();
+      this.contexts.set(provider.name, { context, page });
 
       // Websocket auth interception
       page.on("websocket", (ws) => {

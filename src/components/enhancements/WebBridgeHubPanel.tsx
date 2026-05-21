@@ -271,19 +271,19 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
       const res = await fetch("/api/bridge/proxy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [{ role: "user", content: "Say OK" }], model: p.models[0]?.id || "chat", provider: p.name.toLowerCase().split("(")[0].trim().replace(/\s+/g, "-") }),
+        body: JSON.stringify({ messages: [{ role: "user", content: "Say OK" }], model: p.models[0]?.id || "chat" }),
       });
       const data = await res.json();
       if (data.content) {
-        setValidationResults(prev => ({ ...prev, [p.name]: { valid: true, message: `Valid! Response: "${data.content.slice(0, 40)}..."` } }));
-        toast.success("Token works! Bridge is operational.");
+        setValidationResults(prev => ({ ...prev, [p.name]: { valid: true, message: `Works: "${data.content.slice(0, 50)}"` } }));
+        toast.success("Token valid!");
       } else {
-        setValidationResults(prev => ({ ...prev, [p.name]: { valid: false, error: data.error || "Failed" } }));
-        toast.error(data.error || "Token validation failed");
+        setValidationResults(prev => ({ ...prev, [p.name]: { valid: false, error: data.error } }));
+        toast.error(data.error || "Token invalid. Click Configure first, then test.");
       }
     } catch {
-      setValidationResults(prev => ({ ...prev, [p.name]: { valid: false, error: "Bridge not reachable" } }));
-      toast.error("Bridge not reachable");
+      setValidationResults(prev => ({ ...prev, [p.name]: { valid: false, error: "Bridge error — click Configure to save, then test" } }));
+      toast.error("Bridge error");
     } finally { setValidating(null); }
   }, []);
 
