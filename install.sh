@@ -39,7 +39,7 @@ fi
 
 echo "[*] Setting up database..."
 npx prisma db push --accept-data-loss --skip-generate
-npx prisma generate 2>/dev/null || echo "    [!] Prisma generate note"
+npx prisma generate --no-engine 2>/dev/null || echo "    [!] Prisma generate note"
 echo "    [OK] Database ready"
 echo ""
 
