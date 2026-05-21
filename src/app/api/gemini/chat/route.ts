@@ -535,6 +535,17 @@ export async function POST(req: NextRequest) {
           isCustomProvider = true;
           providerData = provider;
           console.log(`[${requestId}] Mapping Provider: ${provider.name}`);
+
+          // Convert localhost bridge URLs to real API URLs for web bridge providers
+          if (provider.baseUrl?.includes("localhost")) {
+            const pName = provider.name?.toLowerCase() || "";
+            if (pName.includes("deepseek")) providerData.baseUrl = "https://api.deepseek.com/v1";
+            else if (pName.includes("kimi") || pName.includes("moonshot")) providerData.baseUrl = "https://api.moonshot.cn/v1";
+            else if (pName.includes("qwen")) providerData.baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+            else if (pName.includes("z.ai") || pName.includes("glm")) providerData.baseUrl = "https://open.bigmodel.cn/api/paas/v4";
+            console.log(`[${requestId}] Web bridge: ${provider.baseUrl} → ${providerData.baseUrl}`);
+          }
+
           const envPrefix = provider.name.toUpperCase().replace(/\s+/g, "_");
 
           providerEnv[`${envPrefix}_API_KEY`] = provider.apiKey || "";
