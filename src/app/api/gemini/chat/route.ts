@@ -7,6 +7,17 @@ import os from "os";
 import { parseToolCalls, executeToolCall, getToolsPrompt, getMcpTools, type ToolCallResult } from "@/lib/tools";
 import { countTokens, estimateCost } from "@/lib/tokens";
 
+async function extractPDFText(filePath: string): Promise<string> {
+  try {
+    const pdfParse = require("pdf-parse");
+    const dataBuffer = fs.readFileSync(filePath);
+    const data = await pdfParse(dataBuffer);
+    return data.text || "";
+  } catch {
+    return "";
+  }
+}
+
 async function extractMemoriesFromText(
   assistantText: string,
   model: string,
@@ -446,21 +457,24 @@ export async function POST(req: NextRequest) {
             fileContents += `\n\n[File: ${file.name}]\n\`\`\`${ext}\n${content.slice(0, 15000)}\n\`\`\`\n`;
             console.log(`[${requestId}] Read text file: ${file.name} (${content.length} chars)`);
           } else if (binaryReadExtensions.includes(ext)) {
-            // Office/binary documents - read as base64 and pass to agent
             const buffer = fs.readFileSync(actualPath);
-            const base64 = buffer.toString("base64");
-            fileContents += `\n\n[Attached File: ${file.name}]\nType: ${file.mimeType || ext}\nSize: ${file.size} bytes\n\nThis is a ${ext.toUpperCase()} document. The file content is available as base64 (${(buffer.length / 1024).toFixed(1)} KB). Use the appropriate tool to read its contents:\n`;
             if (ext === "pdf") {
-              fileContents += `- For PDF: Use Python with PyPDF2 or pdfplumber to extract text\n`;
-              fileContents += `- Or use the system 'type' command if available\n`;
+              const pdfText = await extractPDFText(actualPath);
+              if (pdfText && pdfText.trim().length > 0) {
+                fileContents += `\n\n[Attached PDF: ${file.name}]\n\`\`\`\n${pdfText.slice(0, 30000)}\n\`\`\`\n`;
+              } else {
+                const base64 = buffer.toString("base64");
+                fileContents += `\n\n[Attached PDF: ${file.name} (${(buffer.length/1024).toFixed(1)}KB)]\nPDF text extraction failed. The file may be scanned/image-based.\n`;
+              }
             } else if (ext === "docx") {
-              fileContents += `- For DOCX: Use Python with python-docx library to read text\n`;
-              fileContents += `- The file is a ZIP containing XML documents\n`;
+              const base64 = buffer.toString("base64");
+              fileContents += `\n\n[Attached DOCX: ${file.name}]\nType: ${file.mimeType || ext}\nSize: ${file.size} bytes\n\nThis is a ${ext.toUpperCase()} document. Use Python with python-docx to read text.\nThe file is a ZIP containing XML documents.\nBase64 content (first 4KB): ${base64.slice(0, 4096)}...\n`;
             } else if (ext === "xlsx" || ext === "xls") {
-              fileContents += `- For Excel: Use Python with openpyxl or pandas to read data\n`;
+              fileContents += `\n\n[Attached Excel: ${file.name}]\nUse Python with openpyxl or pandas to read data.\n`;
+            } else {
+              const base64 = buffer.toString("base64");
+              fileContents += `\n\n[Attached Document: ${file.name} (${(buffer.length/1024).toFixed(1)}KB)]\nBase64 (first 4KB): ${base64.slice(0, 4096)}...\n`;
             }
-            fileContents += `\nBase64 content (first 8KB): ${base64.slice(0, 8192)}...\n`;
-            console.log(`[${requestId}] Read binary file: ${file.name} (${buffer.length} bytes, base64)`);
           } else if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"].includes(ext)) {
             // Images - pass as base64 data URL
             const buffer = fs.readFileSync(actualPath);
