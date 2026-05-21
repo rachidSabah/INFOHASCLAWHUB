@@ -473,14 +473,8 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
               const pk = ["deepseek", "qwen", "gemini", "kimi", "z-ai"][i];
               const hasTokens = (tokensByProvider[pk] || 0) > 0;
               return (
-              <TabsTrigger key={i} value={String(i)} className="text-[10px] gap-1.5 py-1.5 relative">
+              <TabsTrigger key={i} value={String(i)} className="text-[10px] gap-1.5 py-1.5">
                 {["⚡","🧠","🔵","🚀","💎"][i] || "•"} {p.name.split("(")[0].trim()}
-                {bridgeStatus[p.name]?.running && (
-                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-green-500" />
-                )}
-                {hasTokens && !bridgeStatus[p.name]?.running && (
-                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-blue-500" />
-                )}
               </TabsTrigger>
             );})}
           </TabsList>
@@ -489,27 +483,14 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
             <TabsContent key={i} value={String(i)} className="flex-1 flex flex-col min-h-0 mt-2 data-[state=inactive]:hidden overflow-y-auto">
               <div className="flex-1 flex flex-col min-h-0 gap-2">
 
-                {/* Bridge Status */}
+                {/* Direct API Status */}
                 {!isGemini && (
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[11px] text-muted-foreground">Bridge:</span>
-                    {bridgeInfo?.running ? (
-                      <Badge className="text-[10px] gap-1 bg-green-500/10 text-green-600">
-                        <Wifi className="h-3 w-3" /> Online
-                      </Badge>
-                    ) : (
-                      <Badge className="text-[10px] gap-1 bg-red-500/10 text-red-600">
-                        <WifiOff className="h-3 w-3" /> Offline
-                      </Badge>
-                    )}
-                    {bridgeInfo?.running && bridgeInfo.models.length > 0 && (
-                      <span className="text-[10px] text-muted-foreground">
-                        ({bridgeInfo.models.length} models: {bridgeInfo.models.slice(0, 3).join(", ")})
-                      </span>
-                    )}
-                    {!bridgeInfo?.running && (
-                      <span className="text-[10px] text-amber-600">Start the bridge service first</span>
-                    )}
+                    <span className="text-[11px] text-muted-foreground">API:</span>
+                    <Badge className="text-[10px] gap-1 bg-blue-500/10 text-blue-600">
+                      <Globe className="h-3 w-3" /> Direct HTTPS
+                    </Badge>
+                    <span className="text-[10px] text-muted-foreground">No bridge needed</span>
                     <a href={p.loginUrl} target="_blank" className="text-[10px] text-muted-foreground hover:text-foreground ml-auto flex items-center gap-1">
                       <ExternalLink className="h-3 w-3" /> Login
                     </a>
