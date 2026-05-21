@@ -1,4 +1,6 @@
 import { db } from "@/lib/db";
+import Database from "better-sqlite3";
+import path from "path";
 import { NextResponse } from "next/server";
 
 const PREBUILT_PLUGINS = [
@@ -51,14 +53,17 @@ export async function POST() {
       { name: "Security Audit Pipeline", description: "Scan → Analyze → Patch → Verify", steps: JSON.stringify([{ agentId: "agent1", order: 0, description: "Scan for vulnerabilities", approvalRequired: false }, { agentId: "agent1", order: 1, description: "Analyze severity and impact", approvalRequired: false }, { agentId: "agent1", order: 2, description: "Generate patches for critical issues", approvalRequired: true }, { agentId: "agent1", order: 3, description: "Verify patches and re-scan", approvalRequired: true }]), status: "draft", currentStep: 0 },
       { name: "AI-Powered Code Refactor", description: "Analyze → Plan → Refactor → Test → Review", steps: JSON.stringify([{ agentId: "agent1", order: 0, description: "Analyze codebase for improvement areas", approvalRequired: false }, { agentId: "agent1", order: 1, description: "Generate refactoring plan", approvalRequired: true }, { agentId: "agent1", order: 2, description: "Apply refactoring changes", approvalRequired: false }, { agentId: "agent1", order: 3, description: "Run test suite", approvalRequired: false }, { agentId: "agent1", order: 4, description: "Code review of changes", approvalRequired: true }]), status: "draft", currentStep: 0 },
     ];
-    for (const p of prebuiltPipelines) {
-      try { 
-        await (db as any).$executeRawUnsafe(
-          `INSERT INTO AgentPipeline (id, name, description, steps, status, currentStep, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-          crypto.randomUUID(), p.name, p.description, p.steps, p.status, p.currentStep
-        );
-      } catch {}
-    }
+    // Seed prebuilt pipelines using better-sqlite3 directly
+    try {
+      const sqliteDb = new Database(path.join(process.cwd(), "prisma", "db", "app.db"));
+      const insertStmt = sqliteDb.prepare(
+        "INSERT OR IGNORE INTO AgentPipeline (id, name, description, steps, status, currentStep, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))"
+      );
+      for (const p of prebuiltPipelines) {
+        try { insertStmt.run(crypto.randomUUID(), p.name, p.description, p.steps, p.status, p.currentStep); } catch {}
+      }
+      sqliteDb.close();
+    } catch {}
 
     // Seed prebuilt model routes
     const prebuiltRoutes = [
