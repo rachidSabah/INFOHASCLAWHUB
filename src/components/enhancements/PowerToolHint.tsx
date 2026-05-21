@@ -184,6 +184,28 @@ const HINTS: Record<string, { title: string; steps: string[] }> = {
       "6. Use Model Router to route deepseek-chat to ds2api",
     ],
   },
+  "Voice-to-Code Pipeline": {
+    title: "Voice-Driven AI Code Generation",
+    steps: [
+      "1. Click the large microphone button to start recording",
+      "2. Speak your code request in natural language",
+      "3. Watch real-time transcription as you speak",
+      "4. Click 'Generate Code' to send transcription to AI",
+      "5. Review the generated code with syntax highlighting",
+      "6. Use 'Execute' to run in terminal or 'Insert' to add to editor",
+    ],
+  },
+  "Live Architecture Mapper": {
+    title: "Codebase Visualization & Dependency Graph",
+    steps: [
+      "1. Click 'Scan Workspace' to analyze your codebase",
+      "2. Browse the file tree with color-coded categories",
+      "3. Blue = Components, Green = Pages, Orange = API, Purple = Lib",
+      "4. Click any file to see its imports, exports, and dependencies",
+      "5. Use the search bar to find specific files instantly",
+      "6. Trace dependency chains by clicking linked files",
+    ],
+  },
 };
 
 interface PowerToolHintProps {

@@ -19,9 +19,9 @@ const FALLBACK_MODELS: Record<string, { id: string; name: string; description: s
     { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1)", description: "Advanced reasoning and problem solving" },
     { id: "deepseek-coder", name: "DeepSeek Coder", description: "Advanced code generation and reasoning" },
   ],
-  "deepseek-free-via-ds2api": [
-    { id: "deepseek-chat", name: "DeepSeek Chat (V3 via Web)", description: "Free DeepSeek V3 via web session token" },
-    { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1 via Web)", description: "Free DeepSeek R1 via web session token" },
+  "deepseek-free-web": [
+    { id: "deepseek-chat", name: "DeepSeek Chat (V3)", description: "Free DeepSeek V3 via web session token" },
+    { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1)", description: "Free DeepSeek R1 via web session token" },
   ],
   "ds2api-web-to-api-bridge": [
     { id: "deepseek-chat", name: "DeepSeek Chat (V3 via Web)", description: "Free DeepSeek V3 via web session token" },
