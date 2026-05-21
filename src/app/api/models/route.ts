@@ -42,9 +42,9 @@ const FALLBACK_MODELS: Record<string, { id: string; name: string; description: s
     { id: "moonshot-v1-32k", name: "Moonshot v1 32K (via Web)", description: "Extended via web token" },
   ],
   "z-ai-glm-free-web": [
-    { id: "glm-4", name: "GLM-4 (via Web)", description: "Free GLM-4 via web token" },
     { id: "glm-4-flash", name: "GLM-4 Flash (via Web)", description: "Fast GLM via web token" },
     { id: "glm-4-air", name: "GLM-4 Air (via Web)", description: "Balanced GLM via web token" },
+    { id: "glm-4-plus", name: "GLM-4 Plus (via Web)", description: "Powerful GLM via web token" },
   ],
   "ds2api-web-to-api-bridge": [
     { id: "deepseek-chat", name: "DeepSeek Chat (V3 via ds2api)", description: "Free DeepSeek V3 through web-to-API bridge" },

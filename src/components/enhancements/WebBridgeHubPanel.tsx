@@ -134,9 +134,9 @@ const PROVIDERS: ProviderInfo[] = [
     loginUrl: "https://chat.z.ai",
     localStorageKey: "authToken",
     models: [
-      { id: "glm-4", name: "GLM-4", description: "Zhipu flagship via web token" },
-      { id: "glm-4-flash", name: "GLM-4 Flash", description: "Fast via web token" },
-      { id: "glm-4-air", name: "GLM-4 Air", description: "Balanced via web token" },
+      { id: "glm-4-flash", name: "GLM-4 Flash", description: "Fast GLM via web token" },
+      { id: "glm-4-air", name: "GLM-4 Air", description: "Balanced GLM via web token" },
+      { id: "glm-4-plus", name: "GLM-4 Plus", description: "Powerful GLM via web token" },
     ],
     setupGuide: [
       "Log into chat.z.ai in your browser",
