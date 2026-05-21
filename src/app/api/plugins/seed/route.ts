@@ -1,5 +1,4 @@
 import { db } from "@/lib/db";
-import Database from "better-sqlite3";
 import path from "path";
 import { NextResponse } from "next/server";
 
@@ -55,6 +54,7 @@ export async function POST() {
     ];
     // Seed prebuilt pipelines using better-sqlite3 directly
     try {
+      const Database = require("better-sqlite3");
       const sqliteDb = new Database(path.join(process.cwd(), "prisma", "db", "app.db"));
       const insertStmt = sqliteDb.prepare(
         "INSERT OR IGNORE INTO AgentPipeline (id, name, description, steps, status, currentStep, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))"

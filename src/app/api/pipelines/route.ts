@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Database from "better-sqlite3";
 import path from "path";
 
 function getDb() {
-  const dbPath = path.join(process.cwd(), "prisma", "db", "app.db");
-  return new Database(dbPath);
+  const Database = require("better-sqlite3");
+  return new Database(path.join(process.cwd(), "prisma", "db", "app.db"));
 }
 
 export async function GET() {
