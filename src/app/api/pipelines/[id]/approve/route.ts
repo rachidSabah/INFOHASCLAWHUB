@@ -13,6 +13,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       p.steps = JSON.stringify(steps);
     }
     p.updatedAt = new Date().toISOString();
+    pipelineStore.set(id, p);
     return NextResponse.json(p);
   } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
 }

@@ -3,7 +3,7 @@ import { pipelineStore } from '@/lib/pipeline-store';
 
 export async function GET() {
   try {
-    return NextResponse.json(Array.from(pipelineStore.values()));
+    return NextResponse.json(pipelineStore.getAll());
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }

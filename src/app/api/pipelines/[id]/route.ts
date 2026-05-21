@@ -17,6 +17,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (body.description !== undefined) p.description = body.description;
   if (body.steps !== undefined) p.steps = body.steps;
   p.updatedAt = new Date().toISOString();
+  pipelineStore.set(id, p);
   return NextResponse.json(p);
 }
 

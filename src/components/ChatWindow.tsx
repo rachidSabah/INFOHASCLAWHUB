@@ -18,6 +18,7 @@ import {
   Pencil,
   GitBranch,
   X,
+  Download,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
@@ -155,6 +156,7 @@ export function ChatWindow() {
           model: conv?.model || settings.defaultModel,
           systemPrompt: conv?.systemPrompt || settings.systemPrompt,
           conversationHistory: messages.slice(0, msgIndex - 1),
+          files: prevUserMsg.attachments ? JSON.parse(prevUserMsg.attachments) : [],
         }),
       });
 
@@ -349,6 +351,29 @@ interface MessageBubbleProps {
   onBranch: (messageId: string) => void;
 }
 
+function handleDownloadMessage(content: string, title: string) {
+  const payload = {
+    type: "docx",
+    data: { title: title || "AI Response", sections: [{ heading: "Response", body: content.slice(0, 30000) }] },
+    filename: `${(title || "response").replace(/[^a-zA-Z0-9]/g, "_")}.docx`,
+  };
+  fetch("/api/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+    .then((res) => res.blob())
+    .then((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = payload.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    })
+    .catch(() => {});
+}
+
 function MessageBubble({ message, copiedId, onCopy, onRegenerate, isGenerating, isEditing, editContent, hasSubsequentMessages, onStartEdit, onCancelEdit, onEditContentChange, onSaveEdit, onBranch }: MessageBubbleProps) {
   const [showRaw, setShowRaw] = useState(false);
   const { agents } = useAgentStore();
@@ -513,6 +538,15 @@ function MessageBubble({ message, copiedId, onCopy, onRegenerate, isGenerating, 
               <RefreshCw className="h-3 w-3" />
             </Button>
             <ReadAloud text={message.content} />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => handleDownloadMessage(message.content, message.content?.split("\n")[0]?.replace(/^#+\s*/, "") || "response")}
+              title="Download as DOCX"
+            >
+              <Download className="h-3 w-3" />
+            </Button>
             {messageMetadata?.tokens?.total != null && (
               <span
                 className={cn(
