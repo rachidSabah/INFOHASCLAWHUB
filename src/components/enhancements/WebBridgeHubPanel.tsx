@@ -424,7 +424,7 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-[11px] text-muted-foreground">Bridge:</span>
                     <Badge className="text-[10px] gap-1 bg-blue-500/10 text-blue-600">
-                      <Link className="h-3 w-3" /> Built-in Proxy
+                      <Server className="h-3 w-3" /> Built-in Proxy
                     </Badge>
                     <span className="text-[10px] text-muted-foreground">Uses /api/bridge/proxy</span>
                     <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={async () => {
