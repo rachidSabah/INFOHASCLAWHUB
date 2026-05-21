@@ -201,7 +201,7 @@ export function ConsensusPanel({ open, onOpenChange }: ConsensusPanelProps) {
           if (r.tokens?.completion && r.tokens.completion > 50) score += 2;
           return { provider: r.provider, score: Math.round(score * 10) / 10 };
         });
-        scores.sort((a, b) => b.score - a.scores[0].score);
+        scores.sort((a, b) => b.score - a.score);
 
         const result: VoteResult = {
           winner: scores[0].provider,
@@ -220,7 +220,7 @@ export function ConsensusPanel({ open, onOpenChange }: ConsensusPanelProps) {
         }
         saveWinStats(newStats);
       }
-      toast.success(`Consensus winner: ${responses.find(r => r.provider === (voteResult?.winner || scores[0].provider))?.model || voteResult?.winner || scores[0].provider}`);
+      toast.success(`Consensus winner: ${responses.find(r => r.provider === (scores[0]?.provider))?.model || scores[0]?.provider || "Unknown"}`);
     } catch {
       // Fallback entirely to local scoring
       const scores = responses.map((r) => {

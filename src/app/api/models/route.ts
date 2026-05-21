@@ -50,12 +50,6 @@ const FALLBACK_MODELS: Record<string, { id: string; name: string; description: s
     { id: "deepseek-chat", name: "DeepSeek Chat (V3 via ds2api)", description: "Free DeepSeek V3 through web-to-API bridge" },
     { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1 via ds2api)", description: "Free DeepSeek R1 reasoning through web-to-API bridge" },
   ],
-  qwen: [
-    { id: "qwen-plus", name: "Qwen Plus", description: "Alibaba's flagship model" },
-    { id: "qwen-max", name: "Qwen Max", description: "Most capable Qwen model" },
-    { id: "qwen-turbo", name: "Qwen Turbo", description: "Fast and efficient" },
-    { id: "qwen-coder", name: "Qwen Coder", description: "Code generation specialist" },
-  ],
   "qwen-qw2api": [
     { id: "qwen-plus", name: "Qwen Plus (via qw2api)", description: "Free Qwen Plus through web-to-API bridge" },
     { id: "qwen-max", name: "Qwen Max (via qw2api)", description: "Free Qwen Max through web-to-API bridge" },
