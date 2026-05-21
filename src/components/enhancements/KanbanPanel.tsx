@@ -650,7 +650,7 @@ export function KanbanPanel({ open, onOpenChange }: Props) {
                           <SelectValue placeholder="Unassigned" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="" className="text-[10px]">None</SelectItem>
+                          <SelectItem value="none" className="text-[10px]">None</SelectItem>
                           {agents.map(a => (
                             <SelectItem key={a.id} value={a.id} className="text-[10px]">{a.name}</SelectItem>
                           ))}
