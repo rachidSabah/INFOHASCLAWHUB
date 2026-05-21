@@ -1,32 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import path from "path";
-
-function getDb() {
-  const Database = require("better-sqlite3");
-  return new Database(path.join(process.cwd(), "prisma", "db", "app.db"));
-}
+import { pipelineStore } from '@/lib/pipeline-store';
 
 export async function GET() {
-  const db = getDb();
   try {
-    const pipelines = db.prepare("SELECT * FROM AgentPipeline ORDER BY createdAt DESC LIMIT 50").all();
-    return NextResponse.json(pipelines);
+    return NextResponse.json(Array.from(pipelineStore.values()));
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
-  } finally { db.close(); }
+  }
 }
 
 export async function POST(request: NextRequest) {
-  const db = getDb();
   try {
     const body = await request.json();
     const id = body.id || crypto.randomUUID();
-    db.prepare(
-      "INSERT INTO AgentPipeline (id, name, description, steps, status, currentStep, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))"
-    ).run(id, body.name, body.description || "", body.steps || "[]", body.status || "draft", body.currentStep || 0);
-    const pipeline = db.prepare("SELECT * FROM AgentPipeline WHERE id = ?").get(id);
-    return NextResponse.json(pipeline);
+    pipelineStore.set(id, { id, name: body.name, description: body.description || "", steps: body.steps || "[]", status: body.status || "draft", currentStep: body.currentStep || 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    return NextResponse.json(pipelineStore.get(id));
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
-  } finally { db.close(); }
+  }
 }
