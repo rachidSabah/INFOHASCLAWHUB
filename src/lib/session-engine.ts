@@ -44,13 +44,30 @@ class SessionEngine {
         browser = await chromium.connectOverCDP("http://localhost:9222");
         console.log("[SessionEngine] Connected to existing Chrome via CDP");
       } catch {
-        // Fallback: launch new context if CDP not available
-        console.log("[SessionEngine] CDP not available, launching persistent context");
-        browser = await chromium.launchPersistentContext(CHROME_PROFILE, {
-          headless: false,
-          channel: "chrome",
-          args: ["--disable-blink-features=AutomationControlled", "--remote-debugging-port=9222"],
-        });
+        // Try to launch Chrome with debugging port
+        const { execSync } = await import("child_process");
+        const chromePaths = [
+          "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+          "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+          `${process.env.LOCALAPPDATA}\\Google\\Chrome\\Application\\chrome.exe`,
+        ];
+        for (const cp of chromePaths) {
+          try {
+            execSync(`start "" "${cp}" --remote-debugging-port=9222`, { timeout: 3000, windowsHide: true });
+            console.log(`[SessionEngine] Launched Chrome at ${cp}`);
+            break;
+          } catch {}
+        }
+        await new Promise(r => setTimeout(r, 2000));
+        try {
+          browser = await chromium.connectOverCDP("http://localhost:9222");
+          console.log("[SessionEngine] Connected to auto-launched Chrome");
+        } catch {
+          browser = await chromium.launchPersistentContext(CHROME_PROFILE, {
+            headless: false, channel: "chrome",
+            args: ["--remote-debugging-port=9222", "--disable-blink-features=AutomationControlled"],
+          });
+        }
       }
 
       const context = browser.contexts ? browser.contexts()[0] : browser;
