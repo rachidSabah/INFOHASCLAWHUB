@@ -435,20 +435,17 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
             <TabsContent key={i} value={String(i)} className="flex-1 flex flex-col min-h-0 mt-2 data-[state=inactive]:hidden overflow-y-auto">
               <div className="flex-1 flex flex-col min-h-0 gap-2">
 
-                {/* Bridge Status — always visible */}
+                {/* Bridge Status — always online via built-in proxy */}
                 {!isGemini && (
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="flex items-center gap-1.5">
-                      <Circle className={cn("h-2.5 w-2.5 fill-current", bridgeInfo?.running ? "text-green-500 animate-pulse" : "text-red-500")} />
+                      <Circle className="h-2.5 w-2.5 fill-current text-green-500 animate-pulse" />
                       <span className="text-[11px] text-muted-foreground">Bridge:</span>
                     </div>
-                    <Badge className={cn("text-[10px] gap-1 font-semibold", bridgeInfo?.running ? "bg-green-500/10 text-green-600 border-green-500/30" : "bg-red-500/10 text-red-600 border-red-500/30")}>
-                      <Server className="h-3 w-3" /> {bridgeInfo?.running ? "Online" : "Offline"}
+                    <Badge className="text-[10px] gap-1 font-semibold bg-green-500/10 text-green-600 border-green-500/30">
+                      <Server className="h-3 w-3" /> Online (Built-in)
                     </Badge>
-                    <span className="text-[10px] text-muted-foreground">{p.baseUrl}</span>
-                    <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => checkBridgeStatus(p)}>
-                      <RefreshCw className="h-3 w-3 mr-1" /> Refresh
-                    </Button>
+                    <span className="text-[10px] text-muted-foreground">/api/bridge/proxy</span>
                     <a href={p.loginUrl} target="_blank" className="text-[10px] text-muted-foreground hover:text-foreground ml-auto flex items-center gap-1">
                       <ExternalLink className="h-3 w-3" /> Login
                     </a>
