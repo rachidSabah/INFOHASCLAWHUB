@@ -127,27 +127,6 @@ const PROVIDERS: ProviderInfo[] = [
     ],
   },
   {
-    name: "Qwen (qw2api)",
-    baseUrl: "http://localhost:8100/v1",
-    tokenLabel: "Bearer Token (JWT)",
-    domain: "qwenlm.ai",
-    loginUrl: "https://chat.qwen.ai",
-    localStorageKey: "token",
-    models: [
-      { id: "qwen-plus", name: "Qwen Plus", description: "Alibaba's flagship model" },
-      { id: "qwen-max", name: "Qwen Max", description: "Most capable Qwen model" },
-      { id: "qwen-turbo", name: "Qwen Turbo", description: "Fast and efficient" },
-      { id: "qwen-coder", name: "Qwen Coder", description: "Code generation specialist" },
-    ],
-    setupGuide: [
-      "METHOD 1 (Easiest): Drag the Bookmarklet to your bookmarks bar → go to chat.qwen.ai → click the bookmark → done!",
-      "METHOD 2: Click 'Auto-Extract (Playwright)' to launch a browser → log in → token captured automatically",
-      "METHOD 3: Install qw2api bridge → start on localhost:8100",
-      "METHOD 4: F12 → Network → find Bearer token → paste manually",
-    ],
-    bridgeName: "Qwen (qw2api)",
-  },
-  {
     name: "Gemini (Free Web)",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
     tokenLabel: "API Key (from Google AI Studio)",
@@ -160,54 +139,12 @@ const PROVIDERS: ProviderInfo[] = [
       { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", description: "Fast thinking with high quality" },
     ],
     setupGuide: [
-      "Visit aistudio.google.com/apikey to get a free API key (starts with AIza...)",
-      "No bridge needed — direct HTTPS API connection",
-      "50 requests/day free tier — no credit card required",
-      "Use the Bookmarklet for quick one-click key entry!",
+      "Visit aistudio.google.com/apikey to get a free API key",
+      "The key starts with 'AIza...'",
+      "Paste it as the API Key in the provider config",
+      "No bridge needed — direct HTTPS API",
+      "50 requests/day free tier",
     ],
-    bridgeName: "",
-  },
-  {
-    name: "Kimi (Moonshot)",
-    baseUrl: "http://localhost:8200/v1",
-    tokenLabel: "Bearer Token (JWT)",
-    domain: "kimi.moonshot.cn",
-    loginUrl: "https://kimi.moonshot.cn",
-    localStorageKey: "token",
-    models: [
-      { id: "kimi-latest", name: "Kimi Latest", description: "Moonshot's flagship conversational model" },
-      { id: "moonshot-v1-8k", name: "Moonshot v1 8K", description: "Standard context window" },
-      { id: "moonshot-v1-32k", name: "Moonshot v1 32K", description: "Extended context for documents" },
-      { id: "moonshot-v1-128k", name: "Moonshot v1 128K", description: "Ultra-long context" },
-    ],
-    setupGuide: [
-      "METHOD 1 (Easiest): Drag the Bookmarklet to your bookmarks bar → go to kimi.moonshot.cn → click the bookmark → done!",
-      "METHOD 2: Click 'Auto-Extract (Playwright)' to launch a browser → log in → token captured automatically",
-      "METHOD 3: Create Kimi bridge at localhost:8200/v1",
-      "METHOD 4: F12 → Network → find Bearer token → paste manually",
-    ],
-    bridgeName: "Kimi Bridge",
-  },
-  {
-    name: "Z.AI / GLM",
-    baseUrl: "http://localhost:8300/v1",
-    tokenLabel: "Bearer Token (JWT)",
-    domain: "chat.z.ai",
-    loginUrl: "https://chat.z.ai",
-    localStorageKey: "authToken",
-    models: [
-      { id: "glm-4", name: "GLM-4", description: "Zhipu's flagship model" },
-      { id: "glm-4-flash", name: "GLM-4 Flash", description: "Fast and lightweight" },
-      { id: "glm-4-air", name: "GLM-4 Air", description: "Balanced performance" },
-      { id: "glm-4-long", name: "GLM-4 Long", description: "Extended context" },
-    ],
-    setupGuide: [
-      "METHOD 1 (Easiest): Drag the Bookmarklet to your bookmarks bar → go to chat.z.ai → click the bookmark → done!",
-      "METHOD 2: Click 'Auto-Extract (Playwright)' to launch a browser → log in → token captured automatically",
-      "METHOD 3: Create GLM bridge at localhost:8300/v1",
-      "METHOD 4: F12 → Network → find Bearer token → paste manually",
-    ],
-    bridgeName: "GLM/Z.AI Bridge",
   },
 ];
 
@@ -474,7 +411,7 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
               const hasTokens = (tokensByProvider[pk] || 0) > 0;
               return (
               <TabsTrigger key={i} value={String(i)} className="text-[10px] gap-1.5 py-1.5">
-                {["⚡","🧠","🔵","🚀","💎"][i] || "•"} {p.name.split("(")[0].trim()}
+                {["⚡","🧠","🔵","🚀","💎"][i] || "•"} {p.name.replace("(Free Web)","").trim()}
               </TabsTrigger>
             );})}
           </TabsList>
