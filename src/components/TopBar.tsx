@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { ClawHubLogo, ClawHubText } from "./ClawHubLogo";
 import {
   PanelLeft, Settings, Bot, Zap, ChevronDown, Check, BarChart3, Activity, ArrowUpCircle, HeartPulse,
-  Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu, Server,
+  Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu, Server, Layout,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -31,6 +31,7 @@ import { VoiceCodingPanel } from "./enhancements/VoiceCodingPanel";
 import { GitIntelligencePanel } from "./enhancements/GitIntelligencePanel";
 import { MobileCompanionPanel } from "./enhancements/MobileCompanionPanel";
 import { WebBridgeHubPanel } from "./enhancements/WebBridgeHubPanel";
+import { KanbanPanel } from "./enhancements/KanbanPanel";
 
 export function TopBar() {
   const { toggleSidebar, setSettingsOpen } = useUIStore();
@@ -66,6 +67,7 @@ export function TopBar() {
   const [gitIntelOpen, setGitIntelOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [webBridgeOpen, setWebBridgeOpen] = useState(false);
+  const [kanbanOpen, setKanbanOpen] = useState(false);
 
   const agentRef = useRef<HTMLDivElement>(null);
   const skillRef = useRef<HTMLDivElement>(null);
@@ -330,6 +332,9 @@ export function TopBar() {
               <button onClick={() => { setAiTerminalOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
                 <Terminal className="h-3.5 w-3.5 text-amber-500" /><div><span className="font-medium">AI Pair Terminal</span><p className="text-[10px] text-muted-foreground">AI watches your terminal</p></div>
               </button>
+              <button onClick={() => { setKanbanOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <Layout className="h-3.5 w-3.5 text-teal-500" /><div><span className="font-medium">Kanban Board</span><p className="text-[10px] text-muted-foreground">Task management with agents</p></div>
+              </button>
               <div className="border-t border-border my-1" />
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1">Tier 2: Power Features</p>
               <button onClick={() => { setCommsHubOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
@@ -431,6 +436,7 @@ export function TopBar() {
       <GitIntelligencePanel open={gitIntelOpen} onOpenChange={setGitIntelOpen} />
       <MobileCompanionPanel open={mobileOpen} onOpenChange={setMobileOpen} />
       <WebBridgeHubPanel open={webBridgeOpen} onOpenChange={setWebBridgeOpen} />
+      <KanbanPanel open={kanbanOpen} onOpenChange={setKanbanOpen} />
     </div>
   );
 }
