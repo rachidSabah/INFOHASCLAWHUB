@@ -579,6 +579,17 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                         </Button>
                       </div>
 
+                      {/* Console Script — 100% reliable */}
+                      <div className="p-2 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                        <p className="text-[10px] font-semibold text-emerald-600 mb-1">📋 Quick Console Script (No F12 searching)</p>
+                        <p className="text-[9px] text-muted-foreground mb-1.5">
+                          Open {new URL(p.loginUrl).hostname} → F12 → Console → paste this script → token auto-copied
+                        </p>
+                        <code className="text-[8px] bg-muted/50 p-1.5 rounded block break-all font-mono leading-relaxed max-h-20 overflow-y-auto">
+                          {`(()=>{const k='${p.localStorageKey || "token"}';const t=localStorage[k]||Object.entries(localStorage).find(([k])=>k.includes('token')||k.includes('auth')||k.includes('session'))?.[1];if(t){copy(t);alert('✅ Token copied! Return to dashboard and paste.')}else{alert('❌ No token found. Log in and send a message first.')}})()`}
+                        </code>
+                      </div>
+
                       {/* Validation Result */}
                       {validation && (
                         <div className={cn("p-2 rounded-lg border text-[10px]", validation.valid
