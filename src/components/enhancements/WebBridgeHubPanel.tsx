@@ -419,14 +419,28 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
             <TabsContent key={i} value={String(i)} className="flex-1 flex flex-col min-h-0 mt-2 data-[state=inactive]:hidden overflow-y-auto">
               <div className="flex-1 flex flex-col min-h-0 gap-2">
 
-                {/* Direct API Status */}
+                {/* API Status */}
                 {!isGemini && (
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[11px] text-muted-foreground">API:</span>
+                    <span className="text-[11px] text-muted-foreground">Bridge:</span>
                     <Badge className="text-[10px] gap-1 bg-blue-500/10 text-blue-600">
-                      <Globe className="h-3 w-3" /> Direct HTTPS
+                      <Link className="h-3 w-3" /> Built-in Proxy
                     </Badge>
-                    <span className="text-[10px] text-muted-foreground">No bridge needed</span>
+                    <span className="text-[10px] text-muted-foreground">Uses /api/bridge/proxy</span>
+                    <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={async () => {
+                      try {
+                        const res = await fetch("/api/bridge/proxy", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ messages: [{ role: "user", content: "hi" }], model: p.models[0]?.id || "chat", provider: p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") }),
+                        });
+                        const data = await res.json();
+                        if (data.content) toast.success(`Bridge works! Model: ${data.model}`);
+                        else toast.error(data.error || "Bridge failed");
+                      } catch { toast.error("Bridge not reachable"); }
+                    }}>
+                      <Zap className="h-3 w-3 mr-1" /> Test
+                    </Button>
                     <a href={p.loginUrl} target="_blank" className="text-[10px] text-muted-foreground hover:text-foreground ml-auto flex items-center gap-1">
                       <ExternalLink className="h-3 w-3" /> Login
                     </a>
