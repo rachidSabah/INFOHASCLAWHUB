@@ -350,10 +350,25 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
     }
   }, [open, scanTokens, checkBridgeStatus]);
 
-  // Filter tokens for current provider
-  const providerTokens = tokens.filter(t =>
-    t.provider === providerKey || !t.provider
-  );
+  // Provider key mapping for display names
+  const PROVIDER_DISPLAY: Record<string, { emoji: string; name: string; color: string }> = {
+    deepseek: { emoji: "⚡", name: "DeepSeek", color: "text-blue-500" },
+    qwen: { emoji: "🧠", name: "Qwen", color: "text-purple-500" },
+    gemini: { emoji: "🔵", name: "Gemini", color: "text-blue-400" },
+    kimi: { emoji: "🚀", name: "Kimi", color: "text-red-500" },
+    "z-ai": { emoji: "💎", name: "Z.AI/GLM", color: "text-cyan-500" },
+  };
+
+  // Filter tokens for current provider tab ONLY
+  const providerTokens = tokens.filter(t => t.provider === providerKey);
+
+  // Count tokens per provider for the tab indicators
+  const tokensByProvider: Record<string, number> = {};
+  for (const t of tokens) {
+    if (t.provider && t.decrypted) {
+      tokensByProvider[t.provider] = (tokensByProvider[t.provider] || 0) + 1;
+    }
+  }
 
   const bridgeInfo = bridgeStatus[provider.name];
   const validation = validationResults[provider.name];
@@ -397,14 +412,20 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
 
         <Tabs value={String(activeProvider)} onValueChange={(v) => setActiveProvider(parseInt(v))} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full shrink-0" style={{ gridTemplateColumns: `repeat(${PROVIDERS.length}, 1fr)` }}>
-            {PROVIDERS.map((p, i) => (
+            {PROVIDERS.map((p, i) => {
+              const pk = ["deepseek", "qwen", "gemini", "kimi", "z-ai"][i];
+              const hasTokens = (tokensByProvider[pk] || 0) > 0;
+              return (
               <TabsTrigger key={i} value={String(i)} className="text-[10px] gap-1.5 py-1.5 relative">
                 {["⚡","🧠","🔵","🚀","💎"][i] || "•"} {p.name.split("(")[0].trim()}
                 {bridgeStatus[p.name]?.running && (
                   <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-green-500" />
                 )}
+                {hasTokens && !bridgeStatus[p.name]?.running && (
+                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-blue-500" />
+                )}
               </TabsTrigger>
-            ))}
+            );})}
           </TabsList>
 
           {PROVIDERS.map((p, i) => (
@@ -713,19 +734,30 @@ export function WebBridgeHubPanel({ open, onOpenChange }: Props) {
                         )}>
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5 min-w-0">
-                              <Badge className={cn("text-[9px] h-4 shrink-0",
+                              {/* Provider badge — shows WHICH provider this token is for */}
+                              <Badge className={cn("text-[9px] h-4 shrink-0 font-bold",
+                                t.provider === "deepseek" ? "bg-blue-500/15 text-blue-600" :
+                                t.provider === "qwen" ? "bg-purple-500/15 text-purple-600" :
+                                t.provider === "gemini" ? "bg-sky-500/15 text-sky-600" :
+                                t.provider === "kimi" ? "bg-red-500/15 text-red-600" :
+                                t.provider === "z-ai" ? "bg-cyan-500/15 text-cyan-600" :
+                                "bg-gray-500/10 text-gray-600"
+                              )}>
+                                {PROVIDER_DISPLAY[t.provider || ""]?.emoji || "•"} {PROVIDER_DISPLAY[t.provider || ""]?.name || t.provider || "?"}
+                              </Badge>
+                              {/* Source badge */}
+                              <Badge className={cn("text-[8px] h-4 shrink-0",
                                 !t.decrypted ? "bg-amber-500/10 text-amber-600" :
-                                (t.source === "bookmarklet" || t.source === "playwright" || t.source === "submitted") ? "bg-blue-500/10 text-blue-600" :
+                                (t.source === "bookmarklet" || t.source === "playwright" || t.source === "submitted") ? "bg-violet-500/10 text-violet-600" :
                                 t.source === "localStorage" ? "bg-purple-500/10 text-purple-600" : "bg-green-500/10 text-green-600"
                               )}>
                                 {!t.decrypted ? "Locked" :
                                   t.source === "bookmarklet" ? "Bookmarklet" :
                                   t.source === "playwright" ? "Playwright" :
                                   t.source === "submitted" ? "Auto" :
-                                  t.source === "localStorage" ? "Bearer" : "Cookie"}
+                                  t.source === "localStorage" ? "JWT" : "Cookie"}
                               </Badge>
-                              <span className="text-[10px] truncate max-w-[120px]">{t.name || t.domain}</span>
-                              <span className="text-[9px] text-muted-foreground">{t.browser}</span>
+                              <span className="text-[10px] truncate max-w-[100px]">{t.name || t.domain}</span>
                             </div>
                             <div className="flex items-center gap-0.5 shrink-0">
                               {t.decrypted && t.value && t.value !== "[locked]" ? (
