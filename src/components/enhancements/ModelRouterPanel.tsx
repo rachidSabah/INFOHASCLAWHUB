@@ -55,6 +55,9 @@ import {
   MessageSquare,
   Lightbulb,
   FileText,
+  TrendingDown,
+  Gauge,
+  Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -175,6 +178,24 @@ export function ModelRouterPanel({ open, onOpenChange }: ModelRouterPanelProps) 
   // ── Benchmark state ──
   const [benchmarks, setBenchmarks] = useState<BenchmarkEntry[]>([]);
   const [runningBenchmark, setRunningBenchmark] = useState(false);
+
+  // ── Smart Auto-Route state ──
+  const [smartRouteEnabled, setSmartRouteEnabled] = useState(false);
+  const [smartPrompt, setSmartPrompt] = useState("");
+  const [autoRouteResult, setAutoRouteResult] = useState<{
+    model: string; provider: string; complexity: string; tier: "fast" | "balanced" | "capable";
+    reason: string; estimatedCost: string; tokenSavings: number;
+  } | null>(null);
+  const [autoRouting, setAutoRouting] = useState(false);
+  const [totalTokensSaved, setTotalTokensSaved] = useState(0);
+
+  // Load token savings from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("smart-route-tokens-saved");
+      if (saved) setTotalTokensSaved(parseInt(saved, 10) || 0);
+    } catch {}
+  }, []);
 
   // ── Fetch routes ──
   const fetchRoutes = useCallback(async () => {
@@ -359,7 +380,7 @@ export function ModelRouterPanel({ open, onOpenChange }: ModelRouterPanelProps) 
     }
   };
 
-  // ── Smart Route ──
+  // ── Smart Route (existing) ──
   const handleRoute = async () => {
     if (!routeTaskType) {
       toast.error("Please select a task type");
@@ -389,6 +410,81 @@ export function ModelRouterPanel({ open, onOpenChange }: ModelRouterPanelProps) 
       setRouting(false);
     }
   };
+
+  // ── Complexity Detector ──
+  const detectComplexity = useCallback((text: string): {
+    complexity: string; tier: "fast" | "balanced" | "capable";
+    model: string; provider: string; reason: string;
+    charCount: number; hasCode: boolean; hasQuestions: boolean;
+    estimatedCost: string; tokenSavings: number;
+  } => {
+    const len = text.trim().length;
+    const hasCode = /```|function\s|def\s|class\s|import\s|const\s|let\s|var\s|SELECT\s|FROM\s/.test(text);
+    const questionCount = (text.match(/\?/g) || []).length;
+    const hasQuestions = questionCount > 0;
+    const sentences = text.split(/[.!?]+/).filter(Boolean);
+    const avgSentenceLen = sentences.length > 0 ? len / sentences.length : len;
+
+    // Complexity scoring
+    let score = 0;
+    if (len < 50) score += 0;
+    else if (len < 200) score += 1;
+    else score += 3;
+    if (hasCode) score += 3;
+    if (hasQuestions && questionCount > 2) score += 2;
+    if (avgSentenceLen > 80) score += 1;
+    if (/\b(explain|analyze|reason|evaluate|compare|design|architect|system|complex|detailed)\b/i.test(text)) score += 2;
+
+    let tier: "fast" | "balanced" | "capable";
+    let model: string;
+    let provider: string;
+    let reason: string;
+
+    if (score <= 1) {
+      tier = "fast";
+      model = "gemini-2.0-flash";
+      provider = "Gemini";
+      reason = `Simple prompt (${len} chars, score=${score}) — fast/cheap model is sufficient.`;
+      return { complexity: "Simple", tier, model, provider, reason, charCount: len, hasCode, hasQuestions, estimatedCost: "~$0.0001/1K tok", tokenSavings: 70 };
+    } else if (score <= 4) {
+      tier = "balanced";
+      model = "deepseek-chat";
+      provider = "DeepSeek";
+      reason = `Medium complexity (${len} chars, score=${score}${hasCode ? ", contains code" : ""}${hasQuestions ? `, ${questionCount} questions` : ""}) — balanced model.`;
+      return { complexity: "Medium", tier, model, provider, reason, charCount: len, hasCode, hasQuestions, estimatedCost: "~$0.0003/1K tok", tokenSavings: 45 };
+    } else {
+      tier = "capable";
+      model = "deepseek-reasoner";
+      provider = "DeepSeek";
+      reason = `Complex prompt (${len} chars, score=${score}${hasCode ? ", code blocks detected" : ""}${hasQuestions ? `, ${questionCount} questions` : ""}) — most capable model needed.`;
+      return { complexity: "Complex", tier, model, provider, reason, charCount: len, hasCode, hasQuestions, estimatedCost: "~$0.002/1K tok", tokenSavings: 0 };
+    }
+  }, []);
+
+  // ── Smart Auto-Route Handler ──
+  const handleSmartRoute = useCallback(() => {
+    if (!smartPrompt.trim()) {
+      toast.error("Enter a prompt to route");
+      return;
+    }
+    setAutoRouting(true);
+    // Simulate async analysis
+    setTimeout(() => {
+      const result = detectComplexity(smartPrompt);
+      setAutoRouteResult(result);
+
+      // Update token savings
+      const newSaved = totalTokensSaved + result.tokenSavings;
+      setTotalTokensSaved(newSaved);
+      try { localStorage.setItem("smart-route-tokens-saved", String(newSaved)); } catch {}
+
+      toast.success(`Auto-routed to ${result.model} (${result.complexity})`);
+      setAutoRouting(false);
+    }, 600);
+  }, [smartPrompt, detectComplexity, totalTokensSaved]);
+
+  // ── Live complexity preview ──
+  const liveComplexity = smartPrompt.trim().length > 0 ? detectComplexity(smartPrompt) : null;
 
   // ── Run Benchmark ──
   const handleRunBenchmark = async () => {
@@ -774,11 +870,199 @@ export function ModelRouterPanel({ open, onOpenChange }: ModelRouterPanelProps) 
           <TabsContent value="smart-route" className="flex-1 min-h-0 mt-0 overflow-y-auto">
             <ScrollArea className="h-[calc(90vh-14rem)]">
               <div className="p-6 space-y-5">
-                {/* Input section */}
+                {/* Smart Route Toggle */}
+                <div className="rounded-lg border bg-card p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Brain className="h-4 w-4 text-violet-500" />
+                      <h4 className="font-semibold text-sm">Smart Auto-Route</h4>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-muted-foreground">{smartRouteEnabled ? "ON" : "OFF"}</span>
+                      <Switch checked={smartRouteEnabled} onCheckedChange={setSmartRouteEnabled} />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Automatically selects the best model based on prompt complexity: character count, code blocks, question marks, and keyword analysis.
+                  </p>
+
+                  {/* Complexity tiers legend */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="p-2 rounded-lg bg-emerald-500/5 border border-emerald-500/20 text-center">
+                      <div className="flex items-center justify-center gap-1 mb-0.5">
+                        <Zap className="h-3 w-3 text-emerald-500" />
+                        <span className="text-[10px] font-semibold text-emerald-600">Fast</span>
+                      </div>
+                      <p className="text-[9px] text-muted-foreground">&lt;50 chars</p>
+                      <p className="text-[9px] text-emerald-600 font-medium">gemini-2.0-flash</p>
+                    </div>
+                    <div className="p-2 rounded-lg bg-amber-500/5 border border-amber-500/20 text-center">
+                      <div className="flex items-center justify-center gap-1 mb-0.5">
+                        <Gauge className="h-3 w-3 text-amber-500" />
+                        <span className="text-[10px] font-semibold text-amber-600">Balanced</span>
+                      </div>
+                      <p className="text-[9px] text-muted-foreground">50–200 chars</p>
+                      <p className="text-[9px] text-amber-600 font-medium">deepseek-chat</p>
+                    </div>
+                    <div className="p-2 rounded-lg bg-violet-500/5 border border-violet-500/20 text-center">
+                      <div className="flex items-center justify-center gap-1 mb-0.5">
+                        <Brain className="h-3 w-3 text-violet-500" />
+                        <span className="text-[10px] font-semibold text-violet-600">Capable</span>
+                      </div>
+                      <p className="text-[9px] text-muted-foreground">200+ chars</p>
+                      <p className="text-[9px] text-violet-600 font-medium">deepseek-reasoner</p>
+                    </div>
+                  </div>
+
+                  {/* Savings estimate */}
+                  {totalTokensSaved > 0 && (
+                    <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                      <TrendingDown className="h-4 w-4 text-emerald-500" />
+                      <span className="text-xs text-emerald-600 font-medium">
+                        This route saved ~{totalTokensSaved}% tokens today
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Prompt input with live preview */}
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <div className="flex-1 relative">
+                        <Input
+                          value={smartPrompt}
+                          onChange={(e) => setSmartPrompt(e.target.value)}
+                          placeholder="Paste or type a prompt — complexity is analyzed live..."
+                          className="h-9 text-sm pr-20"
+                          onKeyDown={(e) => { if (e.key === "Enter" && smartRouteEnabled) handleSmartRoute(); }}
+                        />
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
+                          {smartPrompt.length} chars
+                        </span>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="h-9 gap-1.5 shrink-0"
+                        onClick={handleSmartRoute}
+                        disabled={autoRouting || !smartPrompt.trim()}
+                      >
+                        {autoRouting ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Send className="h-3.5 w-3.5" />
+                        )}
+                        Route
+                      </Button>
+                    </div>
+
+                    {/* Live complexity preview */}
+                    {liveComplexity && !autoRouteResult && (
+                      <div className="p-2.5 rounded-lg bg-muted/30 border space-y-1.5">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Live Analysis</p>
+                        <div className="flex flex-wrap gap-2 text-[10px]">
+                          <Badge className={cn(
+                            "h-5 text-[10px]",
+                            liveComplexity.tier === "fast" ? "bg-emerald-500/10 text-emerald-600" :
+                            liveComplexity.tier === "balanced" ? "bg-amber-500/10 text-amber-600" :
+                            "bg-violet-500/10 text-violet-600"
+                          )}>
+                            {liveComplexity.complexity}
+                          </Badge>
+                          <Badge variant="outline" className="h-5 text-[10px]">
+                            {liveComplexity.charCount} chars
+                          </Badge>
+                          {liveComplexity.hasCode && (
+                            <Badge variant="outline" className="h-5 text-[10px] bg-blue-500/5 border-blue-500/20 text-blue-600">
+                              <Code className="h-3 w-3" /> Code detected
+                            </Badge>
+                          )}
+                          {liveComplexity.hasQuestions && (
+                            <Badge variant="outline" className="h-5 text-[10px] bg-purple-500/5 border-purple-500/20 text-purple-600">
+                              <Lightbulb className="h-3 w-3" /> Questions
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          → Would route to <strong>{liveComplexity.provider}</strong> ({liveComplexity.model}) — <span className="text-emerald-500">{liveComplexity.estimatedCost}</span>
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Auto-route result */}
+                  {autoRouteResult && (
+                    <div className="rounded-lg border bg-card p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                        <h4 className="font-semibold text-sm">Route Decision</h4>
+                      </div>
+
+                      <div className="flex items-center gap-3 p-3 rounded-md bg-primary/5 border border-primary/10">
+                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <Brain className="h-5 w-5 text-primary" />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold">{autoRouteResult.model}</span>
+                            <Badge className={cn(
+                              "h-5 text-[10px]",
+                              autoRouteResult.tier === "fast" ? "bg-emerald-500/10 text-emerald-600" :
+                              autoRouteResult.tier === "balanced" ? "bg-amber-500/10 text-amber-600" :
+                              "bg-violet-500/10 text-violet-600"
+                            )}>
+                              {autoRouteResult.complexity}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">{autoRouteResult.reason}</p>
+                        </div>
+                      </div>
+
+                      {/* Savings estimate */}
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="rounded-md border p-3 text-center">
+                          <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+                            <DollarSign className="h-3.5 w-3.5" />
+                            <span className="text-[10px]">Est. Cost</span>
+                          </div>
+                          <div className="text-sm font-semibold text-emerald-500">{autoRouteResult.estimatedCost}</div>
+                        </div>
+                        <div className="rounded-md border p-3 text-center">
+                          <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+                            <TrendingDown className="h-3.5 w-3.5" />
+                            <span className="text-[10px]">Saved</span>
+                          </div>
+                          <div className="text-sm font-semibold text-emerald-500">~{autoRouteResult.tokenSavings}%</div>
+                        </div>
+                        <div className="rounded-md border p-3 text-center">
+                          <div className="flex items-center justify-center gap-1 text-muted-foreground mb-1">
+                            <BarChart3 className="h-3.5 w-3.5" />
+                            <span className="text-[10px]">All-Time</span>
+                          </div>
+                          <div className="text-sm font-semibold text-emerald-500">~{totalTokensSaved}%</div>
+                        </div>
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs"
+                        onClick={() => {
+                          setAutoRouteResult(null);
+                          setSmartPrompt("");
+                        }}
+                      >
+                        Clear & Try Another
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                <Separator />
+
+                {/* Existing manual routing below */}
                 <div className="rounded-lg border bg-card p-4 space-y-4">
                   <h4 className="font-semibold text-sm flex items-center gap-2">
                     <Brain className="h-4 w-4" />
-                    Test Smart Routing
+                    Manual Smart Routing
                   </h4>
 
                   <div className="space-y-1.5">

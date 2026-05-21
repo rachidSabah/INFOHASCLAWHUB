@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { ClawHubLogo, ClawHubText } from "./ClawHubLogo";
 import {
   PanelLeft, Settings, Bot, Zap, ChevronDown, Check, BarChart3, Activity, ArrowUpCircle, HeartPulse,
-  Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu, Server,
+  Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu, Server, Layout, GitMerge, GitFork,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -27,10 +27,13 @@ import { SecurityVaultPanel } from "./enhancements/SecurityVaultPanel";
 import { AnalyticsPanel } from "./enhancements/AnalyticsPanel";
 import { PluginMarketplacePanel } from "./enhancements/PluginMarketplacePanel";
 import { QuickActionsPanel } from "./enhancements/QuickActionsPanel";
-import { VoiceCodingPanel } from "./enhancements/VoiceCodingPanel";
 import { GitIntelligencePanel } from "./enhancements/GitIntelligencePanel";
 import { MobileCompanionPanel } from "./enhancements/MobileCompanionPanel";
 import { WebBridgeHubPanel } from "./enhancements/WebBridgeHubPanel";
+import { KanbanPanel } from "./enhancements/KanbanPanel";
+import { VoiceCodePipeline } from "./enhancements/VoiceCodePipeline";
+import { ArchitectureMapper } from "./enhancements/ArchitectureMapper";
+import { ConsensusPanel } from "./enhancements/ConsensusPanel";
 
 export function TopBar() {
   const { toggleSidebar, setSettingsOpen } = useUIStore();
@@ -64,8 +67,11 @@ export function TopBar() {
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [voiceCodingOpen, setVoiceCodingOpen] = useState(false);
   const [gitIntelOpen, setGitIntelOpen] = useState(false);
+  const [architectureOpen, setArchitectureOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [webBridgeOpen, setWebBridgeOpen] = useState(false);
+  const [kanbanOpen, setKanbanOpen] = useState(false);
+  const [consensusOpen, setConsensusOpen] = useState(false);
 
   const agentRef = useRef<HTMLDivElement>(null);
   const skillRef = useRef<HTMLDivElement>(null);
@@ -106,7 +112,7 @@ export function TopBar() {
   const activeSkill = skills.find(s => s.id === activeSkillId);
 
   // Flatten all models to find the active model display name
-  const allModels = modelGroups.flatMap(g => g.models);
+  const allModels = modelGroups.flatMap(g => g.models).filter((m, i, arr) => arr.findIndex(x => x.id === m.id) === i);
   const activeModel = allModels.find(m => m.id === currentModelId);
 
   const handleModelChange = async (modelId: string) => {
@@ -268,7 +274,7 @@ export function TopBar() {
                     {group.name}
                   </p>
                   <div className="space-y-0.5">
-                    {group.models.map((model) => (
+                    {group.models.filter((m,i,a) => a.findIndex(x => x.id === m.id) === i).map((model) => (
                       <button
                         key={model.id}
                         onClick={() => handleModelChange(model.id)}
@@ -330,10 +336,19 @@ export function TopBar() {
               <button onClick={() => { setAiTerminalOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
                 <Terminal className="h-3.5 w-3.5 text-amber-500" /><div><span className="font-medium">AI Pair Terminal</span><p className="text-[10px] text-muted-foreground">AI watches your terminal</p></div>
               </button>
+              <button onClick={() => { setKanbanOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <Layout className="h-3.5 w-3.5 text-teal-500" /><div><span className="font-medium">Kanban Board</span><p className="text-[10px] text-muted-foreground">Task management with agents</p></div>
+              </button>
+              <button onClick={() => { setArchitectureOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <GitFork className="h-3.5 w-3.5 text-cyan-500" /><div><span className="font-medium">Architecture Mapper</span><p className="text-[10px] text-muted-foreground">Codebase visualization & deps</p></div>
+              </button>
               <div className="border-t border-border my-1" />
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1">Tier 2: Power Features</p>
               <button onClick={() => { setCommsHubOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
                 <Radio className="h-3.5 w-3.5 text-green-500" /><div><span className="font-medium">Comms Hub</span><p className="text-[10px] text-muted-foreground">WhatsApp/Telegram/Discord/Slack</p></div>
+              </button>
+              <button onClick={() => { setConsensusOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
+                <GitMerge className="h-3.5 w-3.5 text-amber-500" /><div><span className="font-medium">Cross-Provider Consensus</span><p className="text-[10px] text-muted-foreground">Ensemble voting across models</p></div>
               </button>
               <button onClick={() => { setUiBuilderOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
                 <Paintbrush className="h-3.5 w-3.5 text-pink-500" /><div><span className="font-medium">Visual UI Builder</span><p className="text-[10px] text-muted-foreground">Screenshot → Component</p></div>
@@ -361,7 +376,7 @@ export function TopBar() {
                 <MousePointerClick className="h-3.5 w-3.5 text-lime-500" /><div><span className="font-medium">Quick Actions</span><p className="text-[10px] text-muted-foreground">Right-click AI actions</p></div>
               </button>
               <button onClick={() => { setVoiceCodingOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-                <Mic className="h-3.5 w-3.5 text-rose-500" /><div><span className="font-medium">Voice Coding</span><p className="text-[10px] text-muted-foreground">Speak your code changes</p></div>
+                <Mic className="h-3.5 w-3.5 text-rose-500" /><div><span className="font-medium">Voice-to-Code Pipeline</span><p className="text-[10px] text-muted-foreground">Speak → AI generates code</p></div>
               </button>
               <button onClick={() => { setGitIntelOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
                 <GitBranch className="h-3.5 w-3.5 text-sky-500" /><div><span className="font-medium">Git Intelligence</span><p className="text-[10px] text-muted-foreground">AI commits & PR reviews</p></div>
@@ -427,10 +442,13 @@ export function TopBar() {
       <AnalyticsPanel open={analyticsOpen} onOpenChange={setAnalyticsOpen} />
       <PluginMarketplacePanel open={pluginsOpen} onOpenChange={setPluginsOpen} />
       <QuickActionsPanel open={quickActionsOpen} onOpenChange={setQuickActionsOpen} />
-      <VoiceCodingPanel open={voiceCodingOpen} onOpenChange={setVoiceCodingOpen} />
+      <VoiceCodePipeline open={voiceCodingOpen} onOpenChange={setVoiceCodingOpen} />
       <GitIntelligencePanel open={gitIntelOpen} onOpenChange={setGitIntelOpen} />
+      <ArchitectureMapper open={architectureOpen} onOpenChange={setArchitectureOpen} />
       <MobileCompanionPanel open={mobileOpen} onOpenChange={setMobileOpen} />
       <WebBridgeHubPanel open={webBridgeOpen} onOpenChange={setWebBridgeOpen} />
+      <KanbanPanel open={kanbanOpen} onOpenChange={setKanbanOpen} />
+      <ConsensusPanel open={consensusOpen} onOpenChange={setConsensusOpen} />
     </div>
   );
 }

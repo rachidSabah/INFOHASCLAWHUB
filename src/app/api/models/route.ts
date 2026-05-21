@@ -19,19 +19,36 @@ const FALLBACK_MODELS: Record<string, { id: string; name: string; description: s
     { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1)", description: "Advanced reasoning and problem solving" },
     { id: "deepseek-coder", name: "DeepSeek Coder", description: "Advanced code generation and reasoning" },
   ],
-  "deepseek-free-via-ds2api": [
-    { id: "deepseek-chat", name: "DeepSeek Chat (V3 via ds2api)", description: "Free DeepSeek V3 through web-to-API bridge" },
-    { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1 via ds2api)", description: "Free DeepSeek R1 reasoning through web-to-API bridge" },
+  "deepseek-free-web": [
+    { id: "deepseek-chat", name: "DeepSeek Chat (V3)", description: "Free DeepSeek V3 via web session token" },
+    { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1)", description: "Free DeepSeek R1 via web session token" },
   ],
   "ds2api-web-to-api-bridge": [
-    { id: "deepseek-chat", name: "DeepSeek Chat (V3 via ds2api)", description: "Free DeepSeek V3 through web-to-API bridge" },
-    { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1 via ds2api)", description: "Free DeepSeek R1 reasoning through web-to-API bridge" },
+    { id: "deepseek-chat", name: "DeepSeek Chat (V3 via Web)", description: "Free DeepSeek V3 via web session token" },
+    { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1 via Web)", description: "Free DeepSeek R1 via web session token" },
   ],
   qwen: [
     { id: "qwen-plus", name: "Qwen Plus", description: "Alibaba's flagship model" },
     { id: "qwen-max", name: "Qwen Max", description: "Most capable Qwen model" },
     { id: "qwen-turbo", name: "Qwen Turbo", description: "Fast and efficient" },
-    { id: "qwen-coder", name: "Qwen Coder", description: "Code generation specialist" },
+  ],
+  "qwen-free-web": [
+    { id: "qwen-plus", name: "Qwen Plus (via Web)", description: "Free Qwen Plus via web session token" },
+    { id: "qwen-max", name: "Qwen Max (via Web)", description: "Free Qwen Max via web session token" },
+    { id: "qwen-turbo", name: "Qwen Turbo (via Web)", description: "Free Qwen Turbo via web session token" },
+  ],
+  "kimi-free-web": [
+    { id: "moonshot-v1-8k", name: "Moonshot v1 8K (via Web)", description: "Free via web token" },
+    { id: "moonshot-v1-32k", name: "Moonshot v1 32K (via Web)", description: "Extended via web token" },
+  ],
+  "z-ai-glm-free-web": [
+    { id: "glm-4-flash", name: "GLM-4 Flash (via Web)", description: "Fast GLM via web token" },
+    { id: "glm-4-air", name: "GLM-4 Air (via Web)", description: "Balanced GLM via web token" },
+    { id: "glm-4-plus", name: "GLM-4 Plus (via Web)", description: "Powerful GLM via web token" },
+  ],
+  "ds2api-web-to-api-bridge": [
+    { id: "deepseek-chat", name: "DeepSeek Chat (V3 via ds2api)", description: "Free DeepSeek V3 through web-to-API bridge" },
+    { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1 via ds2api)", description: "Free DeepSeek R1 reasoning through web-to-API bridge" },
   ],
   "qwen-qw2api": [
     { id: "qwen-plus", name: "Qwen Plus (via qw2api)", description: "Free Qwen Plus through web-to-API bridge" },

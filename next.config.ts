@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
-  serverExternalPackages: ["@whiskeysockets/baileys", "ws", "bufferutil", "utf-8-validate", "better-sqlite3"],
+  serverExternalPackages: ["@whiskeysockets/baileys", "ws", "bufferutil", "utf-8-validate", "better-sqlite3", "playwright", "playwright-core"],
   async headers() {
     return [
       {

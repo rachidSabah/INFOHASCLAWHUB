@@ -18,12 +18,8 @@ import {
 } from "lucide-react";
 
 interface TokenResult {
-  browser: string;
-  domain: string;
-  name: string;
-  value: string;
-  decrypted?: boolean;
-  error?: string;
+  browser: string; domain: string; name: string; value: string;
+  decrypted?: boolean; error?: string; source?: "cookie" | "localStorage"; provider?: string;
 }
 
 interface Props {

@@ -162,6 +162,17 @@ const HINTS: Record<string, { title: string; steps: string[] }> = {
       "5. View the activity log for all remote interactions",
     ],
   },
+  "Kanban Board": {
+    title: "Task Management + Agent Assignments",
+    steps: [
+      "1. Drag-and-drop cards between 8 columns (Backlog → Completed/Failed)",
+      "2. Click any card to edit details, priority, labels, assignee, and due date",
+      "3. Manage subtasks with checklists and track progress per card",
+      "4. Link git branches, PRs, token usage, logs, and artifacts in the Meta tab",
+      "5. Assign agents to cards for AI-driven execution tracking",
+      "6. Cards auto-refresh every 5 seconds for a real-time feel",
+    ],
+  },
   "Browser Token Extractor": {
     title: "Extract DeepSeek Session Tokens from Browser",
     steps: [
@@ -171,6 +182,28 @@ const HINTS: Record<string, { title: string; steps: string[] }> = {
       "4. Click the eye icon to reveal, copy icon to copy",
       "5. Click Configure to auto-create ds2api provider",
       "6. Use Model Router to route deepseek-chat to ds2api",
+    ],
+  },
+  "Voice-to-Code Pipeline": {
+    title: "Voice-Driven AI Code Generation",
+    steps: [
+      "1. Click the large microphone button to start recording",
+      "2. Speak your code request in natural language",
+      "3. Watch real-time transcription as you speak",
+      "4. Click 'Generate Code' to send transcription to AI",
+      "5. Review the generated code with syntax highlighting",
+      "6. Use 'Execute' to run in terminal or 'Insert' to add to editor",
+    ],
+  },
+  "Live Architecture Mapper": {
+    title: "Codebase Visualization & Dependency Graph",
+    steps: [
+      "1. Click 'Scan Workspace' to analyze your codebase",
+      "2. Browse the file tree with color-coded categories",
+      "3. Blue = Components, Green = Pages, Orange = API, Purple = Lib",
+      "4. Click any file to see its imports, exports, and dependencies",
+      "5. Use the search bar to find specific files instantly",
+      "6. Trace dependency chains by clicking linked files",
     ],
   },
 };
