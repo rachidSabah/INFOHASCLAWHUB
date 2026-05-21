@@ -8,14 +8,50 @@ import { parseToolCalls, executeToolCall, getToolsPrompt, getMcpTools, type Tool
 import { countTokens, estimateCost } from "@/lib/tokens";
 
 async function extractPDFText(filePath: string): Promise<string> {
-  try {
-    const pdfParse = require("pdf-parse");
-    const dataBuffer = fs.readFileSync(filePath);
-    const data = await pdfParse(dataBuffer);
-    return data.text || "";
-  } catch {
-    return "";
-  }
+  return new Promise((resolve) => {
+    try {
+      const { spawn } = require("child_process");
+      const tmpDir = require("os").tmpdir();
+      const scriptPath = require("path").join(tmpDir, `clawhub_pdf_extract_${Date.now()}.py`);
+      const fs = require("fs");
+
+      const pythonCode = [
+        "import PyPDF2, sys, json",
+        "try:",
+        "    reader = PyPDF2.PdfReader(sys.argv[1])",
+        "    pages = [page.extract_text() or '' for page in reader.pages]",
+        "    result = {'text': '\\n'.join(pages), 'pages': len(pages)}",
+        "except Exception as e:",
+        "    result = {'error': str(e)}",
+        "print(json.dumps(result))",
+      ].join("\n");
+
+      fs.writeFileSync(scriptPath, pythonCode, "utf-8");
+      const proc = spawn("python", [scriptPath, filePath], { stdio: ["ignore", "pipe", "pipe"] });
+
+      let output = "";
+      proc.stdout.on("data", (d: Buffer) => { output += d.toString("utf-8"); });
+      proc.on("close", () => {
+        try { fs.unlinkSync(scriptPath); } catch {}
+        try {
+          const result = JSON.parse(output.trim() || "{}");
+          resolve(result.text || "");
+        } catch {
+          resolve(output.trim() || "");
+        }
+      });
+      proc.on("error", () => {
+        try { fs.unlinkSync(scriptPath); } catch {}
+        resolve("");
+      });
+      setTimeout(() => {
+        try { fs.unlinkSync(scriptPath); } catch {}
+        resolve(output.trim() || "");
+      }, 15000);
+    } catch {
+      resolve("");
+    }
+  });
 }
 
 async function extractMemoriesFromText(
