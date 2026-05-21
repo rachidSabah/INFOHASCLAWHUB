@@ -86,7 +86,7 @@ export function KanbanPanel({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[95vw] max-h-[92vh] overflow-hidden flex flex-col bg-background/95 backdrop-blur-sm">
+      <DialogContent className="sm:max-w-[95vw] max-h-[92vh] overflow-hidden flex flex-col bg-background">
         <DialogHeader className="shrink-0 px-6 pt-6 pb-3">
           <DialogTitle className="flex items-center gap-2">
             <Layout className="h-5 w-5 text-teal-500" />
