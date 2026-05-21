@@ -49,7 +49,24 @@ export async function POST(req: NextRequest) {
 
     const baseUrl = (provider.baseUrl || "http://localhost:8000/v1").replace(/\/$/, "");
     const apiUrl = baseUrl.endsWith("/v1") ? `${baseUrl}/chat/completions` : `${baseUrl}/v1/chat/completions`;
-    const cleanModel = model.includes("/") ? model.split("/").pop() : model;
+    let cleanModel = model.includes("/") ? model.split("/").pop() : model;
+
+    // Model name mapping for different providers
+    const modelMap: Record<string, string> = {
+      "glm-4": "glm-4-flash",
+      "glm-4-plus": "glm-4-plus",
+      "glm-4-flash": "glm-4-flash",
+      "glm-4-air": "glm-4-air",
+      "glm-4-long": "glm-4-long",
+      "qwen-plus": "qwen-plus",
+      "qwen-max": "qwen-max",
+      "qwen-turbo": "qwen-turbo",
+      "deepseek-chat": "deepseek-chat",
+      "deepseek-reasoner": "deepseek-reasoner",
+      "moonshot-v1-8k": "moonshot-v1-8k",
+      "moonshot-v1-32k": "moonshot-v1-32k",
+    };
+    cleanModel = modelMap[cleanModel || ""] || cleanModel || "chat";
 
     console.log(`[Bridge Proxy] Routing to ${apiUrl} with model ${cleanModel}`);
 
