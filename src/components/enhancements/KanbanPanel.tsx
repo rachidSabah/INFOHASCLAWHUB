@@ -42,11 +42,22 @@ export function KanbanPanel({ open, onOpenChange }: Props) {
       const res = await fetch("/api/kanban/boards");
       if (!res.ok) throw new Error("Failed");
       const boards = await res.json();
-      if (boards.length > 0) {
+      if (boards.length === 0) {
+        // Auto-create first board
+        const createRes = await fetch("/api/kanban/boards", { method: "POST" });
+        if (createRes.ok) {
+          const refetch = await fetch("/api/kanban/boards");
+          const newBoards = await refetch.json();
+          if (newBoards.length > 0) {
+            const b = newBoards[0];
+            setBoard({ ...b, columns: b.columns.map((c: any) => ({ ...c, cards: c.cards || [] })) });
+          }
+        }
+      } else {
         const b = boards[0];
         setBoard({ ...b, columns: b.columns.map((c: any) => ({ ...c, cards: c.cards || [] })) });
       }
-    } catch { setLoading(false); }
+    } catch (e) { console.error("Kanban fetch error:", e); }
     setLoading(false);
   }, []);
 
