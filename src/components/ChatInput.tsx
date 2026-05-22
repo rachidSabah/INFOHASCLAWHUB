@@ -209,9 +209,17 @@ export function ChatInput() {
                 fullContent += data.content;
                 setStreamingContent(fullContent);
                 const cleanContent = fullContent
-                  .replace(/\n?\*Running tool:.*?\*+\n?/g, "")
-                  .replace(/\n?Tool:.*\n.*\n.*\n.*\n.*\n?/g, "")
+                  .replace(/^Tool:.*$/gm, "")
+                  .replace(/^Status:.*$/gm, "") 
+                  .replace(/^Result:\s*$/gm, "")
+                  .replace(/^\{$/gm, "")
+                  .replace(/^\}$/gm, "")
+                  .replace(/"stdout"\s*:\s*"[\s\S]*?"\s*,?\s*$/gm, "")
+                  .replace(/"stderr"\s*:\s*"[^"]*"\s*,?\s*$/gm, "")
+                  .replace(/"exitCode"\s*:\s*\d+\s*$/gm, "")
+                  .replace(/(?:\n?\*Running tool:.*?\*+\n?)/g, "")
                   .replace(/```json[\s\S]*?```/g, "")
+                  .replace(/\n{3,}/g, "\n\n")
                   .trim();
                 const detected = detectArtifact(cleanContent, data.content);
                 if (shouldAutoOpen(detected, cleanContent.length)) {
@@ -289,8 +297,17 @@ export function ChatInput() {
                 const active = store.tabs.find(t => t.id === store.activeTabId);
                 if (active) {
                   const cleanContent = fullContent
-                    .replace(/\n?\*Running tool:.*?\*+\n?/g, "")
-                    .replace(/\n?```json[\s\S]*?```/g, "")
+                    .replace(/^Tool:.*$/gm, "")
+                    .replace(/^Status:.*$/gm, "")
+                    .replace(/^Result:\s*$/gm, "")
+                    .replace(/^\{$/gm, "")
+                    .replace(/^\}$/gm, "")
+                    .replace(/"stdout"\s*:\s*"[\s\S]*?"\s*,?\s*$/gm, "")
+                    .replace(/"stderr"\s*:\s*"[^"]*"\s*,?\s*$/gm, "")
+                    .replace(/"exitCode"\s*:\s*\d+\s*$/gm, "")
+                    .replace(/(?:\n?\*Running tool:.*?\*+\n?)/g, "")
+                    .replace(/```json[\s\S]*?```/g, "")
+                    .replace(/\n{3,}/g, "\n\n")
                     .trim();
                   store.updateTab(active.id, { content: cleanContent, isStreaming: false });
                 }
