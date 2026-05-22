@@ -69,6 +69,7 @@ import { GoalPlannerPanel } from "./enhancements/GoalPlannerPanel";
 import { KnowledgeGraphPanel } from "./enhancements/KnowledgeGraphPanel";
 import { BackgroundWorkersPanel } from "./enhancements/BackgroundWorkersPanel";
 import { VerificationPanel } from "./enhancements/VerificationPanel";
+import OptimizationPanel from "./enhancements/OptimizationPanel";
 
 const ADVANCED_TOOLS: AdvancedTool[] = [
   // Tier 5: New Generation
@@ -100,6 +101,7 @@ const ADVANCED_TOOLS: AdvancedTool[] = [
   { key: "knowledge-graph", label: "Knowledge Graph", description: "Visual entity relationship mapping", icon: Network, color: "text-sky-500", category: "AI Engine", onOpen: () => { (window as any).__setKnowledgeGraphOpen?.(true); } },
   { key: "bg-workers", label: "Background Workers", description: "Headless long-running task engine", icon: Wrench, color: "text-teal-500", category: "Automation", onOpen: () => { (window as any).__setBgWorkersOpen?.(true); } },
   { key: "verification", label: "Verification Engine", description: "Multi-source answer cross-check", icon: FileCheck, color: "text-violet-500", category: "AI Engine", onOpen: () => { (window as any).__setVerificationOpen?.(true); } },
+  { key: "optimization", label: "Optimization Engine", description: "Prompt compression & token savings", icon: Zap, color: "text-amber-500", category: "AI Engine", onOpen: () => { (window as any).__setOptimizationOpen?.(true); } },
 ];
 
 export function TopBar() {
@@ -172,6 +174,7 @@ export function TopBar() {
   const [knowledgeGraphOpen, setKnowledgeGraphOpen] = useState(false);
   const [bgWorkersOpen, setBgWorkersOpen] = useState(false);
   const [verificationOpen, setVerificationOpen] = useState(false);
+  const [optimizationOpen, setOptimizationOpen] = useState(false);
 
   const agentRef = useRef<HTMLDivElement>(null);
   const skillRef = useRef<HTMLDivElement>(null);
@@ -206,6 +209,7 @@ export function TopBar() {
     (window as any).__setKnowledgeGraphOpen = setKnowledgeGraphOpen;
     (window as any).__setBgWorkersOpen = setBgWorkersOpen;
     (window as any).__setVerificationOpen = setVerificationOpen;
+    (window as any).__setOptimizationOpen = setOptimizationOpen;
   }, []);
 
   // Load models on mount + periodic refresh
@@ -674,6 +678,7 @@ export function TopBar() {
       <KnowledgeGraphPanel open={knowledgeGraphOpen} onOpenChange={setKnowledgeGraphOpen} />
       <BackgroundWorkersPanel open={bgWorkersOpen} onOpenChange={setBgWorkersOpen} />
       <VerificationPanel open={verificationOpen} onOpenChange={setVerificationOpen} />
+      <OptimizationPanel open={optimizationOpen} onOpenChange={setOptimizationOpen} />
     </div>
   );
 }

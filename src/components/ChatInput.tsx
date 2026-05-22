@@ -4,6 +4,8 @@ import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from "re
 import { useChatStore, useUIStore, useSettingsStore, useAgentStore, usePromptStore } from "@/lib/stores";
 import { useArtifactPreviewStore } from "@/lib/artifact-store";
 import { detectArtifact, shouldAutoOpen } from "@/lib/artifact-detector";
+import { optimizeRequest } from "@/lib/optimization-engine";
+import { getCachedResponse, setCachedResponse } from "@/lib/response-cache";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -174,7 +176,7 @@ export function ChatInput() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: trimmed,
+          prompt: optimizeRequest(trimmed, model).optimizedPrompt,
           model,
           systemPrompt,
           agentId: activeAgentId,
