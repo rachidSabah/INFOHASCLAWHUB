@@ -98,9 +98,9 @@ export default function AdvancedToolsDropdown({
   if (!open) return null;
 
   return (
-    <div ref={dropdownRef} className="absolute top-full right-0 mt-1 w-80 bg-popover border border-border rounded-xl shadow-xl z-50 animate-fade-in overflow-hidden">
+    <div ref={dropdownRef} className="absolute top-full right-0 mt-1 w-80 bg-popover border border-border rounded-xl shadow-xl z-50 animate-fade-in overflow-hidden flex flex-col" style={{ maxHeight: "80vh" }}>
       {/* Header */}
-      <div className="p-2 border-b border-border flex items-center gap-2 bg-muted/20">
+      <div className="p-2 border-b border-border flex items-center gap-2 bg-muted/20 shrink-0">
         <Rocket className="h-3.5 w-3.5 text-orange-500" />
         <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Advanced Tools</span>
         <div className="flex-1" />
@@ -108,7 +108,7 @@ export default function AdvancedToolsDropdown({
       </div>
 
       {/* Search */}
-      <div className="px-2 pt-2">
+      <div className="px-2 pt-2 shrink-0">
         <Input
           placeholder="Search tools..."
           value={search}
@@ -117,7 +117,7 @@ export default function AdvancedToolsDropdown({
         />
       </div>
 
-      <div className="p-1.5 space-y-0.5 max-h-[65vh] overflow-y-auto">
+      <div className="p-1.5 space-y-0.5 overflow-y-auto flex-1 min-h-0">
         {/* Pinned */}
         {pinnedTools.length > 0 && !search && (
           <>
@@ -159,7 +159,17 @@ export default function AdvancedToolsDropdown({
         {filtered.length === 0 && (
           <p className="text-xs text-muted-foreground text-center py-6">No tools match "{search}"</p>
         )}
-      </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-2 border-t border-border bg-muted/10 shrink-0 flex gap-1">
+          <button onClick={() => { setShowFavorites(true); }} className="flex-1 h-6 text-[10px] rounded-md hover:bg-muted transition-colors">
+            <Star className="h-3 w-3 inline mr-1" />Favorites
+          </button>
+          <button onClick={() => { setSearch(""); setSelectedCategory(null); }} className="flex-1 h-6 text-[10px] rounded-md hover:bg-muted transition-colors">
+            Show All
+          </button>
+        </div>
     </div>
   );
 }
