@@ -189,12 +189,13 @@ export default function ArtifactPreviewPanel() {
                 <Icon className="h-3 w-3 shrink-0" />
                 <span className="truncate">{tab.title.slice(0, 20)}</span>
                 {tab.isStreaming && <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />}
-                <button
+                <span
                   onClick={(e) => { e.stopPropagation(); removeTab(tab.id); }}
-                  className="ml-0.5 hover:bg-destructive/10 rounded p-0.5 shrink-0"
+                  className="ml-0.5 hover:bg-destructive/10 rounded p-0.5 shrink-0 cursor-pointer"
+                  role="button"
                 >
                   <X className="h-2.5 w-2.5" />
-                </button>
+                </span>
               </button>
             );
           })}

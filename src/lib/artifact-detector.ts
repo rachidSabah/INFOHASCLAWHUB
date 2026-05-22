@@ -69,7 +69,6 @@ function generateTitle(content: string, type: string): string {
 }
 
 export function shouldAutoOpen(artifact: DetectedArtifact | null, contentLength: number): boolean {
-  if (contentLength < 80) return false;
-  if (!artifact) return false;
+  if (contentLength < 20) return false;
   return true;
 }

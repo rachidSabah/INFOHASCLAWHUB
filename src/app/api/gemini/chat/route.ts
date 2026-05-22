@@ -7,6 +7,18 @@ import os from "os";
 import { parseToolCalls, executeToolCall, getToolsPrompt, getMcpTools, type ToolCallResult } from "@/lib/tools";
 import { countTokens, estimateCost } from "@/lib/tokens";
 
+let cachedProviders: any[] | null = null;
+let providersCacheTime = 0;
+const PROVIDERS_CACHE_TTL = 60_000;
+
+async function getProviders() {
+  const now = Date.now();
+  if (cachedProviders && now - providersCacheTime < PROVIDERS_CACHE_TTL) return cachedProviders;
+  cachedProviders = await db.provider.findMany({ where: { isActive: true } });
+  providersCacheTime = now;
+  return cachedProviders;
+}
+
 async function extractPDFText(filePath: string): Promise<string> {
   return new Promise((resolve) => {
     try {
@@ -589,7 +601,7 @@ export async function POST(req: NextRequest) {
         };
         console.log(`[${requestId}] Routing to Proxima Local Gateway`);
       } else {
-        const providers = await db.provider.findMany({ where: { isActive: true } });
+        const providers = await getProviders();
         let provider = providers.find(p => {
           const slug = p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
           return slug === providerSlug || providerSlug.includes(slug) || slug.includes(providerSlug);
