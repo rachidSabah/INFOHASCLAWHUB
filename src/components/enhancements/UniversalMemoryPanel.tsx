@@ -251,7 +251,14 @@ export function UniversalMemoryPanel({ open, onOpenChange }: UniversalMemoryPane
       const res = await fetch("/api/memory/context/stats");
       if (res.ok) {
         const data = await res.json();
-        setStats(data);
+        setStats({
+          totalMemories: data.totalMemories ?? 0,
+          averagePriority: data.averagePriority ?? 0,
+          totalLinks: data.totalLinks ?? 0,
+          oldestMemoryDate: data.oldestMemoryDate ?? null,
+          byType: data.byType ?? {},
+          byCategory: data.byCategory ?? {},
+        });
       }
     } catch {
       // silently fail
