@@ -19,6 +19,7 @@ import {
   GitBranch,
   X,
   Download,
+  Code2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
