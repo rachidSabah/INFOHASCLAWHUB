@@ -135,6 +135,8 @@ export default function ArtifactPreviewPanel() {
   const [historyIdx, setHistoryIdx] = useState(-1);
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
 
+  useEffect(() => { if (activeTabId && activeTab) { const isDoc = isBinaryFile(activeTab) || activeTab.type === "document" || activeTab.type === "markdown"; setActiveView(isDoc ? "preview" : "code"); } }, [activeTabId]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && isOpen) { isFullscreen ? setFullscreen(false) : setOpen(false); } };
     document.addEventListener("keydown", handler);
