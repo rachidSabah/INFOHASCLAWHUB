@@ -7,6 +7,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { useChatStore } from "@/lib/stores";
+import { getModelAdaptation } from "@/lib/optimization-engine";
 import { toast } from "sonner";
 import {
   SlidersHorizontal, Gauge, Brain, Zap, Save, RotateCcw, ChevronDown, ChevronUp, Trash2,
@@ -50,9 +52,13 @@ const PRESETS: Array<{ name: string; icon: LucideIcon; settings: Partial<TuningS
 ];
 
 export default function TuningPanel({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const { activeConversationId, getActiveConversation } = useChatStore();
   const [settings, setSettings] = useState<TuningSettings>(DEFAULTS);
   const [savedPresets, setSavedPresets] = useState<Array<{ name: string; settings: TuningSettings }>>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ Speed: true, Context: false, Cache: false, Model: false });
+  const [autoDetected, setAutoDetected] = useState<string | null>(null);
+
+  const activeModel = getActiveConversation()?.model || "";
 
   useEffect(() => {
     if (!open) return;
@@ -61,6 +67,27 @@ export default function TuningPanel({ open, onOpenChange }: { open: boolean; onO
     const ps = localStorage.getItem("clawhub_tuning_presets");
     if (ps) { try { setSavedPresets(JSON.parse(ps)); } catch {} }
   }, [open]);
+
+  // Auto-detect model settings when model changes
+  useEffect(() => {
+    if (!activeModel || !open) return;
+    const adapt = getModelAdaptation(activeModel);
+    const modelName = activeModel.split("/").slice(1).join("/") || activeModel;
+    setAutoDetected(`Adapted for ${modelName}`);
+
+    const modelDefaults: Partial<TuningSettings> = {
+      maxTokens: adapt.maxTokens,
+      temperature: adapt.temperature,
+      topP: adapt.topP,
+      streamingEnabled: adapt.supportsStreaming,
+    };
+
+    setSettings(prev => {
+      const next = { ...prev, ...modelDefaults };
+      localStorage.setItem("clawhub_tuning", JSON.stringify(next));
+      return next;
+    });
+  }, [activeModel, open]);
 
   const update = (key: keyof TuningSettings, value: any) => {
     setSettings(prev => {
@@ -138,6 +165,12 @@ export default function TuningPanel({ open, onOpenChange }: { open: boolean; onO
             Model Tuning
             <span className="text-[10px] font-normal text-muted-foreground ml-auto">{estTime()}</span>
           </DialogTitle>
+          {autoDetected && (
+            <p className="text-[10px] mt-1 px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-500 inline-flex items-center gap-1 w-fit">
+              <Gauge className="h-3 w-3" />
+              Auto-detected: {autoDetected}
+            </p>
+          )}
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
