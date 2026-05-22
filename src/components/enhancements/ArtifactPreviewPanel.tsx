@@ -63,7 +63,8 @@ function CodeView({ tab }: { tab: PreviewTab }) {
           <h3 className="text-lg font-semibold text-gray-200">{tab.title}</h3>
           <p className="text-sm text-gray-400">{ext} file created successfully</p>
           <button onClick={() => {
-            const payload = { type: ext === "DOCX" ? "docx" : ext === "XLSX" ? "xlsx" : ext === "PPTX" ? "pptx" : "pdf", data: { title: tab.title, content: `Generated file: ${tab.title}` }, filename: tab.title };
+            const actualContent = tab.content || code;
+            const payload = { type: ext === "DOCX" ? "docx" : ext === "XLSX" ? "xlsx" : ext === "PPTX" ? "pptx" : "pdf", data: { title: tab.title, content: actualContent }, filename: tab.title };
             fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
               .then(r => r.blob()).then(b => { const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = tab.title; a.click(); URL.revokeObjectURL(u); });
           }} className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors" style={{ background: ACCENT }}>
@@ -155,6 +156,19 @@ export default function ArtifactPreviewPanel() {
   const handleCopy = () => { if (!activeTab) return; navigator.clipboard.writeText(extractPureCode(activeTab.content)); toast.success("Copied"); };
   const handleDownload = () => {
     if (!activeTab) return;
+    const isBinary = isBinaryFile(activeTab);
+    if (isBinary) {
+      const ext = activeTab.title.split(".").pop()?.toUpperCase() || "DOCX";
+      const payload = {
+        type: ext === "DOCX" ? "docx" : ext === "XLSX" ? "xlsx" : ext === "PPTX" ? "pptx" : "pdf",
+        data: { title: activeTab.title, content: activeTab.content },
+        filename: activeTab.title,
+      };
+      fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+        .then(r => r.blob()).then(b => { const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = activeTab.title; a.click(); URL.revokeObjectURL(u); toast.success("Downloaded"); })
+        .catch(() => toast.error("Download failed"));
+      return;
+    }
     const code = extractPureCode(activeTab.content);
     const lang = getLanguage(activeTab);
     const extMap: Record<string, string> = { html: "html", jsx: "jsx", typescript: "ts", javascript: "js", python: "py", go: "go", css: "css", text: "txt" };
