@@ -6,6 +6,7 @@ import { ClawHubLogo, ClawHubText } from "./ClawHubLogo";
 import {
   PanelLeft, Settings, Bot, Zap, ChevronDown, Check, BarChart3, Activity, ArrowUpCircle, HeartPulse, BookOpen,
   Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu, Server, Layout, GitMerge, GitFork, Sparkles, Wifi, LayoutTemplate, PanelRight,
+  SlidersHorizontal,
   Brain, Lock, AlertTriangle, DollarSign, Target, Network, Wrench, FileCheck, Users,
 } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
@@ -70,6 +71,7 @@ import { KnowledgeGraphPanel } from "./enhancements/KnowledgeGraphPanel";
 import { BackgroundWorkersPanel } from "./enhancements/BackgroundWorkersPanel";
 import { VerificationPanel } from "./enhancements/VerificationPanel";
 import OptimizationPanel from "./enhancements/OptimizationPanel";
+import TuningPanel from "./enhancements/TuningPanel";
 
 const ADVANCED_TOOLS: AdvancedTool[] = [
   // Tier 5: New Generation
@@ -175,6 +177,7 @@ export function TopBar() {
   const [bgWorkersOpen, setBgWorkersOpen] = useState(false);
   const [verificationOpen, setVerificationOpen] = useState(false);
   const [optimizationOpen, setOptimizationOpen] = useState(false);
+  const [tuningOpen, setTuningOpen] = useState(false);
 
   const agentRef = useRef<HTMLDivElement>(null);
   const skillRef = useRef<HTMLDivElement>(null);
@@ -434,6 +437,15 @@ export function TopBar() {
         )}
       </div>
 
+      {/* Tuning Settings */}
+      <button
+        onClick={() => setTuningOpen(true)}
+        className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground shrink-0"
+        title="Model Tuning Settings"
+      >
+        <SlidersHorizontal className="h-4 w-4" />
+      </button>
+
       {/* Spacer */}
       <div className="flex-1" />
 
@@ -679,6 +691,7 @@ export function TopBar() {
       <BackgroundWorkersPanel open={bgWorkersOpen} onOpenChange={setBgWorkersOpen} />
       <VerificationPanel open={verificationOpen} onOpenChange={setVerificationOpen} />
       <OptimizationPanel open={optimizationOpen} onOpenChange={setOptimizationOpen} />
+      <TuningPanel open={tuningOpen} onOpenChange={setTuningOpen} />
     </div>
   );
 }
