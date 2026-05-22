@@ -540,27 +540,6 @@ export function TopBar() {
           </div>
         )}
       </div>
-            <button onClick={() => { setAiDefenceOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <AlertTriangle className="h-3.5 w-3.5 text-red-500" /><div><span className="font-medium">AI Defence</span><p className="text-[10px] text-muted-foreground">Injection block, PII detect, safety</p></div>
-            </button>
-            <button onClick={() => { setCostTrackerOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <DollarSign className="h-3.5 w-3.5 text-amber-500" /><div><span className="font-medium">Cost Tracker</span><p className="text-[10px] text-muted-foreground">Budgets, alerts & spending analytics</p></div>
-            </button>
-            <button onClick={() => { setGoalPlannerOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Target className="h-3.5 w-3.5 text-indigo-500" /><div><span className="font-medium">Goal Planner</span><p className="text-[10px] text-muted-foreground">GOAP A* goal decomposition</p></div>
-            </button>
-            <button onClick={() => { setKnowledgeGraphOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Network className="h-3.5 w-3.5 text-purple-500" /><div><span className="font-medium">Knowledge Graph</span><p className="text-[10px] text-muted-foreground">Entity relationships & traversal</p></div>
-            </button>
-            <button onClick={() => { setBgWorkersOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Wrench className="h-3.5 w-3.5 text-slate-500" /><div><span className="font-medium">Background Workers</span><p className="text-[10px] text-muted-foreground">12 auto-triggered workers</p></div>
-            </button>
-            <button onClick={() => { setVerificationOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <FileCheck className="h-3.5 w-3.5 text-green-500" /><div><span className="font-medium">Verification</span><p className="text-[10px] text-muted-foreground">Ed25519 file signing & verification</p></div>
-            </button>
-          </div>
-        )}
-      </div>
 
       {/* Doctor */}
       <button
