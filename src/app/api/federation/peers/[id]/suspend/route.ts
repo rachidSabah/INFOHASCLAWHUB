@@ -7,17 +7,12 @@ function errorResponse(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
 
-async function resolveId(params: Promise<{ id: string }> | { id: string }) {
-  const resolved = await params;
-  return resolved.id;
-}
-
 export async function POST(
   req: Request,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const peerId = await resolveId(params);
+    const { id: peerId } = await params;
 
     const peer = await suspendPeer(peerId);
     return NextResponse.json(peer);

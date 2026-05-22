@@ -9,17 +9,12 @@ function errorResponse(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
 
-async function resolveId(params: Promise<{ id: string }> | { id: string }) {
-  const resolved = await params;
-  return resolved.id;
-}
-
 export async function GET(
   req: Request,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = await resolveId(params);
+    const { id } = await params;
     const swarm = await getSwarmStatus(id);
 
     if (!swarm) {
@@ -36,10 +31,10 @@ export async function GET(
 
 export async function PATCH(
   req: Request,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = await resolveId(params);
+    const { id } = await params;
     const body = await req.json();
     const { name, topology, status } = body as {
       name?: string;
@@ -78,10 +73,10 @@ export async function PATCH(
 
 export async function DELETE(
   req: Request,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = await resolveId(params);
+    const { id } = await params;
 
     const existing = await db.swarm.findUnique({ where: { id } });
     if (!existing) {

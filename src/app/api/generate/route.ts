@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
 
     const name = filename || `document-${Date.now()}.${ext}`;
 
-    return new NextResponse(buffer, {
+    return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         "Content-Type": mimeType,

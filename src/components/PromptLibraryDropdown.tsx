@@ -19,8 +19,8 @@ interface PromptItem {
   id: string;
   title: string;
   content: string;
-  description?: string;
-  category?: string;
+  description: string | null;
+  category: string | null;
   createdAt?: string;
 }
 

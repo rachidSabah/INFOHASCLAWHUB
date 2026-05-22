@@ -7,17 +7,12 @@ function errorResponse(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
 
-async function resolveId(params: Promise<{ id: string }> | { id: string }) {
-  const resolved = await params;
-  return resolved.id;
-}
-
 export async function GET(
   req: Request,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = await resolveId(params);
+    const { id } = await params;
     const peer = await getPeerStatus(id);
 
     if (!peer) {
@@ -34,10 +29,10 @@ export async function GET(
 
 export async function DELETE(
   req: Request,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = await resolveId(params);
+    const { id } = await params;
 
     const existing = await getPeerStatus(id);
     if (!existing) {

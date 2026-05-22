@@ -30,7 +30,7 @@ const SEED_PLUGINS = [
 
 export async function POST() {
   try {
-    const results = [];
+    const results: any[] = [];
     for (const plugin of SEED_PLUGINS) {
       const upserted = await db.plugin.upsert({
         where: { name: plugin.name },
@@ -128,9 +128,10 @@ export async function GET() {
       },
     ];
 
+    const pipelineResults: any[] = [];
     for (const p of prebuiltPipelines) {
       const id = crypto.randomUUID();
-      pipelineStore.set(id, {
+      pipelineResults.push({
         id,
         ...p,
         createdAt: new Date().toISOString(),
@@ -140,7 +141,8 @@ export async function GET() {
 
     return NextResponse.json({
       message: `Seeded ${prebuiltPipelines.length} prebuilt pipelines successfully`,
-      pipelines: prebuiltPipelines.length,
+      pipelines: pipelineResults.length,
+      data: pipelineResults,
     });
   } catch (error: unknown) {
     return NextResponse.json(

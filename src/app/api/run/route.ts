@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: unknown) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' || "Internal server error" },
+      { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }
     );
   }

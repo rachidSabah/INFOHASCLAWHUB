@@ -273,7 +273,7 @@ export function ChatInput() {
                   fileName = fileName.replace(/^.*[\\\/]/, "").replace(/\r/g, "");
                   const ext = fileMatch[2].toLowerCase();
                   let cleanText = "";
-                  const jsonMatch = resultStr.match(/"stdout"\s*:\s*"((?:[^"\\]|\\[\\\/bfnrt"]|\\u[0-9a-fA-F]{4})*)"/s);
+                  const jsonMatch = resultStr.match(/"stdout"\s*:\s*"((?:[^"\\]|\\[\\\/bfnrt"]|\\u[0-9a-fA-F]{4})*)"/);
                   if (jsonMatch) {
                     cleanText = jsonMatch[1]
                       .replace(/\\r\\n/g, "\n")

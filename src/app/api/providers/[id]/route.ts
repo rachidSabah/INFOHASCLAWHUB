@@ -3,11 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const resolvedParams = await params;
-    const id = resolvedParams.id;
+    const { id } = await params;
     const provider = await db.provider.findUnique({ where: { id } });
     if (!provider) {
       return NextResponse.json({ error: "Provider not found" }, { status: 404 });
@@ -20,11 +19,10 @@ export async function GET(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const resolvedParams = await params;
-    const id = resolvedParams.id;
+    const { id } = await params;
     await db.provider.delete({
       where: { id },
     });
@@ -36,11 +34,10 @@ export async function DELETE(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const resolvedParams = await params;
-    const id = resolvedParams.id;
+    const { id } = await params;
     const body = await req.json();
     let { baseUrl, apiKey, isActive } = body;
     baseUrl = baseUrl?.trim();

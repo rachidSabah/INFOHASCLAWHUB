@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     const connections = await (db as any).botConnection.findMany({ where });
 
-    const results = [];
+    const results: Array<{ platform: string; name: string; message: string; sent: boolean; timestamp: string }> = [];
     for (const connection of connections) {
       let adaptedMessage = message;
 

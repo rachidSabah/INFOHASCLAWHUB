@@ -8,17 +8,12 @@ function errorResponse(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
 
-async function resolveId(params: Promise<{ id: string }> | { id: string }) {
-  const resolved = await params;
-  return resolved.id;
-}
-
 export async function POST(
   req: Request,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const swarmId = await resolveId(params);
+    const { id: swarmId } = await params;
     const body = await req.json();
     const { agentId, role } = body as { agentId?: string; role?: AgentRole };
 
@@ -42,10 +37,10 @@ export async function POST(
 
 export async function DELETE(
   req: Request,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const swarmId = await resolveId(params);
+    const { id: swarmId } = await params;
     const body = await req.json();
     const { agentId } = body as { agentId?: string };
 

@@ -56,6 +56,9 @@ export async function POST(req: Request) {
   } catch (error: unknown) {
     console.error("[AGENTS_POST]", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    if (errorMessage.includes("Unique constraint") || errorMessage.includes("already exists")) {
+      return errorResponse(`Agent with name '${body.name}' already exists`, 409);
+    }
     return errorResponse(errorMessage, 500);
   }
 }

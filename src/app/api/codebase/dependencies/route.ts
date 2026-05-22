@@ -10,13 +10,13 @@ export async function GET(request: NextRequest) {
     const projectPath = searchParams.get('projectPath');
 
     // If no projectPath, return all indexed symbols
-    const where: Record<string, unknown> = {};
+    const where: Record<string, any> = {};
     if (projectPath) where.projectPath = projectPath;
 
     const symbols = await (db as any).codeIndex.findMany({ where });
 
     // Build a simple dependency graph from imports/exports
-    const files = [...new Set(symbols.map(s => s.filePath))];
+    const files = Array.from(new Set<string>(symbols.map((s: any) => s.filePath as string)));
     const imports = symbols.filter(s => s.symbolType === 'import');
     const exports_ = symbols.filter(s => s.symbolType === 'export');
 

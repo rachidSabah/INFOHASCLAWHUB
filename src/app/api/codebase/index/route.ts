@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'projectPath is required' }, { status: 400 });
     }
 
-    const indexedSymbols = [];
+    const indexedSymbols: any[] = [];
 
     if (files && Array.isArray(files)) {
       for (const file of files) {
