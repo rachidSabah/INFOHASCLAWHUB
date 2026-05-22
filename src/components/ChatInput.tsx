@@ -208,15 +208,20 @@ export function ChatInput() {
               if (data.type === "chunk") {
                 fullContent += data.content;
                 setStreamingContent(fullContent);
-                const detected = detectArtifact(fullContent, data.content);
-                if (shouldAutoOpen(detected, fullContent.length)) {
+                const cleanContent = fullContent
+                  .replace(/\n?\*Running tool:.*?\*+\n?/g, "")
+                  .replace(/\n?Tool:.*\n.*\n.*\n.*\n.*\n?/g, "")
+                  .replace(/```json[\s\S]*?```/g, "")
+                  .trim();
+                const detected = detectArtifact(cleanContent, data.content);
+                if (shouldAutoOpen(detected, cleanContent.length)) {
                   const store = useArtifactPreviewStore.getState();
                   if (!store.isOpen) {
                     const previewTab = {
                       id: `auto-${Date.now()}`,
                       title: detected!.title,
                       type: detected!.type,
-                      content: fullContent,
+                      content: cleanContent,
                       isPinned: false,
                       isStreaming: true,
                       createdAt: Date.now(),
@@ -225,7 +230,7 @@ export function ChatInput() {
                   } else {
                     const active = store.tabs.find(t => t.id === store.activeTabId);
                     if (active) {
-                      store.updateTab(active.id, { content: fullContent, isStreaming: true });
+                      store.updateTab(active.id, { content: cleanContent, isStreaming: true });
                     }
                   }
                 }
@@ -246,28 +251,48 @@ export function ChatInput() {
                   let fileName = fileMatch[1];
                   fileName = fileName.replace(/^.*[\\\/]/, "").replace(/\r/g, "");
                   const ext = fileMatch[2].toLowerCase();
-                  let content = `**${fileName}**\n\nCreated successfully.\n\nTool: ${data.toolName}\nType: ${ext.toUpperCase()}\n\n`;
-                  const jsonMatch = resultStr.match(/"stdout"\s*:\s*"([^"]+)"/);
+                  let cleanText = "";
+                  const jsonMatch = resultStr.match(/"stdout"\s*:\s*"((?:[^"\\]|\\[\\\/bfnrt"]|\\u[0-9a-fA-F]{4})*)"/s);
                   if (jsonMatch) {
-                    content += jsonMatch[1].replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\u([0-9a-fA-F]{4})/g, (_, c) => String.fromCharCode(parseInt(c, 16)));
+                    cleanText = jsonMatch[1]
+                      .replace(/\\r\\n/g, "\n")
+                      .replace(/\\r/g, "")
+                      .replace(/\\n/g, "\n")
+                      .replace(/\\"/g, '"')
+                      .replace(/\\u([0-9a-fA-F]{4})/g, (_, c) => String.fromCharCode(parseInt(c, 16)))
+                      .trim();
                   }
                   const store = useArtifactPreviewStore.getState();
-                  store.addTab({
-                    id: `file-${fileName}`,
-                    title: fileName,
-                    type: ext === "xlsx" || ext === "csv" ? "spreadsheet" : ext === "pptx" ? "presentation" : ext === "docx" ? "document" : "code",
-                    content,
-                    isPinned: false,
-                    isStreaming: false,
-                    createdAt: Date.now(),
-                  });
+                  const existing = store.tabs.find(t => t.id === store.activeTabId);
+                  if (existing) {
+                    store.updateTab(existing.id, {
+                      title: fileName,
+                      type: ext === "xlsx" || ext === "csv" ? "spreadsheet" : ext === "pptx" ? "presentation" : ext === "docx" ? "document" : "code",
+                      content: cleanText || fullContent,
+                      isStreaming: false,
+                    });
+                  } else {
+                    store.addTab({
+                      id: `file-${Date.now()}`,
+                      title: fileName,
+                      type: ext === "xlsx" || ext === "csv" ? "spreadsheet" : ext === "pptx" ? "presentation" : ext === "docx" ? "document" : "code",
+                      content: cleanText || fullContent,
+                      isPinned: false,
+                      isStreaming: false,
+                      createdAt: Date.now(),
+                    });
+                  }
                 }
               } else if (data.type === "done") {
                 clearStreamingContent();
                 const store = useArtifactPreviewStore.getState();
                 const active = store.tabs.find(t => t.id === store.activeTabId);
                 if (active) {
-                  store.updateTab(active.id, { content: fullContent, isStreaming: false });
+                  const cleanContent = fullContent
+                    .replace(/\n?\*Running tool:.*?\*+\n?/g, "")
+                    .replace(/\n?```json[\s\S]*?```/g, "")
+                    .trim();
+                  store.updateTab(active.id, { content: cleanContent, isStreaming: false });
                 }
                 try {
                   const res = await fetch(`/api/conversations/${convId}/messages`, {

@@ -140,9 +140,32 @@ function PreviewView({ tab }: { tab: PreviewTab }) {
       </div>
     );
   }
+
+  const lines = code.split("\n");
   return (
     <div className="w-full h-full overflow-auto bg-white">
-      <div className="prose prose-sm max-w-none p-6 font-mono text-sm whitespace-pre-wrap">{code}</div>
+      <div className="p-6 max-w-3xl mx-auto">
+        {lines.map((line, i) => {
+          const trimmed = line.trim();
+          if (!trimmed) return <div key={i} className="h-3" />;
+          if (trimmed.startsWith("**") && trimmed.endsWith("**") && trimmed.length < 60) {
+            return <h3 key={i} className="text-base font-bold text-gray-900 mb-1 mt-4">{trimmed.replace(/\*\*/g, "")}</h3>;
+          }
+          if (/^[A-Z\s]{5,}$/.test(trimmed) && trimmed.length > 10) {
+            return <h2 key={i} className="text-lg font-bold text-gray-900 mb-2 mt-5 border-b border-gray-200 pb-1">{trimmed}</h2>;
+          }
+          if (trimmed.startsWith("•") || trimmed.startsWith("-") || trimmed.startsWith("*")) {
+            return <div key={i} className="flex gap-2 text-sm text-gray-700 ml-2 mb-0.5"><span className="shrink-0 text-gray-400">•</span><span>{trimmed.replace(/^[•\-*]\s*/, "")}</span></div>;
+          }
+          if (/^[0-9]+[.)]\s/.test(trimmed)) {
+            return <div key={i} className="flex gap-2 text-sm text-gray-700 ml-2 mb-0.5"><span className="shrink-0 text-gray-400">{trimmed.match(/^[0-9]+[.)]/)?.[0]}</span><span>{trimmed.replace(/^[0-9]+[.)]\s*/, "")}</span></div>;
+          }
+          if (trimmed.endsWith(":") && trimmed.length < 40) {
+            return <h4 key={i} className="text-sm font-semibold text-gray-800 mt-3 mb-1">{trimmed}</h4>;
+          }
+          return <p key={i} className="text-sm text-gray-700 leading-relaxed mb-1">{line}</p>;
+        })}
+      </div>
     </div>
   );
 }
