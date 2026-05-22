@@ -254,7 +254,20 @@ export function ChatInput() {
                   timestamp: data.timestamp,
                 });
                 const resultStr = typeof data.result === "string" ? data.result : JSON.stringify(data.result);
-                const fileMatch = resultStr.match(/(\S+\.(docx|pdf|xlsx|pptx|csv|png|jpg|svg))\b/i);
+                const fileMatch = resultStr.match(/(\S+\.(docx|pdf|xlsx|pptx|csv|png|jpg|svg|html))\b/i);
+                const isBrowser = data.toolName === "agent-browser" || resultStr.includes("playwright") || resultStr.includes("browser_context") || resultStr.includes("Page opened");
+                if (isBrowser && data.status === "success") {
+                  const store = useArtifactPreviewStore.getState();
+                  store.addTab({
+                    id: `browser-${Date.now()}`,
+                    title: "Browser Preview",
+                    type: "code",
+                    content: resultStr,
+                    isPinned: false,
+                    isStreaming: false,
+                    createdAt: Date.now(),
+                  });
+                }
                 if (fileMatch && data.status === "success") {
                   let fileName = fileMatch[1];
                   fileName = fileName.replace(/^.*[\\\/]/, "").replace(/\r/g, "");
