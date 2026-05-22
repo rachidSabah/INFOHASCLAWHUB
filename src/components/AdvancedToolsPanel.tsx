@@ -230,13 +230,13 @@ function ToolButton({
       </div>
       {pinned && <Pin className="h-3 w-3 text-amber-500 shrink-0" />}
       {onTogglePin && (
-        <button
+        <span
           onClick={(e) => { e.stopPropagation(); onTogglePin(); }}
-          className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-muted-foreground/10 rounded shrink-0"
+          className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-muted-foreground/10 rounded shrink-0 cursor-pointer"
           title={pinned ? "Unpin" : "Pin"}
         >
           <Pin className={cn("h-2.5 w-2.5", pinned ? "text-amber-500" : "text-muted-foreground")} />
-        </button>
+        </span>
       )}
     </button>
   );

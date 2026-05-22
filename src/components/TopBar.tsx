@@ -4,7 +4,7 @@ import { useUIStore, useSettingsStore, useAgentStore, useSkillStore, useChatStor
 import { cn } from "@/lib/utils";
 import { ClawHubLogo, ClawHubText } from "./ClawHubLogo";
 import {
-  PanelLeft, Settings, Bot, Zap, ChevronDown, Check, BarChart3, Activity, ArrowUpCircle, HeartPulse,
+  PanelLeft, Settings, Bot, Zap, ChevronDown, Check, BarChart3, Activity, ArrowUpCircle, HeartPulse, BookOpen,
   Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu, Server, Layout, GitMerge, GitFork, Sparkles, Wifi, LayoutTemplate, PanelRight,
   Brain, Lock, AlertTriangle, DollarSign, Target, Network, Wrench, FileCheck, Users,
 } from "lucide-react";
@@ -40,6 +40,7 @@ import NetworkInfoPanel from "./enhancements/NetworkInfoPanel";
 import VisualCanvasPanel from "./enhancements/VisualCanvasPanel";
 import { useArtifactPreviewStore } from "@/lib/artifact-store";
 import AdvancedToolsDropdown, { type AdvancedTool } from "@/components/AdvancedToolsPanel";
+import PromptLibraryDropdown from "@/components/PromptLibraryDropdown";
 
 // Next-Gen Enhancement Panels
 import { UniversalMemoryPanel } from "./enhancements/UniversalMemoryPanel";
@@ -117,6 +118,7 @@ export function TopBar() {
   const [doctorOpen, setDoctorOpen] = useState(false);
   const [powerToolsOpen, setPowerToolsOpen] = useState(false);
   const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
+  const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
 
   // 16 Enhancement panel open states
   const [orchestrationOpen, setOrchestrationOpen] = useState(false);
@@ -571,6 +573,18 @@ export function TopBar() {
       >
         <PanelRight className="h-4 w-4" />
       </button>
+
+      {/* Prompt Library */}
+      <div className="relative">
+        <button
+          onClick={() => setPromptLibraryOpen(!promptLibraryOpen)}
+          className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+          title="Prompt Library"
+        >
+          <BookOpen className="h-4 w-4" />
+        </button>
+        <PromptLibraryDropdown open={promptLibraryOpen} onOpenChange={setPromptLibraryOpen} />
+      </div>
 
       {/* Doctor */}
       <button

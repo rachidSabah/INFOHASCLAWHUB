@@ -282,10 +282,10 @@ function DashboardContent() {
       {/* Artifact Preview Panel */}
       <ArtifactPreviewPanel />
 
-      {/* Prompt Sidebar */}
-      <div className="shrink-0 hidden xl:block h-full">
+      {/* Prompt Sidebar — moved to top bar Prompt Library dropdown */}
+      {/* <div className="shrink-0 hidden xl:block h-full">
         <PromptSidebar />
-      </div>
+      </div> */}
 
       {/* Settings Dialog */}
       <SettingsPanel />
