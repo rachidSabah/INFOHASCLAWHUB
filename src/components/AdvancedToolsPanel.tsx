@@ -47,6 +47,7 @@ export default function AdvancedToolsDropdown({
   const [search, setSearch] = useState("");
   const [recentKeys, setRecentKeys] = useState<string[]>([]);
   const [pinnedKeys, setPinnedKeys] = useState<string[]>([]);
+  const [showFavorites, setShowFavorites] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -77,13 +78,19 @@ export default function AdvancedToolsDropdown({
     setPinnedKeys(next);
   };
 
-  const filtered = search.trim()
-    ? tools.filter(t =>
-        t.label.toLowerCase().includes(search.toLowerCase()) ||
-        t.description.toLowerCase().includes(search.toLowerCase()) ||
-        t.category.toLowerCase().includes(search.toLowerCase())
-      )
-    : tools;
+  const filtered = (() => {
+    let list = tools;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(t =>
+        t.label.toLowerCase().includes(q) ||
+        t.description.toLowerCase().includes(q) ||
+        t.category.toLowerCase().includes(q)
+      );
+    }
+    if (showFavorites) list = list.filter(t => pinnedKeys.includes(t.key));
+    return list;
+  })();
 
   const categories = useToolsWithCategories(filtered);
   const recentTools = recentKeys.map(k => tools.find(t => t.key === k)).filter(Boolean) as AdvancedTool[];
@@ -163,10 +170,10 @@ export default function AdvancedToolsDropdown({
 
         {/* Footer */}
         <div className="p-2 border-t border-border bg-muted/10 shrink-0 flex gap-1">
-          <button onClick={() => { setShowFavorites(true); }} className="flex-1 h-6 text-[10px] rounded-md hover:bg-muted transition-colors">
-            <Star className="h-3 w-3 inline mr-1" />Favorites
+          <button onClick={() => setShowFavorites(!showFavorites)} className={cn("flex-1 h-6 text-[10px] rounded-md hover:bg-muted transition-colors", showFavorites && "bg-amber-500/10 text-amber-600")}>
+            <Star className="h-3 w-3 inline mr-1" />{showFavorites ? "All" : "Favorites"}
           </button>
-          <button onClick={() => { setSearch(""); setSelectedCategory(null); }} className="flex-1 h-6 text-[10px] rounded-md hover:bg-muted transition-colors">
+          <button onClick={() => { setSearch(""); setShowFavorites(false); }} className="flex-1 h-6 text-[10px] rounded-md hover:bg-muted transition-colors">
             Show All
           </button>
         </div>
