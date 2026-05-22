@@ -182,14 +182,16 @@ export default function ArtifactPreviewPanel() {
         ref={panelRef}
         className={cn(
           "fixed top-0 right-0 h-full z-40 bg-background flex flex-col border-l border-border shadow-[-2px_0_8px_rgba(0,0,0,0.06)]",
-          "md:relative md:shadow-none",
+          "md:static md:h-full",
           !isOpen && "translate-x-full md:hidden"
         )}
         style={{
           width: isOpen ? (isFullscreen ? "100vw" : `min(55vw, ${width}px)`) : 0,
           minWidth: isOpen ? 320 : 0,
+          maxWidth: isOpen ? undefined : 0,
           transition: "width 300ms cubic-bezier(0.4,0,0.2,1), transform 300ms cubic-bezier(0.4,0,0.2,1)",
           overflow: "hidden",
+          flexShrink: isOpen ? 0 : undefined,
         }}
       >
         {/* Header — sticky, aligned */}
