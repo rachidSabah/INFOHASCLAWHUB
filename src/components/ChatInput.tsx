@@ -240,6 +240,23 @@ export function ChatInput() {
                   status: data.status,
                   timestamp: data.timestamp,
                 });
+                const resultStr = typeof data.result === "string" ? data.result : JSON.stringify(data.result);
+                const fileMatch = resultStr.match(/(\S+\.(docx|pdf|xlsx|pptx|csv|png|jpg|svg))/i);
+                if (fileMatch && data.status === "success") {
+                  const fileName = fileMatch[1].replace(/.*[/\\]/, "");
+                  const ext = fileMatch[2].toLowerCase();
+                  const store = useArtifactPreviewStore.getState();
+                  const existingId = `file-${fileName}`;
+                  store.addTab({
+                    id: existingId,
+                    title: fileName,
+                    type: ext === "pdf" ? "markdown" : ext === "docx" ? "document" : ext === "xlsx" ? "spreadsheet" : ext === "pptx" ? "presentation" : "code",
+                    content: `**${fileName}**\n\nCreated successfully.\n\nTool: ${data.toolName}\nType: ${ext.toUpperCase()}\n\nClick Download to save this file.`,
+                    isPinned: false,
+                    isStreaming: false,
+                    createdAt: Date.now(),
+                  });
+                }
               } else if (data.type === "done") {
                 clearStreamingContent();
                 const store = useArtifactPreviewStore.getState();

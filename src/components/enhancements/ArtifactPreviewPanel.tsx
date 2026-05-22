@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   X, Download, Copy, Code2, Eye, ChevronLeft, ChevronRight, Maximize2, ArrowLeft, Loader2,
+  FileText, FileSpreadsheet, File,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,10 +34,65 @@ function hasPreview(tab: PreviewTab): boolean {
   return c.includes("<!DOCTYPE") || c.includes("<html") || tab.type === "html" || tab.type === "code";
 }
 
+function isBinaryFile(tab: PreviewTab): boolean {
+  const title = tab.title.toLowerCase();
+  return title.endsWith(".docx") || title.endsWith(".pdf") || title.endsWith(".xlsx") ||
+    title.endsWith(".pptx") || title.endsWith(".png") || title.endsWith(".jpg");
+}
+
+function getFileIcon(tab: PreviewTab): React.ComponentType<any> {
+  const t = tab.title.toLowerCase();
+  if (t.endsWith(".docx")) return FileText;
+  if (t.endsWith(".xlsx") || t.endsWith(".csv")) return FileSpreadsheet;
+  return File;
+}
+
 function CodeView({ tab }: { tab: PreviewTab }) {
   const code = extractPureCode(tab.content);
   const lines = code.split("\n");
   const lang = getLanguage(tab);
+  const binary = isBinaryFile(tab);
+
+  if (binary || !code.trim() || code.length < 5) {
+    const Icon = getFileIcon(tab);
+    const ext = tab.title.split(".").pop()?.toUpperCase() || "FILE";
+    return (
+      <div className="flex h-full bg-[#1e1e2e] items-center justify-center">
+        <div className="text-center space-y-4 px-6">
+          <Icon className="h-16 w-16 mx-auto text-gray-500" />
+          <h3 className="text-lg font-semibold text-gray-200">{tab.title}</h3>
+          <p className="text-sm text-gray-400">
+            {ext} file created successfully<br />
+            {code.includes("**") && <span className="text-gray-500 mt-2 block">{code.replace(/\*\*/g, "").split("\n").slice(0, 3).join("\n")}</span>}
+          </p>
+          <button
+            onClick={() => {
+              const { toast: t } = require("sonner");
+              const match = tab.content.match(/\/?uploads?\/(\S+)/) || tab.title.match(/(.+)/);
+              const link = document.createElement("a");
+              link.href = `/api/generate`;
+              link.download = tab.title;
+              const payload = {
+                type: ext === "DOCX" ? "docx" : ext === "XLSX" ? "xlsx" : ext === "PPTX" ? "pptx" : "pdf",
+                data: { title: tab.title, content: `Generated file: ${tab.title}` },
+                filename: tab.title,
+              };
+              fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+                .then(r => r.blob()).then(b => {
+                  const u = URL.createObjectURL(b); const a = document.createElement("a");
+                  a.href = u; a.download = tab.title; a.click(); URL.revokeObjectURL(u);
+                });
+            }}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
+            style={{ background: ACCENT }}
+          >
+            <Download className="h-4 w-4 inline mr-2" />
+            Download {ext}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full bg-[#1e1e2e] overflow-hidden">
