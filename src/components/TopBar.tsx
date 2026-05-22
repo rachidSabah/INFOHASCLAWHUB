@@ -8,7 +8,7 @@ import {
   Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu, Server, Layout, GitMerge, GitFork, Sparkles, Wifi, LayoutTemplate, PanelRight,
   Brain, Lock, AlertTriangle, DollarSign, Target, Network, Wrench, FileCheck, Users,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { toast } from "sonner";
 import { TokenDashboard } from "./TokenDashboard";
 import { SystemMonitor } from "./SystemMonitor";
@@ -39,6 +39,7 @@ import ArtifactPanel from "./enhancements/ArtifactPanel";
 import NetworkInfoPanel from "./enhancements/NetworkInfoPanel";
 import VisualCanvasPanel from "./enhancements/VisualCanvasPanel";
 import { useArtifactPreviewStore } from "@/lib/artifact-store";
+import AdvancedToolsDropdown, { type AdvancedTool } from "@/components/AdvancedToolsPanel";
 
 // Next-Gen Enhancement Panels
 import { UniversalMemoryPanel } from "./enhancements/UniversalMemoryPanel";
@@ -68,6 +69,38 @@ import { KnowledgeGraphPanel } from "./enhancements/KnowledgeGraphPanel";
 import { BackgroundWorkersPanel } from "./enhancements/BackgroundWorkersPanel";
 import { VerificationPanel } from "./enhancements/VerificationPanel";
 
+const ADVANCED_TOOLS: AdvancedTool[] = [
+  // Tier 5: New Generation
+  { key: "artifacts", label: "AI Artifacts Studio", description: "Doc, sheet, slide, canvas AI", icon: Sparkles, color: "text-purple-500", category: "Creative Suite", onOpen: () => { (window as any).__setArtifactsOpen?.(true); } },
+  { key: "network", label: "LAN Network Access", description: "Multi-device WiFi access", icon: Wifi, color: "text-blue-500", category: "System Tools", onOpen: () => { (window as any).__setNetworkInfoOpen?.(true); } },
+  { key: "canvas", label: "Visual Canvas", description: "Fabric-like design editor", icon: LayoutTemplate, color: "text-indigo-500", category: "Creative Suite", onOpen: () => { (window as any).__setCanvasOpen?.(true); } },
+  // Tier 6: Next-Gen OS
+  { key: "memory", label: "Universal Memory", description: "Cross-session context & vector recall", icon: Sparkles, color: "text-rose-500", category: "AI Engine", onOpen: () => { (window as any).__setUniversalMemoryOpen?.(true); } },
+  { key: "cron", label: "Cron Scheduler", description: "Always-on agents & scheduled tasks", icon: Activity, color: "text-amber-500", category: "Automation", onOpen: () => { (window as any).__setCronSchedulerOpen?.(true); } },
+  { key: "research", label: "Deep Research", description: "Citations, sources & hallucination detect", icon: Search, color: "text-cyan-500", category: "AI Engine", onOpen: () => { (window as any).__setResearchModeOpen?.(true); } },
+  { key: "issue-pipeline", label: "Issue → Deploy", description: "GitHub issue to deployed code", icon: GitBranch, color: "text-emerald-500", category: "DevOps", onOpen: () => { (window as any).__setIssuePipelineOpen?.(true); } },
+  { key: "self-improving", label: "Self-Improving Agents", description: "Prompt optimization & reflection", icon: Sparkles, color: "text-violet-500", category: "AI Engine", onOpen: () => { (window as any).__setSelfImprovingOpen?.(true); } },
+  { key: "hybrid-router", label: "Hybrid Router", description: "Local ↔ Cloud provider racing", icon: Cpu, color: "text-blue-500", category: "AI Engine", onOpen: () => { (window as any).__setHybridRouterOpen?.(true); } },
+  { key: "sandbox", label: "Live Sandbox", description: "Instant app preview & deploy", icon: Code2, color: "text-teal-500", category: "DevOps", onOpen: () => { (window as any).__setLiveSandboxOpen?.(true); } },
+  { key: "mcp-hub", label: "MCP Hub", description: "Model Context Protocol registry", icon: Puzzle, color: "text-purple-500", category: "AI Engine", onOpen: () => { (window as any).__setMcpHubOpen?.(true); } },
+  { key: "compliance", label: "Compliance Engine", description: "Audit logs, policies & scanning", icon: Shield, color: "text-red-500", category: "Monitoring", onOpen: () => { (window as any).__setComplianceEngineOpen?.(true); } },
+  { key: "collaboration", label: "Collaboration", description: "Real-time multiplayer sessions", icon: Radio, color: "text-indigo-500", category: "Orchestration", onOpen: () => { (window as any).__setCollaborationOpen?.(true); } },
+  // Tier 7: Preconfigured OS
+  { key: "prebuilt-agents", label: "Prebuilt Agents", description: "One-click agent activation", icon: Bot, color: "text-amber-500", category: "Preconfigured", onOpen: () => { (window as any).__setPrebuiltAgentsOpen?.(true); } },
+  { key: "pipeline-templates", label: "Pipeline Templates", description: "7 production-ready pipelines", icon: Workflow, color: "text-emerald-500", category: "Preconfigured", onOpen: () => { (window as any).__setPipelineTemplatesOpen?.(true); } },
+  // Tier 8: Enterprise AI Engine
+  { key: "swarm", label: "Swarm Coordination", description: "Queen-led swarms with consensus", icon: Users, color: "text-violet-500", category: "Multi-Agent", onOpen: () => { (window as any).__setSwarmOpen?.(true); } },
+  { key: "sona", label: "SONA Self-Learning", description: "Neural patterns & trajectory learning", icon: Brain, color: "text-cyan-500", category: "Multi-Agent", onOpen: () => { (window as any).__setSonaOpen?.(true); } },
+  { key: "federation", label: "Zero-Trust Federation", description: "Cross-machine mTLS & PII scanning", icon: Network, color: "text-emerald-500", category: "Security", onOpen: () => { (window as any).__setFederationOpen?.(true); } },
+  { key: "encryption", label: "Encryption Vault", description: "AES-256-GCM at-rest encryption", icon: Lock, color: "text-rose-500", category: "Security", onOpen: () => { (window as any).__setEncryptionOpen?.(true); } },
+  { key: "ai-defence", label: "AI Defence System", description: "DeepSeek/Venice hallucination firewall", icon: AlertTriangle, color: "text-red-500", category: "Security", onOpen: () => { (window as any).__setAiDefenceOpen?.(true); } },
+  { key: "cost-tracker", label: "Cost Tracker", description: "Per-token per-provider cost analytics", icon: DollarSign, color: "text-emerald-500", category: "Monitoring", onOpen: () => { (window as any).__setCostTrackerOpen?.(true); } },
+  { key: "goal-planner", label: "Goal Planner", description: "AI roadmap with milestones", icon: Target, color: "text-amber-500", category: "AI Engine", onOpen: () => { (window as any).__setGoalPlannerOpen?.(true); } },
+  { key: "knowledge-graph", label: "Knowledge Graph", description: "Visual entity relationship mapping", icon: Network, color: "text-sky-500", category: "AI Engine", onOpen: () => { (window as any).__setKnowledgeGraphOpen?.(true); } },
+  { key: "bg-workers", label: "Background Workers", description: "Headless long-running task engine", icon: Wrench, color: "text-teal-500", category: "Automation", onOpen: () => { (window as any).__setBgWorkersOpen?.(true); } },
+  { key: "verification", label: "Verification Engine", description: "Multi-source answer cross-check", icon: FileCheck, color: "text-violet-500", category: "AI Engine", onOpen: () => { (window as any).__setVerificationOpen?.(true); } },
+];
+
 export function TopBar() {
   const { toggleSidebar, setSettingsOpen } = useUIStore();
   const { settings, updateSetting, modelGroups, fetchModels } = useSettingsStore();
@@ -83,6 +116,7 @@ export function TopBar() {
   const [systemMonitorOpen, setSystemMonitorOpen] = useState(false);
   const [doctorOpen, setDoctorOpen] = useState(false);
   const [powerToolsOpen, setPowerToolsOpen] = useState(false);
+  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
 
   // 16 Enhancement panel open states
   const [orchestrationOpen, setOrchestrationOpen] = useState(false);
@@ -141,6 +175,36 @@ export function TopBar() {
   const skillRef = useRef<HTMLDivElement>(null);
   const modelRef = useRef<HTMLDivElement>(null);
   const powerToolsRef = useRef<HTMLDivElement>(null);
+  const advancedToolsRef = useRef<HTMLDivElement>(null);
+
+  // Expose state setters for Advanced Tools callbacks
+  useEffect(() => {
+    (window as any).__setArtifactsOpen = setArtifactsOpen;
+    (window as any).__setNetworkInfoOpen = setNetworkInfoOpen;
+    (window as any).__setCanvasOpen = setCanvasOpen;
+    (window as any).__setUniversalMemoryOpen = setUniversalMemoryOpen;
+    (window as any).__setCronSchedulerOpen = setCronSchedulerOpen;
+    (window as any).__setResearchModeOpen = setResearchModeOpen;
+    (window as any).__setIssuePipelineOpen = setIssuePipelineOpen;
+    (window as any).__setSelfImprovingOpen = setSelfImprovingOpen;
+    (window as any).__setHybridRouterOpen = setHybridRouterOpen;
+    (window as any).__setLiveSandboxOpen = setLiveSandboxOpen;
+    (window as any).__setMcpHubOpen = setMcpHubOpen;
+    (window as any).__setComplianceEngineOpen = setComplianceEngineOpen;
+    (window as any).__setCollaborationOpen = setCollaborationOpen;
+    (window as any).__setPrebuiltAgentsOpen = setPrebuiltAgentsOpen;
+    (window as any).__setPipelineTemplatesOpen = setPipelineTemplatesOpen;
+    (window as any).__setSwarmOpen = setSwarmOpen;
+    (window as any).__setSonaOpen = setSonaOpen;
+    (window as any).__setFederationOpen = setFederationOpen;
+    (window as any).__setEncryptionOpen = setEncryptionOpen;
+    (window as any).__setAiDefenceOpen = setAiDefenceOpen;
+    (window as any).__setCostTrackerOpen = setCostTrackerOpen;
+    (window as any).__setGoalPlannerOpen = setGoalPlannerOpen;
+    (window as any).__setKnowledgeGraphOpen = setKnowledgeGraphOpen;
+    (window as any).__setBgWorkersOpen = setBgWorkersOpen;
+    (window as any).__setVerificationOpen = setVerificationOpen;
+  }, []);
 
   // Load models on mount + periodic refresh
   useEffect(() => {
@@ -164,6 +228,7 @@ export function TopBar() {
       if (skillRef.current && !skillRef.current.contains(e.target as Node)) setSkillDropdownOpen(false);
       if (modelRef.current && !modelRef.current.contains(e.target as Node)) setModelDropdownOpen(false);
       if (powerToolsRef.current && !powerToolsRef.current.contains(e.target as Node)) setPowerToolsOpen(false);
+      if (advancedToolsRef.current && !advancedToolsRef.current.contains(e.target as Node)) setAdvancedToolsOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -366,10 +431,30 @@ export function TopBar() {
       {/* Spacer */}
       <div className="flex-1" />
 
+      {/* Advanced Tools Dropdown */}
+      <div ref={advancedToolsRef} className="relative">
+        <button
+          onClick={() => { setAdvancedToolsOpen(!advancedToolsOpen); setPowerToolsOpen(false); }}
+          className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border",
+            advancedToolsOpen ? "border-orange-500/30 bg-orange-500/5 text-orange-500" : "border-border hover:border-orange-500/20 hover:bg-muted/30 text-muted-foreground"
+          )}
+          title="Advanced Tools — Enterprise & AI Engine"
+        >
+          <Zap className="h-3.5 w-3.5" />
+          <span>Advanced</span>
+          <ChevronDown className={cn("h-3 w-3 opacity-60 transition-transform", advancedToolsOpen && "rotate-180")} />
+        </button>
+        <AdvancedToolsDropdown
+          open={advancedToolsOpen}
+          onOpenChange={setAdvancedToolsOpen}
+          tools={useMemo(() => ADVANCED_TOOLS, [])}
+        />
+      </div>
+
       {/* Power Tools Dropdown */}
       <div ref={powerToolsRef} className="relative">
         <button
-          onClick={() => setPowerToolsOpen(!powerToolsOpen)}
+          onClick={() => { setPowerToolsOpen(!powerToolsOpen); setAdvancedToolsOpen(false); }}
           className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border",
             powerToolsOpen ? "border-primary/30 bg-primary/5 text-primary" : "border-border hover:border-primary/20 hover:bg-muted/30 text-muted-foreground"
           )}
@@ -452,71 +537,9 @@ export function TopBar() {
                 <Server className="h-3.5 w-3.5 text-blue-500" /><div><span className="font-medium">Web Bridges</span><p className="text-[10px] text-muted-foreground">Free AI via browser tokens</p></div>
               </button>
             </div>
-            <div className="border-t border-border my-1" />
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1">Tier 5: New Generation</p>
-            <button onClick={() => { setArtifactsOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Sparkles className="h-3.5 w-3.5 text-purple-500" /><div><span className="font-medium">AI Artifacts Studio</span><p className="text-[10px] text-muted-foreground">Doc, sheet, slide, canvas AI</p></div>
-            </button>
-            <button onClick={() => { setNetworkInfoOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Wifi className="h-3.5 w-3.5 text-blue-500" /><div><span className="font-medium">LAN Network Access</span><p className="text-[10px] text-muted-foreground">Multi-device WiFi access</p></div>
-            </button>
-            <button onClick={() => { setCanvasOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <LayoutTemplate className="h-3.5 w-3.5 text-indigo-500" /><div><span className="font-medium">Visual Canvas</span><p className="text-[10px] text-muted-foreground">Fabric-like design editor</p></div>
-            </button>
-            <div className="border-t border-border my-1" />
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1">Tier 6: Next-Gen OS</p>
-            <button onClick={() => { setUniversalMemoryOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Sparkles className="h-3.5 w-3.5 text-rose-500" /><div><span className="font-medium">Universal Memory</span><p className="text-[10px] text-muted-foreground">Cross-session context & vector recall</p></div>
-            </button>
-            <button onClick={() => { setCronSchedulerOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Activity className="h-3.5 w-3.5 text-amber-500" /><div><span className="font-medium">Cron Scheduler</span><p className="text-[10px] text-muted-foreground">Always-on agents & scheduled tasks</p></div>
-            </button>
-            <button onClick={() => { setResearchModeOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Search className="h-3.5 w-3.5 text-cyan-500" /><div><span className="font-medium">Deep Research</span><p className="text-[10px] text-muted-foreground">Citations, sources & hallucination detect</p></div>
-            </button>
-            <button onClick={() => { setIssuePipelineOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <GitBranch className="h-3.5 w-3.5 text-emerald-500" /><div><span className="font-medium">Issue → Deploy</span><p className="text-[10px] text-muted-foreground">GitHub issue to deployed code</p></div>
-            </button>
-            <button onClick={() => { setSelfImprovingOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Sparkles className="h-3.5 w-3.5 text-violet-500" /><div><span className="font-medium">Self-Improving Agents</span><p className="text-[10px] text-muted-foreground">Prompt optimization & reflection</p></div>
-            </button>
-            <button onClick={() => { setHybridRouterOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Cpu className="h-3.5 w-3.5 text-blue-500" /><div><span className="font-medium">Hybrid Router</span><p className="text-[10px] text-muted-foreground">Local ↔ Cloud provider racing</p></div>
-            </button>
-            <button onClick={() => { setLiveSandboxOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Code2 className="h-3.5 w-3.5 text-teal-500" /><div><span className="font-medium">Live Sandbox</span><p className="text-[10px] text-muted-foreground">Instant app preview & deploy</p></div>
-            </button>
-            <button onClick={() => { setMcpHubOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Puzzle className="h-3.5 w-3.5 text-purple-500" /><div><span className="font-medium">MCP Hub</span><p className="text-[10px] text-muted-foreground">Model Context Protocol registry</p></div>
-            </button>
-            <button onClick={() => { setComplianceEngineOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Shield className="h-3.5 w-3.5 text-red-500" /><div><span className="font-medium">Compliance Engine</span><p className="text-[10px] text-muted-foreground">Audit logs, policies & scanning</p></div>
-            </button>
-            <button onClick={() => { setCollaborationOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Radio className="h-3.5 w-3.5 text-indigo-500" /><div><span className="font-medium">Collaboration</span><p className="text-[10px] text-muted-foreground">Real-time multiplayer sessions</p></div>
-            </button>
-            <div className="border-t border-border my-1" />
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1">Tier 7: Preconfigured OS</p>
-            <button onClick={() => { setPrebuiltAgentsOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Bot className="h-3.5 w-3.5 text-amber-500" /><div><span className="font-medium">Prebuilt Agents</span><p className="text-[10px] text-muted-foreground">One-click agent activation</p></div>
-            </button>
-            <button onClick={() => { setPipelineTemplatesOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Workflow className="h-3.5 w-3.5 text-emerald-500" /><div><span className="font-medium">Pipeline Templates</span><p className="text-[10px] text-muted-foreground">7 production-ready pipelines</p></div>
-            </button>
-            <div className="border-t border-border my-1" />
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-1">Tier 8: Enterprise AI Engine</p>
-            <button onClick={() => { setSwarmOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Users className="h-3.5 w-3.5 text-violet-500" /><div><span className="font-medium">Swarm Coordination</span><p className="text-[10px] text-muted-foreground">Queen-led swarms with consensus</p></div>
-            </button>
-            <button onClick={() => { setSonaOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Brain className="h-3.5 w-3.5 text-cyan-500" /><div><span className="font-medium">SONA Self-Learning</span><p className="text-[10px] text-muted-foreground">Neural patterns & trajectory learning</p></div>
-            </button>
-            <button onClick={() => { setFederationOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Network className="h-3.5 w-3.5 text-emerald-500" /><div><span className="font-medium">Zero-Trust Federation</span><p className="text-[10px] text-muted-foreground">Cross-machine mTLS & PII scanning</p></div>
-            </button>
-            <button onClick={() => { setEncryptionOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
-              <Lock className="h-3.5 w-3.5 text-rose-500" /><div><span className="font-medium">Encryption Vault</span><p className="text-[10px] text-muted-foreground">AES-256-GCM at-rest encryption</p></div>
-            </button>
+          </div>
+        )}
+      </div>
             <button onClick={() => { setAiDefenceOpen(true); setPowerToolsOpen(false); }} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted">
               <AlertTriangle className="h-3.5 w-3.5 text-red-500" /><div><span className="font-medium">AI Defence</span><p className="text-[10px] text-muted-foreground">Injection block, PII detect, safety</p></div>
             </button>
