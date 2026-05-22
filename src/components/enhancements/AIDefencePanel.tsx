@@ -176,7 +176,7 @@ export function AIDefencePanel({ open, onOpenChange }: AIDefencePanelProps) {
       const res = await fetch("/api/defence/stats");
       if (res.ok) {
         const data = await res.json();
-        setStats(data);
+        setStats({ ...data, threatLevelDistribution: data.threatLevelDistribution || { critical: 0, high: 0, medium: 0, low: 0 } });
       }
     } catch {
       toast.error("Failed to load stats");
@@ -338,8 +338,9 @@ export function AIDefencePanel({ open, onOpenChange }: AIDefencePanelProps) {
                       </div>
                       <div className="flex h-3 rounded-full overflow-hidden">
                         {(["critical", "high", "medium", "low"] as ThreatLevel[]).map((level) => {
-                          const count = stats.threatLevelDistribution[level] || 0;
-                          const total = Object.values(stats.threatLevelDistribution).reduce((a, b) => a + b, 0);
+                          const dist = stats.threatLevelDistribution || {};
+                          const count = dist[level] || 0;
+                          const total = Object.values(dist).reduce((a: number, b: number) => a + b, 0);
                           const pct = total > 0 ? (count / total) * 100 : 0;
                           if (pct === 0) return null;
                           return (
