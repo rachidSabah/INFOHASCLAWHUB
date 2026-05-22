@@ -97,7 +97,7 @@ ${assistantText.slice(0, 4000)}`;
       }
     } else {
       const cliArgs = model.includes("/") && !model.startsWith("openai/") && !model.startsWith("anthropic/") && !model.startsWith("google/") && !model.startsWith("vertex/")
-        ? ["--model", model.split("/")[1]]
+        ? ["--model", model.substring(model.indexOf("/") + 1)]
         : model === "auto" ? [] : ["--model", model];
 
       responseText = await new Promise<string>((resolve, reject) => {
@@ -377,7 +377,7 @@ async function queryLLM(
 
     const getCliArgs = (m: string) => {
       if (m.includes("/") && !m.startsWith("openai/") && !m.startsWith("anthropic/") && !m.startsWith("google/") && !m.startsWith("vertex/")) {
-        const [_, modelName] = m.split("/");
+        const modelName = m.substring(m.indexOf("/") + 1);
         return ["--model", modelName];
       }
       switch (m) {
@@ -574,8 +574,9 @@ export async function POST(req: NextRequest) {
     let targetModel = model;
 
     if (model.includes("/")) {
-      const [providerSlug, modelName] = model.split("/");
-      targetModel = modelName;
+      const firstSlash = model.indexOf("/");
+      const providerSlug = model.substring(0, firstSlash);
+      targetModel = model.substring(firstSlash + 1);
       console.log(`[${requestId}] Detected Provider Slug: ${providerSlug}, Model: ${targetModel}`);
 
       if (providerSlug === "proxima") {
