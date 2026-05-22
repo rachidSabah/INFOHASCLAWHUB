@@ -237,41 +237,40 @@ function DashboardContent() {
         
         {/* Horizontal Scrolling Chat Tabs */}
         {conversations.length > 0 && (
-          <div className="border-b border-border bg-card/25 flex items-center h-11 px-4 gap-2 overflow-x-auto scrollbar-none shrink-0 shadow-sm">
+          <div className="border-b border-border bg-card/25 flex items-center h-9 px-3 overflow-x-auto scrollbar-none shrink-0 shadow-sm w-full">
+            <div className="flex items-center gap-1 min-w-max">
             {conversations.map((conv) => {
               const isActive = activeConversationId === conv.id;
               return (
                 <div
                   key={conv.id}
                   className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all duration-200 shrink-0 select-none border border-transparent",
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium cursor-pointer transition-all duration-200 shrink-0 select-none border border-transparent whitespace-nowrap",
                     isActive
                       ? "bg-primary text-primary-foreground border-primary/20 shadow-sm"
                       : "bg-muted/30 hover:bg-muted/60 text-muted-foreground hover:text-foreground border-border/10"
                   )}
                   onClick={() => setActiveConversationId(conv.id)}
                 >
-                  <MessageSquare className="h-3 w-3 opacity-70" />
-                  <span className="truncate max-w-[120px] font-semibold">{conv.title}</span>
+                  <MessageSquare className="h-3 w-3 opacity-70 shrink-0" />
+                  <span className="truncate max-w-[100px] font-semibold">{conv.title}</span>
                   <span
                     className={cn(
-                      "hover:bg-black/10 rounded-full p-0.5 ml-1 transition-colors",
+                      "hover:bg-black/10 rounded-full p-0.5 transition-colors shrink-0",
                       isActive ? "hover:bg-white/20" : "hover:bg-muted/60"
                     )}
                     onClick={async (e) => {
                       e.stopPropagation();
                       removeConversation(conv.id);
-                      // Also delete from DB so it doesn't reappear on page refresh
-                      try {
-                        await fetch(`/api/conversations/${conv.id}`, { method: "DELETE" });
-                      } catch {}
+                      await fetch(`/api/conversations/${conv.id}`, { method: "DELETE" }).catch(() => {});
                     }}
                   >
-                    <X className="h-3 w-3" />
+                    <X className="h-2.5 w-2.5" />
                   </span>
                 </div>
               );
             })}
+            </div>
           </div>
         )}
 
