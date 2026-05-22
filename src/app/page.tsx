@@ -232,13 +232,13 @@ function DashboardContent() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar />
         
         {/* Horizontal Scrolling Chat Tabs */}
         {conversations.length > 0 && (
-          <div className="border-b border-border bg-card/25 flex items-center h-9 px-3 overflow-x-auto scrollbar-none shrink-0 shadow-sm w-full">
-            <div className="flex items-center gap-1 min-w-max">
+          <div className="border-b border-border bg-card/25 h-9 px-3 overflow-x-auto scrollbar-none shrink-0 shadow-sm">
+            <div className="flex items-center gap-1 min-w-max h-full">
             {conversations.map((conv) => {
               const isActive = activeConversationId === conv.id;
               return (

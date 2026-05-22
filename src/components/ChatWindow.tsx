@@ -232,7 +232,7 @@ export function ChatWindow() {
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative">
       <div 
-        className="flex-1 overflow-y-auto pr-1 scroll-smooth"
+        className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth"
         onScroll={handleScroll}
       >
         <div className="max-w-3xl mx-auto w-full px-4 py-6 space-y-6">
