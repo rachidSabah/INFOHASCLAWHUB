@@ -6,6 +6,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useSettingsStore } from "@/lib/stores";
 import { toast } from "sonner";
 import {
   Zap, Brain, TrendingUp, BarChart3, Timer, DollarSign, RefreshCw,
@@ -24,6 +25,7 @@ interface MetricCard {
 }
 
 export default function OptimizationPanel({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const { modelGroups } = useSettingsStore();
   const [testPrompt, setTestPrompt] = useState("");
   const [testModel, setTestModel] = useState("gemini-2.0-flash");
   const [result, setResult] = useState<OptimizationResult | null>(null);
@@ -98,12 +100,27 @@ export default function OptimizationPanel({ open, onOpenChange }: { open: boolea
               onChange={(e) => setTestPrompt(e.target.value)}
             />
             <div className="flex gap-2">
-              <input
-                className="flex-1 h-8 rounded-md border border-input bg-background px-2 text-xs"
-                placeholder="Model (e.g. gemini-2.0-flash)"
+              <select
+                className="flex-1 h-8 rounded-md border border-input bg-background px-2 text-xs cursor-pointer"
                 value={testModel}
                 onChange={(e) => setTestModel(e.target.value)}
-              />
+              >
+                {modelGroups.map((group) => (
+                  <optgroup key={group.name} label={group.name}>
+                    {group.models
+                      .filter((m, i, a) => a.findIndex(x => x.id === m.id) === i)
+                      .map((model) => (
+                        <option key={model.id} value={model.id}>{model.name}</option>
+                      ))}
+                  </optgroup>
+                ))}
+                <optgroup label="Custom">
+                  <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                  <option value="deepseek/deepseek-chat">DeepSeek Chat</option>
+                  <option value="claude-3.5-sonnet">Claude 3.5 Sonnet</option>
+                  <option value="gpt-4o">GPT-4o</option>
+                </optgroup>
+              </select>
               <Button size="sm" className="h-8 text-xs" onClick={handleOptimize} disabled={optimizing || !testPrompt.trim()}>
                 {optimizing ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Zap className="h-3.5 w-3.5 mr-1" />}
                 Optimize
