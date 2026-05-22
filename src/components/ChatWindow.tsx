@@ -27,6 +27,7 @@ import type { Attachment, Message, MessageMetadata } from "@/lib/types";
 import { ReadAloud } from "@/components/ReadAloud";
 import { ToolCallDisplay } from "@/components/ToolCallDisplay";
 import { formatTokens, getTokenColor } from "@/lib/tokens";
+import { useArtifactPreviewStore } from "@/lib/artifact-store";
 
 export function ChatWindow() {
   const {
@@ -374,6 +375,57 @@ function handleDownloadMessage(content: string, title: string) {
     .catch(() => {});
 }
 
+function ArtifactInlinePreview({ content, messageId }: { content: string; messageId: string }) {
+  const codeBlockMatch = content.match(/```[\w]*\n([\s\S]*?)```/);
+  const hasCodeBlock = Boolean(codeBlockMatch);
+  const snippet = codeBlockMatch?.[1]?.slice(0, 300) || content.slice(0, 300);
+  const lines = snippet.split("\n");
+  const firstLine = lines[0]?.replace(/^#+\s*/, "").slice(0, 60) || "Artifact";
+
+  if (!hasCodeBlock && content.length < 500) return null;
+
+  const handleOpen = () => {
+    const store = useArtifactPreviewStore.getState();
+    const existing = store.tabs.find(t => t.title === firstLine);
+    if (existing) {
+      store.setActiveTab(existing.id);
+      store.setOpen(true);
+    } else {
+      const id = `inline-${messageId}`;
+      store.addTab({
+        id,
+        title: firstLine,
+        type: hasCodeBlock ? "code" : "markdown",
+        content,
+        isPinned: false,
+        isStreaming: false,
+        createdAt: Date.now(),
+      });
+      store.setOpen(true);
+    }
+  };
+
+  return (
+    <div className="mt-2 border border-border/60 rounded-lg bg-muted/10 overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-muted/20 border-b border-border/40">
+        <span className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
+          <Code2 className="h-3 w-3" />
+          {firstLine}
+        </span>
+        <button
+          onClick={handleOpen}
+          className="text-[10px] px-2 py-0.5 rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium"
+        >
+          View
+        </button>
+      </div>
+      <pre className="text-[10px] font-mono text-muted-foreground p-3 max-h-24 overflow-hidden whitespace-pre-wrap">
+        {snippet.length === 300 ? snippet + "..." : snippet}
+      </pre>
+    </div>
+  );
+}
+
 function MessageBubble({ message, copiedId, onCopy, onRegenerate, isGenerating, isEditing, editContent, hasSubsequentMessages, onStartEdit, onCancelEdit, onEditContentChange, onSaveEdit, onBranch }: MessageBubbleProps) {
   const [showRaw, setShowRaw] = useState(false);
   const { agents } = useAgentStore();
@@ -501,6 +553,11 @@ function MessageBubble({ message, copiedId, onCopy, onRegenerate, isGenerating, 
 
         {/* Tool calls */}
         {isAssistant && <ToolCallDisplay toolCalls={message.toolCalls} />}
+
+        {/* Inline artifact preview */}
+        {isAssistant && !isGenerating && message.content && message.content.length > 200 && (
+          <ArtifactInlinePreview content={message.content} messageId={message.id} />
+        )}
 
         {/* Action buttons */}
         {isAssistant && !isGenerating && (

@@ -5,399 +5,258 @@ import { useArtifactPreviewStore, type PreviewTab } from "@/lib/artifact-store";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  X, Minimize2, Maximize2, Download, Share2, Copy, Pin, PinOff,
-  ChevronLeft, ChevronRight, PanelRight, ExternalLink, GripVertical,
-  FileText, Code2, Sheet, Presentation, GitFork, Image, BarChart3, History, Plus, Pencil,
+  X, Download, Copy, Code2, Eye, ChevronLeft, ChevronRight, ExternalLink, Maximize2, Minimize2, ArrowLeft,
 } from "lucide-react";
 import SandboxPreview from "./SandboxPreview";
 import { toast } from "sonner";
-import { handleDownloadMessage } from "@/lib/artifact-actions";
 
-const MIN_WIDTH = 320;
-const MAX_WIDTH = 900;
-const DEFAULT_WIDTH = 500;
+const PANEL_WIDTH = "55vw";
 
-const TYPE_ICONS: Record<string, React.ComponentType<any>> = {
-  document: FileText,
-  code: Code2,
-  sandbox: Code2,
-  spreadsheet: Sheet,
-  presentation: Presentation,
-  diagram: GitFork,
-  markdown: FileText,
-  html: Code2,
-  chart: BarChart3,
-  canvas: Image,
-  image: Image,
-};
+function getLanguage(tab: PreviewTab): string {
+  const c = tab.content || "";
+  if (c.includes("<!DOCTYPE") || c.includes("<html")) return "html";
+  if (c.includes("import React") || c.includes("useState") || c.includes("export default")) return "jsx";
+  if (c.includes("import ") && c.includes("from ")) return "typescript";
+  if (/def |print\(|import \w+/.test(c)) return "python";
+  if (/func |package main/.test(c)) return "go";
+  if (/function|const |let |var /.test(c)) return "javascript";
+  return "text";
+}
 
-const TYPE_LABELS: Record<string, string> = {
-  document: "Document",
-  code: "Code",
-  sandbox: "Sandbox",
-  spreadsheet: "Sheet",
-  presentation: "Slides",
-  diagram: "Diagram",
-  markdown: "Document",
-  html: "Preview",
-  chart: "Chart",
-  canvas: "Canvas",
-  image: "Image",
-};
+function extractPureCode(content: string): string {
+  const match = content.match(/```[\w]*\n([\s\S]*?)```/);
+  return match?.[1]?.trim() || content.trim();
+}
+
+function hasPreview(tab: PreviewTab): boolean {
+  const c = tab.content || "";
+  return c.includes("<!DOCTYPE") || c.includes("<html") || tab.type === "html" || tab.type === "code";
+}
+
+function CodeView({ tab }: { tab: PreviewTab }) {
+  const code = extractPureCode(tab.content);
+  const lines = code.split("\n");
+  const lang = getLanguage(tab);
+
+  return (
+    <div className="flex h-full bg-[#1e1e1e] overflow-hidden">
+      <div className="w-10 shrink-0 bg-[#1e1e1e] text-right pr-2 py-3 font-mono text-[11px] text-gray-600 select-none overflow-hidden">
+        {lines.map((_, i) => (
+          <div key={i} className="leading-5 h-5">{i + 1}</div>
+        ))}
+      </div>
+      <div className="flex-1 overflow-auto">
+        <pre className="font-mono text-[13px] leading-5 p-3 text-[#d4d4d4] whitespace-pre-wrap break-words min-h-full">
+          <code className={`language-${lang}`}>{code}</code>
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+function PreviewView({ tab }: { tab: PreviewTab }) {
+  const code = extractPureCode(tab.content);
+  if (code.includes("<!DOCTYPE") || code.includes("<html")) {
+    return (
+      <iframe
+        className="w-full h-full border-0 bg-white"
+        srcDoc={code}
+        sandbox="allow-scripts allow-same-origin"
+        title={tab.title}
+      />
+    );
+  }
+  return <SandboxPreview code={code} type={hasPreview(tab) ? "html" : "code"} />;
+}
 
 export default function ArtifactPreviewPanel() {
   const {
     isOpen, tabs, activeTabId, isFullscreen, width,
-    setOpen, setWidth, setActiveTab, removeTab, togglePin,
+    setOpen, setWidth, setActiveTab, removeTab,
     setFullscreen, closeAll,
   } = useArtifactPreviewStore();
 
-  const [isDragging, setIsDragging] = useState(false);
-  const [editingContent, setEditingContent] = useState("");
-  const [isEditing, setIsEditing] = useState(false);
+  const [activeView, setActiveView] = useState<"code" | "preview">("code");
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIdx, setHistoryIdx] = useState(-1);
   const panelRef = useRef<HTMLDivElement>(null);
-  const dragStartRef = useRef(0);
-  const widthRef = useRef(width);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
+  const showPreviewTab = activeTab ? hasPreview(activeTab) : false;
+
+  useEffect(() => { if (activeTabId) setActiveView("code"); }, [activeTabId]);
 
   useEffect(() => {
-    widthRef.current = width;
-  }, [width]);
-
-  const onResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-    dragStartRef.current = e.clientX;
-    const onMove = (ev: MouseEvent) => {
-      const delta = dragStartRef.current - ev.clientX;
-      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, widthRef.current + delta));
-      setWidth(newWidth);
-      dragStartRef.current = ev.clientX;
-      widthRef.current = newWidth;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        if (isFullscreen) setFullscreen(false);
+        else setOpen(false);
+      }
     };
-    const onUp = () => {
-      setIsDragging(false);
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, [setWidth]);
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [isOpen, isFullscreen, setOpen, setFullscreen]);
 
-  const handleDownload = (tab: PreviewTab) => {
-    const clean = extractArtifactContent(tab.content);
-    const format = tab.type === "spreadsheet" ? "xlsx"
-      : tab.type === "presentation" ? "pptx"
-      : tab.type === "code" || tab.type === "html" ? "html"
-      : "docx";
-
-    if (format === "html" || format === "md") {
-      const ext = format === "md" ? "md" : "html";
-      const blob = new Blob([clean], { type: format === "md" ? "text/markdown" : "text/html" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = `${tab.title}.${ext}`; a.click();
-      URL.revokeObjectURL(url);
-    } else {
-      const payload = {
-        type: format as string,
-        data: {
-          title: tab.title,
-          content: clean,
-          sections: [{ heading: "Content", body: clean.slice(0, 30000) }],
-        },
-        filename: `${tab.title.replace(/[^a-zA-Z0-9]/g, "_")}.${format}`,
-      };
-      fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
-        .then((r) => r.blob())
-        .then((blob) => {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url; a.download = payload.filename; a.click();
-          URL.revokeObjectURL(url);
-        })
-        .catch(() => toast.error("Download failed"));
+  useEffect(() => {
+    if (activeTabId && activeTabId !== history[historyIdx]) {
+      setHistory(prev => [...prev.slice(0, historyIdx + 1), activeTabId]);
+      setHistoryIdx(prev => prev + 1);
     }
-    toast.success(`Downloading ${tab.title}`);
-  };
+  }, [activeTabId]);
 
-  const handleShare = async (tab: PreviewTab) => {
-    try {
-      const res = await fetch("/api/artifacts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: tab.title, type: tab.type, content: tab.content }) });
-      const data = await res.json();
-      const shareRes = await fetch(`/api/artifacts/${data.id}/share`, { method: "POST" });
-      const shareData = await shareRes.json();
-      await navigator.clipboard.writeText(`${window.location.origin}/api/share/${shareData.shareToken}`);
-      toast.success("Share link copied!");
-    } catch {
-      toast.error("Share failed");
+  const navigateHistory = (dir: number) => {
+    const newIdx = historyIdx + dir;
+    if (newIdx >= 0 && newIdx < history.length) {
+      setHistoryIdx(newIdx);
+      setActiveTab(history[newIdx]);
     }
   };
 
-  const handleCopyContent = (tab: PreviewTab) => {
-    navigator.clipboard.writeText(tab.content);
-    toast.success("Content copied");
+  const handleCopy = () => {
+    if (!activeTab) return;
+    navigator.clipboard.writeText(extractPureCode(activeTab.content));
+    toast.success("Copied to clipboard");
   };
 
-  if (!isOpen) return null;
+  const handleDownload = () => {
+    if (!activeTab) return;
+    const code = extractPureCode(activeTab.content);
+    const ext = getLanguage(activeTab);
+    const extMap: Record<string, string> = { html: "html", jsx: "jsx", typescript: "ts", javascript: "js", python: "py", go: "go", text: "txt" };
+    const filename = `${activeTab.title.replace(/[^a-zA-Z0-9._-]/g, "_")}.${extMap[ext] || ext}`;
+    const blob = new Blob([code], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Downloaded " + filename);
+  };
 
-  if (isFullscreen) {
-    return (
-      <div className="fixed inset-0 z-50 bg-background flex flex-col">
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-card shrink-0">
-          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setFullscreen(false)}>
-            <Minimize2 className="h-3.5 w-3.5 mr-1" /> Exit Fullscreen
-          </Button>
-          <div className="flex-1" />
-          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setOpen(false)}>
-            <X className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-        <div className="flex-1 overflow-hidden">{renderContent(activeTab)}</div>
-      </div>
-    );
-  }
+  if (!activeTab) return null;
 
   return (
-    <div
-      ref={panelRef}
-      className={cn("flex flex-col border-l border-border bg-card/50 h-full shrink-0 animate-slide-in-right", isDragging && "select-none")}
-      style={{ width: `${width}px`, minWidth: `${MIN_WIDTH}px` }}
-    >
-      {/* Header */}
-      <div className="flex items-center gap-1 px-3 py-2 border-b border-border bg-muted/30 shrink-0">
-        <PanelRight className="h-3.5 w-3.5 text-primary" />
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Preview</span>
-        <div className="flex-1" />
-        {/* Tabs */}
-        <div className="flex items-center gap-0.5 max-w-[60%] overflow-x-auto scrollbar-none">
-          {tabs.map((tab) => {
-            const Icon = TYPE_ICONS[tab.type] || FileText;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  "flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors shrink-0 max-w-[120px]",
-                  activeTabId === tab.id
-                    ? "bg-primary/10 text-primary border border-primary/20"
-                    : "hover:bg-muted text-muted-foreground border border-transparent"
-                )}
-              >
-                {tab.isPinned && <Pin className="h-2.5 w-2.5 text-amber-500 shrink-0" />}
-                <Icon className="h-3 w-3 shrink-0" />
-                <span className="truncate">{tab.title.slice(0, 20)}</span>
-                {tab.isStreaming && <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />}
-                <span
-                  onClick={(e) => { e.stopPropagation(); removeTab(tab.id); }}
-                  className="ml-0.5 hover:bg-destructive/10 rounded p-0.5 shrink-0 cursor-pointer"
-                  role="button"
-                >
-                  <X className="h-2.5 w-2.5" />
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0" onClick={() => {
-          const id = Math.random().toString(36).substring(2, 8);
-          const tab: PreviewTab = { id, title: "New Preview", type: "markdown", content: "", isPinned: false, isStreaming: false, createdAt: Date.now() };
-          useArtifactPreviewStore.getState().addTab(tab);
-        }}>
-          <Plus className="h-3 w-3" />
-        </Button>
-        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0" onClick={() => setFullscreen(true)}>
-          <Maximize2 className="h-3 w-3" />
-        </Button>
-      </div>
-
-      {/* Content Area */}
-      {activeTab ? (
-        <TabContent tab={activeTab} onDownload={handleDownload} onShare={handleShare} onCopy={handleCopyContent} />
-      ) : (
-        <div className="flex-1 flex items-center justify-center p-6">
-          <div className="text-center">
-            <PanelRight className="h-10 w-10 text-muted-foreground/20 mx-auto mb-2" />
-            <p className="text-xs text-muted-foreground">No active preview</p>
-            <p className="text-[10px] text-muted-foreground/60 mt-1">Generate content in the chat to see it here</p>
+    <>
+      {isFullscreen && (
+        <div className="fixed inset-0 z-50 bg-background flex flex-col">
+          <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-card shrink-0 h-11">
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setFullscreen(false)}>
+              <Minimize2 className="h-3.5 w-3.5 mr-1" /> Exit Fullscreen
+            </Button>
+            <div className="flex-1" />
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setOpen(false)}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            {activeView === "code" ? <CodeView tab={activeTab} /> : <PreviewView tab={activeTab} />}
           </div>
         </div>
       )}
 
-      {/* Resize Handle */}
       <div
-        className="absolute top-0 left-0 w-1.5 h-full cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors z-10"
-        onMouseDown={onResizeStart}
-      />
-
-      {/* Close button */}
-      <button
-        onClick={() => setOpen(false)}
-        className="absolute -left-3 top-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-border hover:bg-muted-foreground/20 flex items-center justify-center shadow-sm border border-border"
-        title="Close preview panel"
+        ref={panelRef}
+        className={cn(
+          "fixed top-0 right-0 h-full z-40 bg-background flex flex-col",
+          "shadow-[-4px_0_24px_rgba(0,0,0,0.15)] border-l border-border",
+          "md:relative md:shadow-none md:border-l md:border-border",
+          isOpen ? "w-full md:shrink-0" : "translate-x-full md:hidden",
+        )}
+        style={{ width: isOpen ? (isFullscreen ? "100vw" : `min(${PANEL_WIDTH}, ${width}px)`) : 0, minWidth: isOpen ? 320 : 0, transition: "width 300ms ease-in-out, transform 300ms ease-in-out" }}
       >
-        <ChevronRight className="h-3 w-3 text-muted-foreground" />
-      </button>
-    </div>
-  );
-}
+        {/* Sticky Header */}
+        <div className="flex items-center gap-2 px-3 h-11 border-b border-border bg-card shrink-0">
+          <button onClick={() => setOpen(false)} className="md:hidden p-1 hover:bg-muted rounded">
+            <ArrowLeft className="h-4 w-4" />
+          </button>
 
-function extractArtifactContent(content: string): string {
-  const codeMatch = content.match(/```(?:plaintext|text|markdown)?\n([\s\S]*?)```/);
-  if (codeMatch?.[1] && codeMatch[1].trim().length > 200) {
-    return codeMatch[1].trim();
-  }
-  const resumeEnd = content.match(/```\s*\n\s*(?:---|###?\s+|##\s+)/);
-  if (resumeEnd) {
-    const before = content.slice(0, resumeEnd.index!);
-    const innerBlock = before.match(/```(?:plaintext|text|markdown)?\n([\s\S]*?)$/);
-    if (innerBlock) return innerBlock[1].trim();
-  }
-  return content.trim();
-}
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <span className="text-sm font-semibold truncate text-primary">
+              {activeTab.title || "Artifact"}
+            </span>
+          </div>
 
-function TabContent({
-  tab,
-  onDownload,
-  onShare,
-  onCopy,
-}: {
-  tab: PreviewTab;
-  onDownload: (t: PreviewTab) => void;
-  onShare: (t: PreviewTab) => void;
-  onCopy: (t: PreviewTab) => void;
-}) {
-  const { updateTab } = useArtifactPreviewStore();
-  const [isEditing, setIsEditing] = useState(false);
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => navigateHistory(-1)}
+              disabled={historyIdx <= 0}
+              className="p-1 rounded hover:bg-muted disabled:opacity-30"
+              title="Previous"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => navigateHistory(1)}
+              disabled={historyIdx >= history.length - 1}
+              className="p-1 rounded hover:bg-muted disabled:opacity-30"
+              title="Next"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
 
-  const handleTogglePin = () => {
-    useArtifactPreviewStore.getState().togglePin(tab.id);
-  };
+          <div className="flex items-center gap-0.5 bg-muted/50 rounded-lg p-0.5">
+            <button
+              onClick={() => setActiveView("code")}
+              className={cn("flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors", activeView === "code" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}
+            >
+              <Code2 className="h-3 w-3" /> Code
+            </button>
+            {showPreviewTab && (
+              <button
+                onClick={() => setActiveView("preview")}
+                className={cn("flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors", activeView === "preview" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}
+              >
+                <Eye className="h-3 w-3" /> Preview
+              </button>
+            )}
+          </div>
 
-  return (
-    <div className="flex flex-col flex-1 overflow-hidden">
-      {/* Tab Action Bar */}
-      <div className="flex items-center gap-1 px-2 py-1 border-b border-border/50 bg-muted/10 shrink-0">
-        <span className="text-[10px] font-mono text-muted-foreground uppercase">{TYPE_LABELS[tab.type] || "Preview"}</span>
-        <div className="flex-1" />
-        <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px]" onClick={handleTogglePin}>
-          {tab.isPinned ? <Pin className="h-3 w-3 text-amber-500" /> : <PinOff className="h-3 w-3" />}
-        </Button>
-        <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px]" onClick={() => onCopy(tab)}>
-          <Copy className="h-3 w-3" />
-        </Button>
-        <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px]" onClick={() => onShare(tab)}>
-          <Share2 className="h-3 w-3" />
-        </Button>
-        <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px]" onClick={() => onDownload(tab)}>
-          <Download className="h-3 w-3" />
-        </Button>
-        <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px]" onClick={() => setIsEditing(!isEditing)}>
-          <Pencil className="h-3 w-3" />
-        </Button>
+          <div className="flex items-center gap-0.5">
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={handleCopy} title="Copy code">
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={handleDownload} title="Download">
+              <Download className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setFullscreen(true)} title="Fullscreen">
+              <Maximize2 className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setOpen(false)} title="Close (Esc)">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Tab bar for multiple artifacts */}
+        {tabs.length > 1 && (
+          <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-border/50 bg-muted/10 overflow-x-auto scrollbar-none shrink-0">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors shrink-0 max-w-[140px]",
+                  activeTabId === tab.id ? "bg-primary/10 text-primary border border-primary/20" : "hover:bg-muted text-muted-foreground border border-transparent"
+                )}
+              >
+                <span className="truncate">{tab.title.slice(0, 25)}</span>
+                {tab.isStreaming && <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />}
+                <span onClick={(e) => { e.stopPropagation(); removeTab(tab.id); }} className="ml-0.5 hover:bg-destructive/10 rounded p-0.5 shrink-0 cursor-pointer">
+                  <X className="h-2.5 w-2.5" />
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Content */}
+        <div className="flex-1 overflow-hidden">
+          {activeView === "code" ? <CodeView tab={activeTab} /> : <PreviewView tab={activeTab} />}
+        </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-hidden">
-        {renderContent(tab)}
-      </div>
-    </div>
-  );
-}
-
-function renderContent(tab: PreviewTab | null) {
-  if (!tab) return null;
-
-  const content = tab.content || "";
-
-  switch (tab.type) {
-    case "code":
-    case "sandbox":
-      return <SandboxPreview code={content} type={content.includes("<!DOCTYPE") || content.includes("<html") ? "html" : "code"} />;
-
-    case "html":
-      return <SandboxPreview code={content} type="html" />;
-
-    case "diagram":
-      return (
-        <div className="p-4 h-full overflow-auto">
-          <pre className="text-xs font-mono bg-muted/30 p-4 rounded-lg whitespace-pre-wrap">{content}</pre>
-        </div>
-      );
-
-    case "spreadsheet":
-      return <SpreadsheetPreview content={content} />;
-
-    case "markdown":
-    case "document":
-    case "presentation":
-      return <MarkdownPreview content={content} />;
-
-    case "chart":
-      return <ChartPreview content={content} />;
-
-    case "canvas":
-    case "image":
-      return (
-        <div className="p-4 h-full overflow-auto flex items-center justify-center">
-          <pre className="text-xs font-mono bg-muted/30 p-4 rounded-lg max-w-full whitespace-pre-wrap">{content}</pre>
-        </div>
-      );
-
-    default:
-      return (
-        <div className="p-4 h-full overflow-auto">
-          <div className="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap font-mono text-xs">{content}</div>
-        </div>
-      );
-  }
-}
-
-function MarkdownPreview({ content }: { content: string }) {
-  return (
-    <div className="p-4 h-full overflow-y-auto">
-      <div
-        className="prose prose-sm dark:prose-invert max-w-none"
-        dangerouslySetInnerHTML={{
-          __html: content
-            .replace(/#{1,3}\s(.+)/g, (_, t) => `<h${_.match(/^#+/)?.[0].length || 1} style="margin:12px 0;font-weight:700;font-size:${_.startsWith("###") ? "16px" : _.startsWith("##") ? "20px" : "24px"}">${t}</h${_.match(/^#+/)?.[0].length || 1}>`)
-            .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-            .replace(/\*(.+?)\*/g, "<em>$1</em>")
-            .replace(/`(.+?)`/g, "<code style='background:#f3f4f6;padding:2px 6px;border-radius:4px;font-size:13px'>$1</code>")
-            .replace(/```[\s\S]*?```/g, (m) => `<pre style='background:#1e1e1e;color:#d4d4d4;padding:12px;border-radius:8px;overflow-x:auto'><code>${m.replace(/```[\w]*\n?/g, "").replace(/```/g, "").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</code></pre>`)
-            .replace(/\n/g, "<br/>"),
-        }}
-      />
-    </div>
-  );
-}
-
-function SpreadsheetPreview({ content }: { content: string }) {
-  const lines = content.split("\n").filter((l) => l.trim());
-  const rows = lines.map((l) => l.split("|").filter((c) => c.trim()));
-
-  return (
-    <div className="p-2 h-full overflow-auto">
-      <table className="w-full border-collapse text-xs">
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i} className={cn(i === 0 && "bg-muted/50 font-semibold", "border-b border-border")}>
-              {row.map((cell, j) => (
-                <td key={j} className="px-3 py-1.5 border-r border-border/50 last:border-r-0">{cell}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function ChartPreview({ content }: { content: string }) {
-  return (
-    <div className="p-4 h-full overflow-auto">
-      <pre className="text-xs font-mono bg-muted/30 p-4 rounded-lg whitespace-pre-wrap">{content}</pre>
-    </div>
+      {/* Overlay for mobile */}
+      {isOpen && <div className="fixed inset-0 bg-black/30 z-30 md:hidden" onClick={() => setOpen(false)} />}
+    </>
   );
 }
