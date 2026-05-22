@@ -86,6 +86,7 @@ export default function ArtifactPreviewPanel() {
   }, [setWidth]);
 
   const handleDownload = (tab: PreviewTab) => {
+    const clean = extractArtifactContent(tab.content);
     const format = tab.type === "spreadsheet" ? "xlsx"
       : tab.type === "presentation" ? "pptx"
       : tab.type === "code" || tab.type === "html" ? "html"
@@ -93,7 +94,7 @@ export default function ArtifactPreviewPanel() {
 
     if (format === "html" || format === "md") {
       const ext = format === "md" ? "md" : "html";
-      const blob = new Blob([tab.content], { type: format === "md" ? "text/markdown" : "text/html" });
+      const blob = new Blob([clean], { type: format === "md" ? "text/markdown" : "text/html" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url; a.download = `${tab.title}.${ext}`; a.click();
@@ -103,8 +104,8 @@ export default function ArtifactPreviewPanel() {
         type: format as string,
         data: {
           title: tab.title,
-          content: tab.content,
-          sections: [{ heading: "Content", body: tab.content.slice(0, 30000) }],
+          content: clean,
+          sections: [{ heading: "Content", body: clean.slice(0, 30000) }],
         },
         filename: `${tab.title.replace(/[^a-zA-Z0-9]/g, "_")}.${format}`,
       };
@@ -239,6 +240,20 @@ export default function ArtifactPreviewPanel() {
       </button>
     </div>
   );
+}
+
+function extractArtifactContent(content: string): string {
+  const codeMatch = content.match(/```(?:plaintext|text|markdown)?\n([\s\S]*?)```/);
+  if (codeMatch?.[1] && codeMatch[1].trim().length > 200) {
+    return codeMatch[1].trim();
+  }
+  const resumeEnd = content.match(/```\s*\n\s*(?:---|###?\s+|##\s+)/);
+  if (resumeEnd) {
+    const before = content.slice(0, resumeEnd.index!);
+    const innerBlock = before.match(/```(?:plaintext|text|markdown)?\n([\s\S]*?)$/);
+    if (innerBlock) return innerBlock[1].trim();
+  }
+  return content.trim();
 }
 
 function TabContent({
