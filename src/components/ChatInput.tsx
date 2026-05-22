@@ -241,17 +241,22 @@ export function ChatInput() {
                   timestamp: data.timestamp,
                 });
                 const resultStr = typeof data.result === "string" ? data.result : JSON.stringify(data.result);
-                const fileMatch = resultStr.match(/(\S+\.(docx|pdf|xlsx|pptx|csv|png|jpg|svg))/i);
+                const fileMatch = resultStr.match(/(\S+\.(docx|pdf|xlsx|pptx|csv|png|jpg|svg))\b/i);
                 if (fileMatch && data.status === "success") {
-                  const fileName = fileMatch[1].replace(/.*[/\\]/, "");
+                  let fileName = fileMatch[1];
+                  fileName = fileName.replace(/^.*[\\\/]/, "").replace(/\r/g, "");
                   const ext = fileMatch[2].toLowerCase();
+                  let content = `**${fileName}**\n\nCreated successfully.\n\nTool: ${data.toolName}\nType: ${ext.toUpperCase()}\n\n`;
+                  const jsonMatch = resultStr.match(/"stdout"\s*:\s*"([^"]+)"/);
+                  if (jsonMatch) {
+                    content += jsonMatch[1].replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\u([0-9a-fA-F]{4})/g, (_, c) => String.fromCharCode(parseInt(c, 16)));
+                  }
                   const store = useArtifactPreviewStore.getState();
-                  const existingId = `file-${fileName}`;
                   store.addTab({
-                    id: existingId,
+                    id: `file-${fileName}`,
                     title: fileName,
-                    type: ext === "pdf" ? "markdown" : ext === "docx" ? "document" : ext === "xlsx" ? "spreadsheet" : ext === "pptx" ? "presentation" : "code",
-                    content: `**${fileName}**\n\nCreated successfully.\n\nTool: ${data.toolName}\nType: ${ext.toUpperCase()}\n\nClick Download to save this file.`,
+                    type: ext === "xlsx" || ext === "csv" ? "spreadsheet" : ext === "pptx" ? "presentation" : ext === "docx" ? "document" : "code",
+                    content,
                     isPinned: false,
                     isStreaming: false,
                     createdAt: Date.now(),

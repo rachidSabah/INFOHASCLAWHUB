@@ -31,7 +31,7 @@ function extractPureCode(content: string): string {
 
 function hasPreview(tab: PreviewTab): boolean {
   const c = tab.content || "";
-  return c.includes("<!DOCTYPE") || c.includes("<html") || tab.type === "html" || tab.type === "code";
+  return c.includes("<!DOCTYPE") || c.includes("<html") || tab.type === "html" || tab.type === "code" || tab.type === "document" || tab.type === "markdown" || tab.type === "spreadsheet" || tab.type === "presentation";
 }
 
 function isBinaryFile(tab: PreviewTab): boolean {
