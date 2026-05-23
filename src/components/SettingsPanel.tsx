@@ -217,6 +217,9 @@ export function SettingsPanel() {
   const [newProvider, setNewProvider] = useState({ name: "", baseUrl: "", apiKey: "" });
   const [isDetectingModels, setIsDetectingModels] = useState(false);
   const [detectedModels, setDetectedModels] = useState<{ id: string; name: string; description: string }[]>([]);
+  const [providerModelCounts, setProviderModelCounts] = useState<Record<string, number>>({});
+  const [expandedProviderId, setExpandedProviderId] = useState<string | null>(null);
+  const [providerModelDetails, setProviderModelDetails] = useState<Record<string, { id: string; name: string; description: string }[]>>({});
   
   // Agent states
   const [isAddingAgent, setIsAddingAgent] = useState(false);
@@ -237,6 +240,30 @@ export function SettingsPanel() {
       const res = await fetch("/api/providers");
       const data = await res.json();
       setProviders(data);
+      // Also fetch model counts from /api/models
+      try {
+        const modelsRes = await fetch("/api/models");
+        if (modelsRes.ok) {
+          const modelGroups: { name: string; models: { id: string; name: string; description: string }[] }[] = await modelsRes.json();
+          const counts: Record<string, number> = {};
+          const details: Record<string, { id: string; name: string; description: string }[]> = {};
+          for (const mg of modelGroups) {
+            const slug = mg.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+            counts[slug] = mg.models?.length || 0;
+            details[slug] = mg.models || [];
+          }
+          // Also match by provider name
+          for (const p of data) {
+            const slug = p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+            if (counts[slug] === undefined) {
+              counts[slug] = 0;
+              details[slug] = [];
+            }
+          }
+          setProviderModelCounts(counts);
+          setProviderModelDetails(details);
+        }
+      } catch {}
     } catch {
       toast.error("Failed to fetch providers");
     }
@@ -1030,63 +1057,118 @@ export function SettingsPanel() {
                       <p className="text-xs">No providers configured yet.</p>
                     </div>
                   ) : (
-                    providers.map((p) => (
-                      <div key={p.id} className="group p-4 rounded-xl border bg-card/50 flex items-center justify-between gap-4 hover:border-primary/40 hover:bg-card transition-all shadow-sm">
-                        <div className="flex items-center gap-4 flex-1 min-w-0">
-                          <div className="h-10 w-10 rounded-xl bg-primary/5 flex items-center justify-center shrink-0 border border-primary/10">
-                            <Server className="h-5 w-5 text-primary/70" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-sm">{p.name}</span>
-                              <span className="text-[9px] px-2 py-0.5 rounded-full bg-green-500/10 text-green-500 border border-green-500/20 font-bold uppercase tracking-wider">Active</span>
+                    providers.map((p) => {
+                      const pSlug = p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+                      const modelCount = providerModelCounts[pSlug] || 0;
+                      const pModels = providerModelDetails[pSlug] || [];
+                      const isExpanded = expandedProviderId === p.id;
+                      return (
+                        <div key={p.id} className="rounded-xl border bg-card/50 hover:border-primary/40 transition-all shadow-sm overflow-hidden">
+                          <div className="group p-4 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-4 flex-1 min-w-0">
+                              <div className="h-10 w-10 rounded-xl bg-primary/5 flex items-center justify-center shrink-0 border border-primary/10">
+                                <Server className="h-5 w-5 text-primary/70" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-sm">{p.name}</span>
+                                  <span className="text-[9px] px-2 py-0.5 rounded-full bg-green-500/10 text-green-500 border border-green-500/20 font-bold uppercase tracking-wider">Active</span>
+                                  {modelCount > 0 && (
+                                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20 font-bold">
+                                      {modelCount} model{modelCount !== 1 ? "s" : ""}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-muted-foreground truncate mt-0.5">
+                                  {p.baseUrl || "Default API Endpoint"}
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-[11px] text-muted-foreground truncate mt-0.5">
-                              {p.baseUrl || "Default API Endpoint"}
+                            <div className="flex items-center gap-1">
+                              {modelCount > 0 && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10"
+                                  onClick={() => setExpandedProviderId(isExpanded ? null : p.id)}
+                                  title={isExpanded ? "Hide models" : "Show available models"}
+                                >
+                                  <Sparkles className={cn("h-4 w-4 transition-transform", isExpanded && "rotate-180")} />
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10"
+                                onClick={async () => {
+                                  const tid = toast.loading("Fetching models from API...");
+                                  await fetchModels();
+                                  await fetchProviders();
+                                  toast.dismiss(tid);
+                                  toast.success(`Models synced for ${p.name}`);
+                                }}
+                                title="Sync models from provider API"
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10"
+                                onClick={() => {
+                                  setEditingProviderId(p.id);
+                                  setNewProvider({ name: p.name, baseUrl: p.baseUrl || "", apiKey: p.apiKey || "" });
+                                  setIsAddingProvider(true);
+                                }}
+                                title="Edit provider configuration"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => handleDeleteProvider(p.id)}
+                                title="Delete provider"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
                           </div>
+                          {isExpanded && pModels.length > 0 && (
+                            <div className="px-4 pb-3 border-t border-border/50">
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground py-2">Available Models (via API)</p>
+                              <div className="max-h-[180px] overflow-y-auto space-y-1">
+                                {pModels.map((m) => (
+                                  <button
+                                    key={m.id}
+                                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors text-left hover:bg-muted"
+                                    onClick={async () => {
+                                      updateSetting("defaultModel", m.id);
+                                      try {
+                                        await fetch("/api/settings", {
+                                          method: "POST",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ ...localSettings, defaultModel: m.id }),
+                                        });
+                                        toast.success(`Default model set to ${m.name}`);
+                                      } catch { toast.error("Failed to set model"); }
+                                    }}
+                                    title={`Click to set ${m.name} as default model`}
+                                  >
+                                    <div className="flex-1 min-w-0">
+                                      <p className="truncate font-medium">{m.name}</p>
+                                      <p className="text-[10px] text-muted-foreground truncate">{m.description}</p>
+                                    </div>
+                                    <span className="text-[9px] text-muted-foreground font-mono shrink-0">{m.id.replace(`${pSlug}/`, "")}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10"
-                            onClick={() => {
-                              setEditingProviderId(p.id);
-                              setNewProvider({ name: p.name, baseUrl: p.baseUrl || "", apiKey: p.apiKey || "" });
-                              setIsAddingProvider(true);
-                            }}
-                            title="Edit provider configuration"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10"
-                            onClick={() => {
-                              toast.promise(fetchModels(), {
-                                loading: "Syncing models...",
-                                success: "Models synced",
-                                error: "Sync failed",
-                              });
-                            }}
-                            title="Sync models for this provider"
-                          >
-                            <RotateCcw className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => handleDeleteProvider(p.id)}
-                            title="Delete provider"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </TabsContent>
