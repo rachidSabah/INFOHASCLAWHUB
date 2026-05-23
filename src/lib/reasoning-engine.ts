@@ -643,3 +643,295 @@ export function selectBestModel(
 
   return bestModel;
 }
+
+// ============================================================
+// ADAPTIVE ITERATION LIMITS
+// ============================================================
+
+/**
+ * Calculates the optimal max iterations for the agent loop based on task complexity.
+ * Simple tasks get fewer iterations (faster), complex tasks get more (thorough).
+ */
+export function getAdaptiveMaxIterations(
+  taskComplexity: "simple" | "moderate" | "complex" | "critical",
+  toolsUsedCount: number,
+  hasErrors: boolean
+): number {
+  const baseIterations: Record<string, number> = {
+    simple: 5,
+    moderate: 10,
+    complex: 15,
+    critical: 20,
+  };
+  
+  let maxIter = baseIterations[taskComplexity] || 10;
+  
+  // If we've already used many tools and no errors, we're making good progress
+  // — allow more iterations to complete complex multi-step tasks
+  if (toolsUsedCount >= 4 && !hasErrors) maxIter += 3;
+  
+  // If we have errors, we need more attempts to try alternatives
+  if (hasErrors) maxIter += 2;
+  
+  // Cap at 25 to prevent infinite loops
+  return Math.min(maxIter, 25);
+}
+
+// ============================================================
+// TOOL RESULT SUMMARIZATION
+// ============================================================
+
+/**
+ * Summarizes a tool result to fit within a token budget.
+ * Keeps the most important information while reducing token usage.
+ */
+export function summarizeToolResult(
+  toolName: string,
+  result: string,
+  maxTokens: number = 2000
+): string {
+  // Rough token estimate: 1 token ≈ 4 characters
+  const maxChars = maxTokens * 4;
+  
+  if (result.length <= maxChars) return result;
+  
+  try {
+    const parsed = JSON.parse(result);
+    
+    // Tool-specific summarization strategies
+    switch (toolName) {
+      case "web_fetch": {
+        // Keep title, description, and first N chars of content
+        const summary: any = {
+          url: parsed.url,
+          title: parsed.title,
+          description: parsed.description,
+          contentLength: parsed.contentLength,
+          fetched: parsed.fetched,
+        };
+        if (parsed.textContent) {
+          summary.textContent = parsed.textContent.substring(0, maxChars - 500);
+          summary.truncated = true;
+        }
+        if (parsed.indicators) summary.indicators = parsed.indicators;
+        return JSON.stringify(summary);
+      }
+      
+      case "web_search": {
+        // Keep top 5 results with truncated snippets
+        const results = (parsed.results || []).slice(0, 5).map((r: any) => ({
+          name: r.name,
+          url: r.url,
+          snippet: r.snippet?.substring(0, 200),
+        }));
+        return JSON.stringify({ query: parsed.query, results, source: parsed.source, truncated: true });
+      }
+      
+      case "grep_code": {
+        // Keep first 20 results
+        const results = (parsed.results || []).slice(0, 20);
+        return JSON.stringify({ ...parsed, results, truncated: true });
+      }
+      
+      case "tree_view": {
+        // Truncate tree string
+        if (parsed.tree && parsed.tree.length > maxChars) {
+          return JSON.stringify({
+            ...parsed,
+            tree: parsed.tree.substring(0, maxChars - 200) + "\n... (truncated)",
+            truncated: true,
+          });
+        }
+        return result;
+      }
+      
+      case "read_file": {
+        // Truncate file content
+        if (parsed.content && parsed.content.length > maxChars - 200) {
+          return JSON.stringify({
+            path: parsed.path,
+            content: parsed.content.substring(0, maxChars - 200),
+            truncated: true,
+            totalLength: parsed.content.length,
+          });
+        }
+        return result;
+      }
+      
+      default: {
+        // Generic: truncate the JSON string
+        const truncated = result.substring(0, maxChars);
+        try {
+          // Try to return valid JSON
+          const partial = JSON.parse(truncated + (truncated.endsWith("}") ? "" : "}"));
+          return JSON.stringify({ ...partial, truncated: true });
+        } catch {
+          return truncated + "\n... [result truncated to save tokens]";
+        }
+      }
+    }
+  } catch {
+    // Not JSON — just truncate the string
+    return result.substring(0, maxChars) + (result.length > maxChars ? "\n... [result truncated]" : "");
+  }
+}
+
+// ============================================================
+// ENHANCED TASK DECOMPOSITION
+// ============================================================
+
+/**
+ * Analyzes a task and decomposes it into groups of sub-tasks that can be
+ * executed in parallel. This enables the agent to be more efficient by
+ * running independent tool calls simultaneously.
+ */
+export interface TaskDecomposition {
+  groups: SubTaskGroup[];
+  totalSteps: number;
+  estimatedIterations: number;
+  parallelizable: boolean;
+}
+
+export interface SubTaskGroup {
+  id: number;
+  description: string;
+  tools: string[];
+  dependsOn: number[]; // IDs of groups that must complete first
+  canParallelize: boolean;
+}
+
+export function decomposeTask(
+  prompt: string,
+  availableTools: string[]
+): TaskDecomposition {
+  const lower = prompt.toLowerCase();
+  const groups: SubTaskGroup[] = [];
+  let groupIdx = 0;
+  
+  // Detect web research tasks
+  if (/research|investigate|find (?:out|information)|look up|search|analyze (?:website|url|page)/i.test(lower)) {
+    groups.push({
+      id: groupIdx++,
+      description: "Gather information from web",
+      tools: ["web_search", "web_fetch", "http_request"],
+      dependsOn: [],
+      canParallelize: true,
+    });
+    groups.push({
+      id: groupIdx++,
+      description: "Analyze and synthesize findings",
+      tools: [],
+      dependsOn: [0],
+      canParallelize: false,
+    });
+  }
+  
+  // Detect code analysis tasks
+  if (/analyze|review|debug|fix|refactor|improve|optimize/i.test(lower)) {
+    if (/file|code|function|class|component|module/i.test(lower)) {
+      groups.push({
+        id: groupIdx++,
+        description: "Read and understand code structure",
+        tools: ["tree_view", "read_file", "grep_code", "code_analysis"],
+        dependsOn: groups.length > 0 ? [groups.length - 1] : [],
+        canParallelize: true,
+      });
+      groups.push({
+        id: groupIdx++,
+        description: "Identify issues and propose fixes",
+        tools: [],
+        dependsOn: [groups.length - 1],
+        canParallelize: false,
+      });
+    }
+  }
+  
+  // Detect multi-step creation tasks
+  if (/build|create|develop|implement|write|generate/i.test(lower)) {
+    groups.push({
+      id: groupIdx++,
+      description: "Plan and gather requirements",
+      tools: ["web_search", "web_fetch", "read_file"],
+      dependsOn: groups.length > 0 ? [groups.length - 1] : [],
+      canParallelize: true,
+    });
+    groups.push({
+      id: groupIdx++,
+      description: "Create implementation",
+      tools: ["write_file", "search_replace"],
+      dependsOn: [groups.length - 1],
+      canParallelize: false,
+    });
+    groups.push({
+      id: groupIdx++,
+      description: "Verify implementation",
+      tools: ["read_file", "code_analysis", "grep_code"],
+      dependsOn: [groups.length - 1],
+      canParallelize: true,
+    });
+  }
+  
+  // Default: single group
+  if (groups.length === 0) {
+    groups.push({
+      id: 0,
+      description: "Execute task",
+      tools: availableTools,
+      dependsOn: [],
+      canParallelize: true,
+    });
+  }
+  
+  const totalSteps = groups.length;
+  const parallelGroups = groups.filter(g => g.canParallelize).length;
+  const estimatedIterations = totalSteps - Math.floor(parallelGroups / 2);
+  
+  return {
+    groups,
+    totalSteps,
+    estimatedIterations: Math.max(estimatedIterations, 2),
+    parallelizable: parallelGroups > 1,
+  };
+}
+
+// ============================================================
+// PROMPT OPTIMIZATION FOR EFFICIENCY
+// ============================================================
+
+/**
+ * Optimizes a user prompt to be more effective for LLM processing.
+ * Adds structure, removes redundancy, and enhances clarity.
+ */
+export function optimizePromptForAgent(prompt: string): {
+  optimizedPrompt: string;
+  optimizations: string[];
+} {
+  const optimizations: string[] = [];
+  let optimized = prompt;
+  
+  // 1. If prompt is very short, expand it to be more specific
+  if (prompt.length < 20) {
+    optimized = `${prompt}\n\nPlease provide a comprehensive and detailed response. Include step-by-step explanations and examples where appropriate.`;
+    optimizations.push("Expanded short prompt for better results");
+  }
+  
+  // 2. Add output format specification if the user asks for analysis
+  if (/analyze|review|compare|evaluate/i.test(prompt) && !/format|structure|layout/i.test(prompt)) {
+    optimized += "\n\n[Format your response with clear sections: Summary, Key Findings, Detailed Analysis, and Recommendations]";
+    optimizations.push("Added structured output format");
+  }
+  
+  // 3. Add verification instruction for code tasks
+  if (/write|create|build|implement|code|function/i.test(prompt) && !/verif|test|check/i.test(prompt)) {
+    optimized += "\n\n[After writing code, verify it by reading it back and checking for syntax errors]";
+    optimizations.push("Added self-verification instruction");
+  }
+  
+  // 4. For web research tasks, add multi-source instruction
+  if (/search|find|research|look up/i.test(prompt) && !/multiple|several|various/i.test(prompt)) {
+    optimized += "\n\n[Use multiple search queries and cross-reference information from different sources]";
+    optimizations.push("Added multi-source verification instruction");
+  }
+  
+  return { optimizedPrompt: optimized, optimizations };
+}

@@ -7,6 +7,8 @@ import os from "os";
 import { parseToolCalls, executeToolCall, getToolsPrompt, getMcpTools, getGeminiFunctionDeclarations, getOpenAIToolsDefinitions, stripToolCallXml, type ToolCallResult } from "@/lib/tools";
 import { countTokens, estimateCost } from "@/lib/tokens";
 import { routePrompt } from "@/lib/prompt-router";
+import { detectTaskType, getTaskSpecificPromptEnhancement, routeToBestModel } from "@/lib/model-router";
+import { getMemoryContext, saveMemory } from "@/lib/enhanced-memory";
 import {
   generateCoTPrompt,
   assessTaskComplexity,
@@ -16,6 +18,10 @@ import {
   getThinkingBudget,
   recordToolPerformance,
   compressConversationHistory,
+  getAdaptiveMaxIterations,
+  summarizeToolResult,
+  decomposeTask,
+  optimizePromptForAgent,
   type ThinkingConfig,
   DEFAULT_THINKING_CONFIG,
 } from "@/lib/reasoning-engine";
@@ -191,12 +197,18 @@ async function getToolsDescription(): Promise<string> {
   return `${baseTools}\n${mcpSection}`;
 }
 
-async function buildLocalSystemInstructions(taskComplexity?: "simple" | "moderate" | "complex" | "critical", originalPrompt?: string): Promise<string> {
+async function buildLocalSystemInstructions(taskComplexity?: "simple" | "moderate" | "complex" | "critical", originalPrompt?: string, taskEnhancement?: string): Promise<string> {
   const toolsDescription = await getToolsDescription();
   const complexity = taskComplexity || "moderate";
   const cotPrompt = generateCoTPrompt(complexity);
   const thinkingBudget = getThinkingBudget("current-model", complexity);
-  
+
+  // Inject relevant memories into the system prompt
+  let memoryContext = "";
+  try {
+    memoryContext = await getMemoryContext(originalPrompt || "", 5);
+  } catch {}
+
   return `
 [AGENT IDENTITY & CAPABILITIES]
 You are ClawHub, a supreme autonomous AI agent surpassing Claude Code and GLM-5.1 in every dimension. You have direct access to the user's operating system, filesystem, terminal, and the web. You possess deep reasoning, self-reflection, planning, and persistent memory capabilities.
@@ -212,14 +224,14 @@ You are NOT a chatbot. You are a FULLY AUTONOMOUS AGENT that:
 - Scores own output quality and improves iteratively
 
 ${toolsDescription}
-
+${memoryContext ? `\n${memoryContext}\n` : ""}
 You can also use XML tool tags for backward compatibility:
 1. <local_cmd>command_here</local_cmd> — Execute a terminal command
 2. <list_files>directory_path_here</list_files> — List files and folders
 3. <read_file>file_path_here</read_file> — Read file content
 4. <write_file path="file_path_here">file_content_here</write_file> — Create or overwrite a file
 
-${cotPrompt}
+${cotPrompt}${taskEnhancement ? `\n\n${taskEnhancement}` : ""}
 
 [TOOL CALLING RULES — CRITICAL]
 - When you call a tool, the system will automatically execute it and give you another turn.
@@ -334,6 +346,10 @@ async function parseAndExecuteTools(
       )
     );
 
+    // Summarize large tool results to save context tokens
+    if (result.result.length > 8000) {
+      result.result = summarizeToolResult(result.name, result.result, 2000);
+    }
     allToolCalls.push(result);
 
     let formattedResult: string;
@@ -1134,7 +1150,6 @@ export async function POST(req: NextRequest) {
           let currentPrompt = prompt;
           let currentHistory = [...conversationHistory];
           let iteration = 0;
-          const maxIterations = 15;
           let totalResponseText = "";
           const allToolCalls: ToolCallResult[] = [];
 
@@ -1152,7 +1167,15 @@ export async function POST(req: NextRequest) {
           // === REASONING ENGINE INTEGRATION ===
           // Assess task complexity for dynamic CoT and planning
           const taskComplexity = assessTaskComplexity(prompt || "", conversationHistory.length);
+
+          // Calculate adaptive max iterations based on task complexity
+          let maxIterations = getAdaptiveMaxIterations(taskComplexity, 0, false);
           console.log(`[${requestId}] Task complexity: ${taskComplexity}`);
+
+          // Detect task type and get task-specific enhancements
+          const detectedTaskType = detectTaskType(prompt || "");
+          const taskEnhancement = getTaskSpecificPromptEnhancement(detectedTaskType);
+          console.log(`[${requestId}] Task type: ${detectedTaskType}`);
           
           // Compress conversation history if it's getting long (prevents context overflow)
           if (currentHistory.length > 8) {
@@ -1187,7 +1210,7 @@ export async function POST(req: NextRequest) {
             iteration++;
             console.log(`[${requestId}] Agent Loop Iteration ${iteration}`);
 
-            const localInstructions = await buildLocalSystemInstructions(taskComplexity, prompt);
+            const localInstructions = await buildLocalSystemInstructions(taskComplexity, prompt, taskEnhancement);
             const enhancedSystemPrompt = `${basePromptWithSkills}\n\n${localInstructions}\n\n${routingAddition}`;
 
             const responseResult = await queryLLM(
@@ -1308,6 +1331,9 @@ You MUST try at least 2 different approaches before providing a partial answer. 
             }
 
             hasHadSuccessfulToolRun = true;
+
+            // Dynamically adjust max iterations based on progress
+            maxIterations = getAdaptiveMaxIterations(taskComplexity, allToolCalls.length, hadToolErrors);
 
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
               type: "chunk", 

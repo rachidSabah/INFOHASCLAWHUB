@@ -6,6 +6,7 @@ import { MCPClient, getMcpServerConfigs } from "@/lib/mcp";
 // Re-export client-safe utility functions from shared module
 export { stripToolCallXml } from "@/lib/tool-call-utils";
 import { stripToolCallXml } from "@/lib/tool-call-utils";
+import { getCachedToolResult, setCachedToolResult } from "@/lib/tool-cache";
 
 export interface ToolParameter {
   type: string;
@@ -75,6 +76,8 @@ const availableTools: ToolDefinition[] = [
       filePath: { type: "string", description: "Path to the file relative to the workspace" },
     },
     execute: async (params, workspacePath) => {
+      const cached = getCachedToolResult("read_file", params);
+      if (cached) return cached;
       const filePath = params.filePath as string;
       if (!filePath) return JSON.stringify({ error: "No file path provided" });
       try {
@@ -86,7 +89,9 @@ const availableTools: ToolDefinition[] = [
           return JSON.stringify({ error: `Path is not a file: ${resolved}` });
         }
         const content = fs.readFileSync(resolved, "utf-8");
-        return JSON.stringify({ path: resolved, content });
+        const result = JSON.stringify({ path: resolved, content });
+        setCachedToolResult("read_file", params, result);
+        return result;
       } catch (e: any) {
         return JSON.stringify({ error: e.message });
       }
@@ -124,6 +129,8 @@ const availableTools: ToolDefinition[] = [
       dirPath: { type: "string", description: "Directory path relative to the workspace (use '.' for root)" },
     },
     execute: async (params, workspacePath) => {
+      const cached = getCachedToolResult("list_files", params);
+      if (cached) return cached;
       const dirPath = (params.dirPath as string) || ".";
       try {
         const resolved = resolvePath(dirPath, workspacePath);
@@ -146,7 +153,9 @@ const availableTools: ToolDefinition[] = [
             return { name: f, type: "unknown", size: 0, modified: "" };
           }
         });
-        return JSON.stringify({ path: resolved, files });
+        const result = JSON.stringify({ path: resolved, files });
+        setCachedToolResult("list_files", params, result);
+        return result;
       } catch (e: any) {
         return JSON.stringify({ error: e.message });
       }
@@ -159,6 +168,8 @@ const availableTools: ToolDefinition[] = [
       query: { type: "string", description: "The search query string" },
     },
     execute: async (params) => {
+      const cached = getCachedToolResult("web_search", params);
+      if (cached) return cached;
       const query = (params.query as string)?.trim();
       if (!query) return JSON.stringify({ error: "No search query provided" });
       try {
@@ -185,7 +196,9 @@ const availableTools: ToolDefinition[] = [
         if (results.length === 0) {
           return JSON.stringify({ query, results: [], source: data.source || "none", hint: "No results found. Try a broader or different search query. You can also use the web_fetch tool to directly access a specific URL." });
         }
-        return JSON.stringify({ query, results, source: data.source });
+        const result = JSON.stringify({ query, results, source: data.source });
+        setCachedToolResult("web_search", params, result);
+        return result;
       } catch (e: any) {
         return JSON.stringify({ error: e.message, hint: "Search failed. Try using web_fetch to directly access a URL instead." });
       }
@@ -198,6 +211,8 @@ const availableTools: ToolDefinition[] = [
       url: { type: "string", description: "The full URL to fetch (e.g. https://example.com)" },
     },
     execute: async (params) => {
+      const cached = getCachedToolResult("web_fetch", params);
+      if (cached) return cached;
       const url = (params.url as string)?.trim();
       if (!url) return JSON.stringify({ error: "No URL provided" });
       
@@ -225,7 +240,9 @@ const availableTools: ToolDefinition[] = [
                 // API failed, try direct fetch below
                 break;
               }
-              return JSON.stringify(data);
+              const result = JSON.stringify(data);
+              setCachedToolResult("web_fetch", params, result);
+              return result;
             }
           } catch { continue; }
         }
@@ -300,7 +317,7 @@ const availableTools: ToolDefinition[] = [
               .slice(0, 15000);
             
             if (textContent.length > 0) {
-              return JSON.stringify({
+              const result = JSON.stringify({
                 url: tryUrl,
                 title,
                 description,
@@ -310,6 +327,8 @@ const availableTools: ToolDefinition[] = [
                 contentType,
                 fetched: true,
               });
+              setCachedToolResult("web_fetch", params, result);
+              return result;
             }
           } catch {
             continue;
@@ -348,6 +367,8 @@ const availableTools: ToolDefinition[] = [
     description: "Returns basic system information including OS, platform, memory, uptime, and available commands.",
     parameters: {},
     execute: async () => {
+      const cached = getCachedToolResult("get_system_info", {});
+      if (cached) return cached;
       const totalMem = os.totalmem();
       const freeMem = os.freemem();
       // Check which common commands are available
@@ -359,7 +380,7 @@ const availableTools: ToolDefinition[] = [
       };
       const availableCommands = ["curl", "wget", "python3", "python", "node", "npm", "npx", "git"]
         .filter(cmd => checkCmd(cmd));
-      return JSON.stringify({
+      const result = JSON.stringify({
         platform: os.platform(),
         arch: os.arch(),
         hostname: os.hostname(),
@@ -374,6 +395,8 @@ const availableTools: ToolDefinition[] = [
         availableCommands,
         hint: availableCommands.length === 0 ? "No common CLI tools found. Use built-in tools instead of local_cmd." : undefined,
       });
+      setCachedToolResult("get_system_info", {}, result);
+      return result;
     },
   },
   {
@@ -483,6 +506,105 @@ const availableTools: ToolDefinition[] = [
     },
   },
   {
+    name: "file_change_check",
+    description: "Check if a file has been modified since a given timestamp. Useful for monitoring file changes, detecting when source files are updated, or checking if a build output is stale. Returns modification time and whether the file changed.",
+    parameters: {
+      filePath: { type: "string", description: "Path to the file relative to the workspace" },
+      sinceTimestamp: { type: "string", description: "ISO timestamp to compare against (e.g., '2024-01-01T00:00:00Z'). If omitted, returns current mtime." },
+    },
+    execute: async (params, workspacePath) => {
+      const filePath = params.filePath as string;
+      const sinceTimestamp = params.sinceTimestamp as string;
+      
+      if (!filePath) return JSON.stringify({ error: "No file path provided" });
+      
+      try {
+        const resolved = resolvePath(filePath, workspacePath);
+        if (!fs.existsSync(resolved)) {
+          return JSON.stringify({ error: `File not found: ${resolved}`, changed: false });
+        }
+        
+        const stats = fs.statSync(resolved);
+        const mtime = stats.mtime.toISOString();
+        let changed = false;
+        
+        if (sinceTimestamp) {
+          const since = new Date(sinceTimestamp).getTime();
+          const modified = stats.mtime.getTime();
+          changed = modified > since;
+        }
+        
+        return JSON.stringify({
+          path: resolved,
+          size: stats.size,
+          modified: mtime,
+          changed,
+          since: sinceTimestamp || null,
+        });
+      } catch (e: any) {
+        return JSON.stringify({ error: e.message });
+      }
+    },
+  },
+  {
+    name: "list_processes",
+    description: "List running system processes. Useful for checking if a server is running, finding process IDs, or monitoring system resources.",
+    parameters: {
+      filter: { type: "string", description: "Filter processes by name (e.g., 'node', 'python', 'gemini'). Optional." },
+    },
+    execute: async (params) => {
+      const filter = (params.filter as string || "").toLowerCase().trim();
+      
+      try {
+        const isWindows = os.platform() === "win32";
+        const cmd = isWindows 
+          ? "tasklist /FO CSV /NH" 
+          : "ps aux --sort=-%mem";
+        
+        return await new Promise<string>((resolve) => {
+          exec(cmd, { timeout: 10000, maxBuffer: 512 * 1024 }, (error, stdout, stderr) => {
+            if (error) {
+              return resolve(JSON.stringify({ error: "Failed to list processes", hint: "Process listing may not be available on this system" }));
+            }
+            
+            let lines = stdout.split("\n").filter(Boolean);
+            
+            if (isWindows) {
+              // Parse CSV format: "name","pid","session","session#","mem"
+              const processes = lines.slice(0, 100).map(line => {
+                const parts = line.split('","').map(p => p.replace(/"/g, "").trim());
+                return { name: parts[0], pid: parts[1], memory: parts[4] || "" };
+              });
+              const filtered = filter 
+                ? processes.filter(p => p.name.toLowerCase().includes(filter))
+                : processes.slice(0, 50);
+              resolve(JSON.stringify({ processes: filtered, total: processes.length, filtered: filtered.length }));
+            } else {
+              // Parse ps aux format
+              const processes = lines.slice(0, 100).map(line => {
+                const parts = line.trim().split(/\s+/);
+                return {
+                  user: parts[0],
+                  pid: parts[1],
+                  cpu: parts[2],
+                  mem: parts[3],
+                  command: parts.slice(10).join(" ").substring(0, 200),
+                };
+              }).filter(p => p.pid && p.pid !== "PID");
+              
+              const filtered = filter
+                ? processes.filter(p => p.command.toLowerCase().includes(filter) || p.user.toLowerCase().includes(filter))
+                : processes.slice(0, 50);
+              resolve(JSON.stringify({ processes: filtered, total: processes.length, filtered: filtered.length }));
+            }
+          });
+        });
+      } catch (e: any) {
+        return JSON.stringify({ error: e.message });
+      }
+    },
+  },
+  {
     name: "diff_files",
     description: "Compare two files and show their differences. Useful for reviewing changes, comparing versions, or understanding modifications.",
     parameters: {
@@ -552,6 +674,8 @@ const availableTools: ToolDefinition[] = [
       maxResults: { type: "string", description: "Maximum number of results to return (default: 50)" },
     },
     execute: async (params, workspacePath) => {
+      const cached = getCachedToolResult("grep_code", params);
+      if (cached) return cached;
       const pattern = params.pattern as string;
       const dirPath = (params.dirPath as string) || ".";
       const filePattern = (params.filePattern as string) || "";
@@ -624,7 +748,7 @@ const availableTools: ToolDefinition[] = [
         
         searchDir(resolved);
         
-        return JSON.stringify({
+        const result = JSON.stringify({
           pattern,
           directory: dirPath,
           filePattern: filePattern || "all",
@@ -632,6 +756,8 @@ const availableTools: ToolDefinition[] = [
           results,
           ...(results.length >= maxResults ? { truncated: true, hint: `Showing first ${maxResults} results. Use a more specific pattern or filePattern to narrow results.` } : {}),
         });
+        setCachedToolResult("grep_code", params, result);
+        return result;
       } catch (e: any) {
         return JSON.stringify({ error: e.message });
       }
@@ -646,6 +772,8 @@ const availableTools: ToolDefinition[] = [
       showHidden: { type: "string", description: "Show hidden files/dirs like .git, .env (default: false)" },
     },
     execute: async (params, workspacePath) => {
+      const cached = getCachedToolResult("tree_view", params);
+      if (cached) return cached;
       const dirPath = (params.dirPath as string) || ".";
       const maxDepth = Math.min(parseInt(params.maxDepth as string) || 3, 6);
       const showHidden = (params.showHidden as string) === "true";
@@ -712,13 +840,15 @@ const availableTools: ToolDefinition[] = [
         const tree = buildTree(resolved, 0, "");
         const rootName = path.basename(resolved);
         
-        return JSON.stringify({
+        const result = JSON.stringify({
           root: rootName,
           path: dirPath,
           depth: maxDepth,
           tree: `${rootName}/\n${tree}`,
           stats: { files: totalFiles, directories: totalDirs },
         });
+        setCachedToolResult("tree_view", params, result);
+        return result;
       } catch (e: any) {
         return JSON.stringify({ error: e.message });
       }
@@ -731,6 +861,8 @@ const availableTools: ToolDefinition[] = [
       dirPath: { type: "string", description: "Path to the git repository (relative to workspace, use '.' for root)" },
     },
     execute: async (params, workspacePath) => {
+      const cached = getCachedToolResult("git_status", params);
+      if (cached) return cached;
       const dirPath = (params.dirPath as string) || ".";
       
       try {
@@ -772,7 +904,7 @@ const availableTools: ToolDefinition[] = [
           return match ? { hash: match[1], message: match[2] } : { hash: "", message: line };
         });
         
-        return JSON.stringify({
+        const result = JSON.stringify({
           branch: branch.stdout,
           changedFiles: changedFiles.length,
           staged: staged.map(f => f.file),
@@ -784,6 +916,8 @@ const availableTools: ToolDefinition[] = [
             return match ? { name: match[1], url: match[2] } : { name: "origin", url: r };
           }),
         });
+        setCachedToolResult("git_status", params, result);
+        return result;
       } catch (e: any) {
         return JSON.stringify({ error: e.message, hint: "Make sure git is installed and the directory is a git repository." });
       }
@@ -799,6 +933,8 @@ const availableTools: ToolDefinition[] = [
       body: { type: "string", description: "Request body (for POST/PUT/PATCH). Can be JSON string or plain text (optional)" },
     },
     execute: async (params) => {
+      const cached = getCachedToolResult("http_request", params);
+      if (cached) return cached;
       const url = (params.url as string)?.trim();
       const method = ((params.method as string) || "GET").toUpperCase();
       const headersStr = params.headers as string;
@@ -874,7 +1010,7 @@ const availableTools: ToolDefinition[] = [
         const respHeaders: Record<string, string> = {};
         response.headers.forEach((value, key) => { respHeaders[key] = value; });
         
-        return JSON.stringify({
+        const result = JSON.stringify({
           status: response.status,
           statusText: response.statusText,
           headers: respHeaders,
@@ -884,6 +1020,8 @@ const availableTools: ToolDefinition[] = [
           bodyLength: responseText.length,
           ...(responseText.length > 20000 ? { truncated: true, hint: "Response truncated to 20KB. Use web_fetch for full page content." } : {}),
         });
+        setCachedToolResult("http_request", params, result);
+        return result;
       } catch (e: any) {
         return JSON.stringify({ error: `Request failed: ${e.message}`, hint: "Check the URL, network connectivity, and try again." });
       }
@@ -897,6 +1035,8 @@ const availableTools: ToolDefinition[] = [
       focus: { type: "string", description: "Analysis focus: 'bugs', 'security', 'performance', 'style', 'all' (default: 'all')" },
     },
     execute: async (params, workspacePath) => {
+      const cached = getCachedToolResult("code_analysis", params);
+      if (cached) return cached;
       const filePath = params.filePath as string;
       const focus = (params.focus as string) || "all";
       
@@ -956,7 +1096,7 @@ const availableTools: ToolDefinition[] = [
         const branchCount = (content.match(/if\s*\(|else|switch|case|elif|match\s/g) || []).length;
         const loopCount = (content.match(/for\s*\(|while\s*\(|\.forEach|\.map|\.filter|\.reduce/g) || []).length;
         
-        return JSON.stringify({
+        const result = JSON.stringify({
           file: filePath,
           metrics,
           complexity: {
@@ -973,8 +1113,74 @@ const availableTools: ToolDefinition[] = [
             info: issues.filter(i => i.severity === "info").length,
           },
         });
+        setCachedToolResult("code_analysis", params, result);
+        return result;
       } catch (e: any) {
         return JSON.stringify({ error: e.message });
+      }
+    },
+  },
+  {
+    name: "execute_code",
+    description: "Execute Python or JavaScript code safely in a sandboxed environment. Returns stdout, stderr, and exit code. Use for: running scripts, testing code, data processing, calculations. Supports: Python 3, Node.js. Timeout: 30 seconds max.",
+    parameters: {
+      language: { type: "string", description: "Programming language: 'python' or 'javascript' (default: 'python')" },
+      code: { type: "string", description: "The code to execute. For Python, use standard Python 3 syntax. For JavaScript, use Node.js syntax." },
+      timeout: { type: "string", description: "Execution timeout in seconds (default: 30, max: 60)" },
+    },
+    execute: async (params) => {
+      const language = ((params.language as string) || "python").toLowerCase();
+      const code = params.code as string;
+      const timeout = Math.min(parseInt(params.timeout as string) || 30, 60);
+      
+      if (!code) return JSON.stringify({ error: "No code provided" });
+      if (!["python", "javascript", "js"].includes(language)) {
+        return JSON.stringify({ error: `Unsupported language: ${language}. Use 'python' or 'javascript'` });
+      }
+      
+      try {
+        const tmpDir = os.tmpdir();
+        const scriptId = `clawhub_exec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const ext = language === "javascript" || language === "js" ? "js" : "py";
+        const scriptPath = path.join(tmpDir, `${scriptId}.${ext}`);
+        
+        // Write code to temporary file
+        fs.writeFileSync(scriptPath, code, "utf-8");
+        
+        const cmd = ext === "py" ? "python3" : "node";
+        const startTime = Date.now();
+        
+        return await new Promise<string>((resolve) => {
+          const proc = exec(`"${cmd}" "${scriptPath}"`, { 
+            timeout: timeout * 1000,
+            maxBuffer: 1024 * 1024, // 1MB output limit
+          }, (error: ExecException | null, stdout: string, stderr: string) => {
+            // Clean up temp file
+            try { fs.unlinkSync(scriptPath); } catch {}
+            
+            const duration = Date.now() - startTime;
+            const result: any = {
+              language: ext === "py" ? "python" : "javascript",
+              exitCode: error ? (error as any).code || 1 : 0,
+              stdout: stdout.substring(0, 20000),
+              stderr: stderr.substring(0, 5000),
+              duration: `${duration}ms`,
+            };
+            
+            if (error) {
+              if (error.killed) {
+                result.timedOut = true;
+                result.error = `Execution timed out after ${timeout} seconds`;
+              } else if (error.message && !stderr) {
+                result.error = error.message.substring(0, 1000);
+              }
+            }
+            
+            resolve(JSON.stringify(result));
+          });
+        });
+      } catch (e: any) {
+        return JSON.stringify({ error: `Failed to execute code: ${e.message}` });
       }
     },
   },

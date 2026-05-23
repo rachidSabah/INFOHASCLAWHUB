@@ -41,6 +41,62 @@ import { ModelConsensus } from "@/components/ModelConsensus";
 import { WhatsAppPanel } from "@/components/WhatsAppPanel";
 import { AgentRunnerPanel } from "@/components/AgentRunnerPanel";
 
+/**
+ * Robustly strip tool call JSON from content using brace-matching.
+ * Handles nested objects that regex can't handle.
+ */
+function stripToolCallJson(content: string): string {
+  let result = content;
+  
+  // Pattern: {"name": "...", "arguments": {...}} or {"name": "...", "args": {...}}
+  // Use iterative brace-matching to handle nested objects
+  const searchPatterns = [`{"name":`, `{"name ':`];
+  
+  for (const pattern of searchPatterns) {
+    let searchFrom = 0;
+    while (true) {
+      const startIdx = result.indexOf(pattern, searchFrom);
+      if (startIdx === -1) break;
+      
+      // Check if this looks like a tool call by looking for "arguments" or "args" nearby
+      const nearby = result.substring(startIdx, Math.min(startIdx + 200, result.length));
+      if (!nearby.includes('"arguments"') && !nearby.includes('"args"') && !nearby.includes('"params"')) {
+        searchFrom = startIdx + pattern.length;
+        continue;
+      }
+      
+      // Find matching closing brace
+      let depth = 0;
+      let inString = false;
+      let escape = false;
+      let endIdx = -1;
+      
+      for (let i = startIdx; i < result.length; i++) {
+        const ch = result[i];
+        if (escape) { escape = false; continue; }
+        if (ch === '\\' && inString) { escape = true; continue; }
+        if (ch === '"') { inString = !inString; continue; }
+        if (inString) continue;
+        if (ch === '{') depth++;
+        else if (ch === '}') {
+          depth--;
+          if (depth === 0) { endIdx = i; break; }
+        }
+      }
+      
+      if (endIdx !== -1) {
+        // Remove the tool call JSON
+        result = result.substring(0, startIdx) + result.substring(endIdx + 1);
+        // Don't advance searchFrom — re-check from same position
+      } else {
+        searchFrom = startIdx + pattern.length;
+      }
+    }
+  }
+  
+  return result;
+}
+
 const STANDARD_PROMPTS = [
   { title: "💡 Explain Code", content: "Can you explain this code in detail and break down how it works?" },
   { title: "🧪 Write Unit Tests", content: "Please write robust unit tests for this code using standard best practices." },
@@ -223,15 +279,16 @@ export function ChatInput() {
                   .replace(/⚙️\s*\*\*\[Executed System Action\]\*\*:[\s\S]*?```/g, "")
                   .replace(/\n{3,}/g, "\n\n")
                   .trim();
-                // Extra filter: strip any remaining JSON that looks like tool calls
-                // This catches {"name": "...", "arguments": {...}} patterns that survived stripToolCallXml
-                cleanContent = cleanContent.replace(/\{"name"\s*:\s*"[^"]*"\s*,\s*"(arguments|args|params)"\s*:\s*\{[^}]*\}\s*\}/g, "");
-                // Also strip tool result JSON objects that leak through
+                // Use robust brace-matching to strip tool call JSON that survived stripToolCallXml
+                cleanContent = stripToolCallJson(cleanContent);
+                // Strip tool result JSON objects that leak through
                 cleanContent = cleanContent.replace(/\{"(url|path|query|expression|stdout|error)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "");
                 cleanContent = cleanContent.replace(/\n{3,}/g, "\n\n").trim();
                 // Only detect artifacts in non-tool-execution content
                 const isToolExecution = cleanContent.includes('⚙️') || cleanContent.includes('[Executed System Action]');
-                const detected = isToolExecution ? null : detectArtifact(cleanContent, data.content);
+                // Skip artifact detection if content is just tool call data
+                const isJustToolData = cleanContent.trim().startsWith('{"name":') || cleanContent.trim().length < 20;
+                const detected = (isToolExecution || isJustToolData) ? null : detectArtifact(cleanContent, data.content);
                 if (!isToolExecution && shouldAutoOpen(detected, cleanContent.length)) {
                   const store = useArtifactPreviewStore.getState();
                   if (!store.isOpen) {
@@ -352,8 +409,8 @@ export function ChatInput() {
                     .replace(/⚙️\s*\*\*\[Executed System Action\]\*\*:[\s\S]*?```/g, "")
                     .replace(/\n{3,}/g, "\n\n")
                     .trim();
-                  // Extra filter: strip any remaining JSON that looks like tool calls
-                  cleanContent = cleanContent.replace(/\{"name"\s*:\s*"[^"]*"\s*,\s*"(arguments|args|params)"\s*:\s*\{[^}]*\}\s*\}/g, "");
+                  // Use robust brace-matching to strip tool call JSON that survived stripToolCallXml
+                  cleanContent = stripToolCallJson(cleanContent);
                   cleanContent = cleanContent.replace(/\{"(url|path|query|expression|stdout|error)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "");
                   cleanContent = cleanContent.replace(/\n{3,}/g, "\n\n").trim();
                   store.updateTab(active.id, { content: cleanContent, isStreaming: false });
