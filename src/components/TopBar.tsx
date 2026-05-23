@@ -8,6 +8,7 @@ import {
   Rocket, Workflow, Code2, Radio, Paintbrush, Database, Shield, Puzzle, MousePointerClick, Mic, GitBranch, Smartphone, Terminal, Search, Cpu, Server, Layout, GitMerge, GitFork, Sparkles, Wifi, LayoutTemplate, PanelRight,
   SlidersHorizontal,
   Brain, Lock, AlertTriangle, DollarSign, Target, Network, Wrench, FileCheck, Users,
+  Eye, Gauge, Award, RotateCcw, Microscope, GitGraph, Waypoints, Receipt,
 } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { toast } from "sonner";
@@ -73,6 +74,17 @@ import { VerificationPanel } from "./enhancements/VerificationPanel";
 import OptimizationPanel from "./enhancements/OptimizationPanel";
 import TuningPanel from "./enhancements/TuningPanel";
 
+// Next-Gen Pro Panels (Tier 9)
+import { AgentLoopPanel } from "./enhancements/AgentLoopPanel";
+import { ContextWindowPanel } from "./enhancements/ContextWindowPanel";
+import { AgentEvaluationPanel } from "./enhancements/AgentEvaluationPanel";
+import { MCPServerPanel } from "./enhancements/MCPServerPanel";
+import { AgentReflectionPanel } from "./enhancements/AgentReflectionPanel";
+import { DeepResearchPanel } from "./enhancements/DeepResearchPanel";
+import { MemoryVisualizationPanel } from "./enhancements/MemoryVisualizationPanel";
+import { TaskTypeDetectionPanel } from "./enhancements/TaskTypeDetectionPanel";
+import { TokenTrackingPanel } from "./enhancements/TokenTrackingPanel";
+
 const ADVANCED_TOOLS: AdvancedTool[] = [
   // Tier 5: New Generation
   { key: "artifacts", label: "AI Artifacts Studio", description: "Doc, sheet, slide, canvas AI", icon: Sparkles, color: "text-purple-500", category: "Creative Suite", onOpen: () => { (window as any).__setArtifactsOpen?.(true); } },
@@ -104,6 +116,16 @@ const ADVANCED_TOOLS: AdvancedTool[] = [
   { key: "bg-workers", label: "Background Workers", description: "Headless long-running task engine", icon: Wrench, color: "text-teal-500", category: "Automation", onOpen: () => { (window as any).__setBgWorkersOpen?.(true); } },
   { key: "verification", label: "Verification Engine", description: "Multi-source answer cross-check", icon: FileCheck, color: "text-violet-500", category: "AI Engine", onOpen: () => { (window as any).__setVerificationOpen?.(true); } },
   { key: "optimization", label: "Optimization Engine", description: "Prompt compression & token savings", icon: Zap, color: "text-amber-500", category: "AI Engine", onOpen: () => { (window as any).__setOptimizationOpen?.(true); } },
+  // Tier 9: Next-Gen Pro
+  { key: "agent-loop", label: "Agent Loop Viz", description: "Real-time agent execution DAG", icon: Eye, color: "text-violet-500", category: "AI Engine", onOpen: () => { (window as any).__setAgentLoopOpen?.(true); } },
+  { key: "context-window", label: "Context Window", description: "Token usage & auto-summarize", icon: Gauge, color: "text-cyan-500", category: "AI Engine", onOpen: () => { (window as any).__setContextWindowOpen?.(true); } },
+  { key: "agent-eval", label: "Agent Evaluation", description: "Benchmarks & performance tracking", icon: Award, color: "text-amber-500", category: "AI Engine", onOpen: () => { (window as any).__setAgentEvalOpen?.(true); } },
+  { key: "mcp-server", label: "MCP Server", description: "Expose ClawHub to external tools", icon: Server, color: "text-emerald-500", category: "AI Engine", onOpen: () => { (window as any).__setMcpServerOpen?.(true); } },
+  { key: "agent-reflection", label: "Agent Reflection", description: "LLM self-critique loop", icon: RotateCcw, color: "text-rose-500", category: "AI Engine", onOpen: () => { (window as any).__setAgentReflectionOpen?.(true); } },
+  { key: "deep-research", label: "Deep Research Pro", description: "Iterative multi-step research", icon: Microscope, color: "text-indigo-500", category: "AI Engine", onOpen: () => { (window as any).__setDeepResearchOpen?.(true); } },
+  { key: "memory-viz", label: "Memory Visualization", description: "Timeline, cluster & graph views", icon: GitGraph, color: "text-purple-500", category: "AI Engine", onOpen: () => { (window as any).__setMemoryVizOpen?.(true); } },
+  { key: "task-type", label: "Task Type Detector", description: "Smart model routing by prompt", icon: Waypoints, color: "text-blue-500", category: "AI Engine", onOpen: () => { (window as any).__setTaskTypeOpen?.(true); } },
+  { key: "token-tracking", label: "Token Tracking", description: "Real-time token count & costs", icon: Receipt, color: "text-teal-500", category: "Monitoring", onOpen: () => { (window as any).__setTokenTrackingOpen?.(true); } },
 ];
 
 export function TopBar() {
@@ -179,6 +201,17 @@ export function TopBar() {
   const [optimizationOpen, setOptimizationOpen] = useState(false);
   const [tuningOpen, setTuningOpen] = useState(false);
 
+  // Next-Gen Pro panel open states (Tier 9)
+  const [agentLoopOpen, setAgentLoopOpen] = useState(false);
+  const [contextWindowOpen, setContextWindowOpen] = useState(false);
+  const [agentEvalOpen, setAgentEvalOpen] = useState(false);
+  const [mcpServerOpen, setMcpServerOpen] = useState(false);
+  const [agentReflectionOpen, setAgentReflectionOpen] = useState(false);
+  const [deepResearchOpen, setDeepResearchOpen] = useState(false);
+  const [memoryVizOpen, setMemoryVizOpen] = useState(false);
+  const [taskTypeOpen, setTaskTypeOpen] = useState(false);
+  const [tokenTrackingOpen, setTokenTrackingOpen] = useState(false);
+
   const agentRef = useRef<HTMLDivElement>(null);
   const skillRef = useRef<HTMLDivElement>(null);
   const modelRef = useRef<HTMLDivElement>(null);
@@ -213,6 +246,15 @@ export function TopBar() {
     (window as any).__setBgWorkersOpen = setBgWorkersOpen;
     (window as any).__setVerificationOpen = setVerificationOpen;
     (window as any).__setOptimizationOpen = setOptimizationOpen;
+    (window as any).__setAgentLoopOpen = setAgentLoopOpen;
+    (window as any).__setContextWindowOpen = setContextWindowOpen;
+    (window as any).__setAgentEvalOpen = setAgentEvalOpen;
+    (window as any).__setMcpServerOpen = setMcpServerOpen;
+    (window as any).__setAgentReflectionOpen = setAgentReflectionOpen;
+    (window as any).__setDeepResearchOpen = setDeepResearchOpen;
+    (window as any).__setMemoryVizOpen = setMemoryVizOpen;
+    (window as any).__setTaskTypeOpen = setTaskTypeOpen;
+    (window as any).__setTokenTrackingOpen = setTokenTrackingOpen;
   }, []);
 
   // Load models on mount + periodic refresh
@@ -692,6 +734,16 @@ export function TopBar() {
       <VerificationPanel open={verificationOpen} onOpenChange={setVerificationOpen} />
       <OptimizationPanel open={optimizationOpen} onOpenChange={setOptimizationOpen} />
       <TuningPanel open={tuningOpen} onOpenChange={setTuningOpen} />
+      {/* Next-Gen Pro Panels (Tier 9) */}
+      <AgentLoopPanel open={agentLoopOpen} onOpenChange={setAgentLoopOpen} />
+      <ContextWindowPanel open={contextWindowOpen} onOpenChange={setContextWindowOpen} />
+      <AgentEvaluationPanel open={agentEvalOpen} onOpenChange={setAgentEvalOpen} />
+      <MCPServerPanel open={mcpServerOpen} onOpenChange={setMcpServerOpen} />
+      <AgentReflectionPanel open={agentReflectionOpen} onOpenChange={setAgentReflectionOpen} />
+      <DeepResearchPanel open={deepResearchOpen} onOpenChange={setDeepResearchOpen} />
+      <MemoryVisualizationPanel open={memoryVizOpen} onOpenChange={setMemoryVizOpen} />
+      <TaskTypeDetectionPanel open={taskTypeOpen} onOpenChange={setTaskTypeOpen} />
+      <TokenTrackingPanel open={tokenTrackingOpen} onOpenChange={setTokenTrackingOpen} />
     </div>
   );
 }

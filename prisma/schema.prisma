@@ -1052,3 +1052,142 @@ model VerificationReport {
 
   @@index([status])
 }
+
+// ============================================================
+// TOP 5 RECOMMENDATIONS — New Models
+// ============================================================
+
+// T5-2: MCP Server (expose ClawHub as MCP Server)
+model MCPServerSession {
+  id           String   @id @default(cuid())
+  clientName   String // Name of connecting client (e.g., "Cursor", "Claude Desktop")
+  clientVersion String  @default("1.0.0")
+  transport    String   @default("stdio") // "stdio" | "http" | "websocket"
+  status       String   @default("connected") // "connected" | "disconnected" | "error"
+  exposedTools String   @default("[]") // JSON: list of tools exposed to this client
+  allowedResources String @default("[]") // JSON: list of resources the client can access
+  apiKey       String? // Optional API key for authentication
+  lastActivity DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([status])
+  @@index([clientName])
+}
+
+// T5-5: Agent Evaluation Suite
+model AgentEvaluation {
+  id            String   @id @default(cuid())
+  agentId       String
+  testName      String
+  testCategory  String // "accuracy" | "speed" | "cost_efficiency" | "reasoning" | "coding" | "creative" | "safety"
+  prompt        String
+  expectedOutput String? // Known good output for comparison
+  actualOutput  String?
+  score         Float    @default(0) // 0-1 quality score
+  latencyMs     Float? // Response time
+  tokensUsed    Int?
+  costUsd       Float?
+  model         String?
+  passed        Boolean  @default(false)
+  notes         String? // JSON: detailed evaluation notes
+  createdAt     DateTime @default(now())
+
+  @@index([agentId])
+  @@index([testCategory])
+  @@index([passed])
+  @@index([score])
+}
+
+model EvaluationBenchmark {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String
+  category    String // "coding" | "reasoning" | "creative" | "analysis" | "safety" | "multilingual"
+  version     Int      @default(1)
+  tests       String // JSON: { prompt, expectedOutput, scoringRubric }[]
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([isActive])
+}
+
+// ============================================================
+// HIGH-VALUE ENHANCEMENTS — New Models
+// ============================================================
+
+// HVE-4: Context Window Manager
+model ContextWindowState {
+  id               String    @id @default(cuid())
+  conversationId   String    @unique
+  maxTokens        Int       @default(128000)
+  usedTokens       Int       @default(0)
+  pinnedMessageIds String    @default("[]") // JSON: string[] of pinned message IDs
+  compressionCount Int       @default(0)
+  summarizedUpTo   String? // Message ID up to which old messages have been summarized
+  summaryText      String? // Compressed summary of old messages
+  compressionRatio Float     @default(1.0) // How much the context was compressed
+  lastCompressedAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([conversationId])
+}
+
+// HVE-9: Deep Research Mode
+model DeepResearchSession {
+  id              String   @id @default(cuid())
+  query           String
+  status          String   @default("initializing") // "initializing" | "searching" | "reading" | "extracting" | "synthesizing" | "verifying" | "completed" | "failed"
+  depth           String   @default("deep") // "quick" | "standard" | "deep" | "exhaustive"
+  iteration       Int      @default(0)
+  maxIterations   Int      @default(5)
+  searchQueries   String   @default("[]") // JSON: string[] of all search queries used
+  sourcesRead     String   @default("[]") // JSON: { url, title, content, credibility }[]
+  extractedFacts  String   @default("[]") // JSON: { fact, sourceUrl, confidence }[]
+  synthesis       String? // Current synthesis text
+  verificationResult String? // JSON: { verified, contradictions, confidenceScore }
+  finalReport     String? // Final markdown report
+  model           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status])
+}
+
+// HVE-11: Real-time Token Tracking
+model TokenUsageRecord {
+  id              String   @id @default(cuid())
+  conversationId  String?
+  model           String
+  providerName    String?
+  promptTokens    Int      @default(0)
+  completionTokens Int     @default(0)
+  totalTokens     Int      @default(0)
+  costUsd         Float    @default(0)
+  latencyMs       Float?
+  isStreaming      Boolean  @default(false)
+  metadata        String? // JSON: additional context
+  createdAt       DateTime @default(now())
+
+  @@index([conversationId])
+  @@index([model])
+  @@index([createdAt])
+}
+
+// HVE-12: Live Artifact Collaboration
+model ArtifactCollabSession {
+  id          String   @id @default(cuid())
+  artifactId  String
+  peers       String   @default("[]") // JSON: { id, name, color, cursorPos }[]
+  status      String   @default("active") // "active" | "ended"
+  lastEditBy  String?
+  lastEditAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([artifactId])
+  @@index([status])
+}
