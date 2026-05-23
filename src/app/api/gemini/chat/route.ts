@@ -114,7 +114,7 @@ ${assistantText.slice(0, 4000)}`;
 
       responseText = await new Promise<string>((resolve, reject) => {
         const proc = spawn("gemini", [...cliArgs, "--no-stream"], {
-          env: { ...process.env, ...providerEnv, ...(apiKey ? { GEMINI_API_KEY: apiKey } : {}) },
+          env: { ...process.env, ...providerEnv, ...(apiKey ? { GEMINI_API_KEY: apiKey } : {}), GEMINI_CLI_TRUST_WORKSPACE: "true" },
           shell: true,
           stdio: ["pipe", "pipe", "pipe"],
         });
@@ -182,7 +182,15 @@ async function buildLocalSystemInstructions(): Promise<string> {
   const toolsDescription = await getToolsDescription();
   return `
 [AGENT IDENTITY & CAPABILITIES]
-You are an advanced autonomous AI coding assistant, similar to Claude Code. You have direct access to the user's local operating system, files, terminal, and the web. You think step-by-step, plan before acting, and autonomously execute multi-step tasks to completion.
+You are ClawHub, an advanced autonomous AI coding and reasoning assistant with capabilities similar to Claude Code. You have direct access to the user's local operating system, files, terminal, and the web. You think step-by-step, plan before acting, and autonomously execute multi-step tasks to completion.
+
+You are NOT a simple chatbot. You are an autonomous agent that can:
+- Read, write, and modify files on the user's system
+- Execute terminal commands and scripts
+- Search the web and fetch web pages
+- Perform calculations and data analysis
+- Create documents, code, and other artifacts
+- Debug and fix issues iteratively
 
 ${toolsDescription}
 
@@ -193,12 +201,15 @@ You can also use XML tool tags for backward compatibility:
 4. <write_file path="file_path_here">file_content_here</write_file> — Create or overwrite a file
 
 [HOW TO THINK AND ACT - CRITICAL BEHAVIORAL RULES]
-1. ALWAYS think step-by-step before acting. Break complex tasks into sub-tasks.
+1. ALWAYS think step-by-step before acting. Break complex tasks into sub-tasks and plan your approach.
 2. When a task requires multiple steps, execute them IN SEQUENCE using tool calls. Do NOT stop after one step.
-3. After each tool result, analyze it and decide the NEXT step. Keep going until the task is FULLY complete.
+3. After each tool result, analyze it thoroughly and decide the NEXT step. Keep going until the task is FULLY complete.
 4. If you need information, USE TOOLS to get it — don't guess or assume. Use web_search, web_fetch, read_file, etc.
 5. If you need to create something, USE TOOLS to do it — use write_file, local_cmd, etc.
 6. ALWAYS provide a final, complete answer to the user after all tool executions are done.
+7. When writing code, write COMPLETE, production-quality code — not pseudocode or snippets. Include error handling, proper types, and documentation.
+8. When analyzing websites, use web_fetch and provide DETAILED analysis — don't just say "I fetched the page."
+9. When debugging, use a systematic approach: read the code, understand the flow, identify the issue, fix it, verify the fix.
 
 [TOOL CALLING RULES]
 - When you call a tool, the system will automatically execute it, append the result, and give you another turn.
@@ -209,6 +220,7 @@ You can also use XML tool tags for backward compatibility:
   \`\`\`tool_call
   {"name": "tool_name", "arguments": {"param": "value"}}
   \`\`\`
+- You can also use the native function calling format if available.
 
 [TOOL ERROR RECOVERY - CRITICAL RULES]
 - If a tool returns an error (ENOENT, not found, etc.), do NOT stop. Instead, try alternative approaches.
@@ -225,6 +237,22 @@ When asked to scan, analyze, or review a website:
 2. Analyze the fetched content thoroughly
 3. Provide a COMPLETE analysis — do NOT just say "I fetched the page" and stop
 4. Include details about: content, structure, technologies, SEO, accessibility, security, performance
+
+[CODE GENERATION RULES]
+When asked to write code:
+1. Write COMPLETE, runnable code — not pseudocode or partial snippets
+2. Include proper error handling and edge cases
+3. Use modern best practices and idiomatic patterns
+4. Add clear comments explaining non-obvious logic
+5. If the code is long, break it into logical sections with clear structure
+6. After writing code, suggest how to test or verify it works
+
+[RESPONSE QUALITY]
+- Be thorough and detailed in your responses
+- Provide context and explanations, not just raw output
+- When giving instructions, include step-by-step guidance
+- When presenting analysis, include evidence and reasoning
+- When making recommendations, explain the trade-offs
 `;
 }
 
@@ -343,7 +371,6 @@ async function queryLLM(
           role: msg.role === "user" ? "user" : "model",
           parts: [{ text: msg.content }]
         })),
-        { role: "user", parts: [{ text: prompt }] }
       ];
 
       // Build Gemini-native function declarations for tool use
@@ -360,6 +387,8 @@ async function queryLLM(
       }
 
       // If we have functionResponses from previous tool executions, add them
+      // BEFORE the current user prompt for correct conversation ordering:
+      // ...history, model(functionCalls), user(functionResponses), user(prompt)
       if (pendingToolResults && pendingToolResults.length > 0) {
         // Add model's previous response with functionCalls
         const modelParts: any[] = [];
@@ -389,6 +418,9 @@ async function queryLLM(
         }
         contents.push({ role: "user", parts: responseParts });
       }
+
+      // Add the current user prompt LAST (after function responses if any)
+      contents.push({ role: "user", parts: [{ text: prompt }] });
 
       const response = await fetch(geminiUrl, {
         method: "POST",
@@ -451,35 +483,29 @@ async function queryLLM(
       console.error(`[${requestId}] Failed to build OpenAI tools:`, e);
     }
 
-    const requestBody: any = {
-      model: targetModel,
-      messages: [
-        ...(finalSystemPrompt ? [{ role: "system", content: finalSystemPrompt }] : []),
-        ...conversationHistory.map((msg: any) => {
-          const msgObj: any = {
-            role: msg.role === "user" ? "user" : "assistant",
-            content: msg.content
-          };
-          if (msg.reasoning_content) {
-            msgObj.reasoning_content = msg.reasoning_content;
-          }
-          return msgObj;
-        }),
-        { role: "user", content: prompt }
-      ],
-      stream: true,
-    };
+    // Build messages array with correct ordering for tool calling:
+    // system -> conversationHistory -> (assistant+tool_calls + tool_results if pending) -> user prompt
+    const mappedHistory = conversationHistory.map((msg: any) => {
+      const msgObj: any = {
+        role: msg.role === "user" ? "user" : "assistant",
+        content: msg.content
+      };
+      if (msg.reasoning_content) {
+        msgObj.reasoning_content = msg.reasoning_content;
+      }
+      return msgObj;
+    });
 
-    // Add tools if available — enables native function calling for compatible models
-    if (openaiTools.length > 0) {
-      requestBody.tools = openaiTools;
-      requestBody.tool_choice = "auto";
-    }
+    // If we have pending tool results from previous iteration, insert them
+    // BEFORE the current user prompt in the correct OpenAI tool calling format:
+    // ...history, assistant(tool_calls), tool(results), user(continuation)
+    const messages: any[] = [
+      ...(finalSystemPrompt ? [{ role: "system", content: finalSystemPrompt }] : []),
+      ...mappedHistory,
+    ];
 
-    // If we have tool results from previous iteration, add proper OpenAI-format messages:
-    // 1. Assistant message with tool_calls
-    // 2. Tool messages with results
     if (pendingToolResults && pendingToolResults.length > 0) {
+      // Add assistant message with tool_calls + reasoning_content (critical for DeepSeek)
       const assistantToolCalls = pendingToolResults.map((tr, idx) => ({
         id: tr.toolCallId || `call_${idx}`,
         type: "function" as const,
@@ -493,33 +519,47 @@ async function queryLLM(
         },
       }));
 
-      // Add assistant message with tool_calls
       const assistantMsg: any = {
         role: "assistant",
         content: assistantContent ?? null,
         tool_calls: assistantToolCalls,
       };
+      // CRITICAL: DeepSeek thinking models require reasoning_content to be passed back
       if (assistantReasoningContent) {
         assistantMsg.reasoning_content = assistantReasoningContent;
       }
-      requestBody.messages.push(assistantMsg);
+      messages.push(assistantMsg);
 
       // Add tool result messages
       for (const tr of pendingToolResults) {
         let resultContent: string;
         try {
-          // Try to format the result nicely
           const parsed = JSON.parse(tr.result);
           resultContent = JSON.stringify(parsed);
         } catch {
           resultContent = tr.result;
         }
-        requestBody.messages.push({
+        messages.push({
           role: "tool",
           tool_call_id: tr.toolCallId || `call_0`,
           content: resultContent,
         });
       }
+    }
+
+    // Add the current user prompt LAST (after tool results if any)
+    messages.push({ role: "user", content: prompt });
+
+    const requestBody: any = {
+      model: targetModel,
+      messages,
+      stream: true,
+    };
+
+    // Add tools if available — enables native function calling for compatible models
+    if (openaiTools.length > 0) {
+      requestBody.tools = openaiTools;
+      requestBody.tool_choice = "auto";
     }
 
     const response = await fetch(url, {
@@ -704,6 +744,21 @@ async function queryLLM(
         fullPrompt += `${role}: ${msg.content}\n\n`;
       }
     }
+    // If we have pending tool results from the agent loop, include them in the prompt
+    // (Gemini CLI doesn't use the pendingToolResults mechanism — it's text-only)
+    if (pendingToolResults && pendingToolResults.length > 0) {
+      fullPrompt += "[Tool Execution Results]:\n";
+      for (const tr of pendingToolResults) {
+        let resultText: string;
+        try {
+          const parsed = JSON.parse(tr.result);
+          resultText = JSON.stringify(parsed, null, 2);
+        } catch {
+          resultText = tr.result;
+        }
+        fullPrompt += `Tool: ${tr.toolName}\nResult: ${resultText}\n\n`;
+      }
+    }
     fullPrompt += prompt;
 
     const getCliArgs = (m: string) => {
@@ -727,6 +782,9 @@ async function queryLLM(
         ...process.env,
         ...providerEnv,
         ...(apiKey ? { GEMINI_API_KEY: apiKey } : {}),
+        // Fix "Gemini CLI is not running in a trusted directory" error
+        // See: https://geminicli.com/docs/cli/trusted-folders/#headless-and-automated-environments
+        GEMINI_CLI_TRUST_WORKSPACE: "true",
       },
       shell: true,
       stdio: ["pipe", "pipe", "pipe"],
@@ -1112,16 +1170,27 @@ export async function POST(req: NextRequest) {
               
               if (looksIncomplete && hasHadSuccessfulToolRun && iteration < maxIterations) {
                 console.log(`[${requestId}] Response looks incomplete, re-prompting to continue`);
+                // Push to history for context tracking, then clear pendingToolResults
                 currentHistory.push({ role: "user", content: currentPrompt });
                 currentHistory.push({ 
                   role: "assistant", 
                   content: responseText,
                   ...(responseReasoningContent ? { reasoning_content: responseReasoningContent } : {})
                 });
+                pendingToolResults = [];
+                previousAssistantContent = undefined;
+                previousReasoningContent = undefined;
                 currentPrompt = "Please continue with your response. If you were about to use a tool, please do so now. If you have a final answer, please provide it.";
                 continue;
               }
               
+              // Final response (no tool calls) — push to history for context
+              currentHistory.push({ role: "user", content: currentPrompt });
+              currentHistory.push({ 
+                role: "assistant", 
+                content: responseText,
+                ...(responseReasoningContent ? { reasoning_content: responseReasoningContent } : {})
+              });
               break;
             }
 
@@ -1164,14 +1233,17 @@ export async function POST(req: NextRequest) {
             previousAssistantContent = stripToolCallXml(responseText) || undefined;
             previousReasoningContent = responseReasoningContent || undefined;
 
+            // CRITICAL: Do NOT push assistant message to currentHistory when there are tool calls.
+            // The pendingToolResults mechanism handles the assistant message in the correct format
+            // for OpenAI/Gemini APIs. Pushing it here would cause DUPLICATE assistant messages,
+            // which breaks DeepSeek thinking models (reasoning_content must appear exactly once).
+            // Only push the user message to track the conversation flow.
             currentHistory.push({ role: "user", content: currentPrompt });
-            currentHistory.push({ 
-              role: "assistant", 
-              content: responseText,
-              ...(responseReasoningContent ? { reasoning_content: responseReasoningContent } : {})
-            });
 
-            currentPrompt = `Here is the result of the tool execution:\n${resultSummary}\n\nPlease proceed with the next steps or give your final answer based on this result. Remember: if a tool returned an error, try alternative approaches using other available tools.`;
+            // Use a simple continuation prompt. The tool results are provided via pendingToolResults
+            // for API providers. For Gemini CLI, the tool results are included in the prompt text
+            // by the queryLLM function.
+            currentPrompt = `Based on the tool execution results above, continue with the next steps or provide your final answer. If a tool returned an error, try alternative approaches.`;
           }
 
           const promptContext = [

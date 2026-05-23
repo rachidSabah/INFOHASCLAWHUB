@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from "re
 import { useChatStore, useUIStore, useSettingsStore, useAgentStore, usePromptStore } from "@/lib/stores";
 import { useArtifactPreviewStore } from "@/lib/artifact-store";
 import { detectArtifact, shouldAutoOpen } from "@/lib/artifact-detector";
+import { stripToolCallXml } from "@/lib/tool-call-utils";
 import { optimizeRequest } from "@/lib/optimization-engine";
 import { getCachedResponse, setCachedResponse } from "@/lib/response-cache";
 import { toast } from "sonner";
@@ -216,15 +217,9 @@ export function ChatInput() {
               if (data.type === "chunk") {
                 fullContent += data.content;
                 setStreamingContent(fullContent);
-                const cleanContent = fullContent
-                  .replace(/^Tool:.*$/gm, "")
-                  .replace(/^Status:.*$/gm, "") 
-                  .replace(/^Result:\s*$/gm, "")
-                  .replace(/```tool_call\s*\n[\s\S]*?```/g, "")
-                  .replace(/<longcat_tool_call>[\s\S]*?<\/longcat_tool_call>/g, "")
-                  .replace(/<longcat_arg_key>[\s\S]*?<\/longcat_arg_key>/g, "")
-                  .replace(/<longcat_arg_value>[\s\S]*?<\/longcat_arg_value>/g, "")
-                  .replace(/\{"name"\s*:\s*"[^"]*"\s*,\s*"(arguments|args)"\s*:\s*\{[\s\S]*?\}\s*\}/g, "")
+                // Use the robust stripToolCallXml from tools.ts instead of fragile regexes
+                // It properly handles nested JSON, XML tags, and code blocks
+                const cleanContent = stripToolCallXml(fullContent)
                   .replace(/⚙️\s*\*\*\[Executed System Action\]\*\*:[\s\S]*?```/g, "")
                   .replace(/\n{3,}/g, "\n\n")
                   .trim();
@@ -345,15 +340,7 @@ export function ChatInput() {
                 const store = useArtifactPreviewStore.getState();
                 const active = store.tabs.find(t => t.id === store.activeTabId);
                 if (active) {
-                  const cleanContent = fullContent
-                    .replace(/^Tool:.*$/gm, "")
-                    .replace(/^Status:.*$/gm, "")
-                    .replace(/^Result:\s*$/gm, "")
-                    .replace(/```tool_call\s*\n[\s\S]*?```/g, "")
-                    .replace(/<longcat_tool_call>[\s\S]*?<\/longcat_tool_call>/g, "")
-                    .replace(/<longcat_arg_key>[\s\S]*?<\/longcat_arg_key>/g, "")
-                    .replace(/<longcat_arg_value>[\s\S]*?<\/longcat_arg_value>/g, "")
-                    .replace(/\{"name"\s*:\s*"[^"]*"\s*,\s*"(arguments|args)"\s*:\s*\{[\s\S]*?\}\s*\}/g, "")
+                  const cleanContent = stripToolCallXml(fullContent)
                     .replace(/⚙️\s*\*\*\[Executed System Action\]\*\*:[\s\S]*?```/g, "")
                     .replace(/\n{3,}/g, "\n\n")
                     .trim();

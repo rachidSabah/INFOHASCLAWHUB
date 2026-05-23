@@ -30,6 +30,9 @@ const TOOL_CALL_PATTERNS = [
   /^Tool:\s+\w+$/m,
   /^Status:\s+(success|error)$/m,
   /^Result:$/m,
+  /^\s*\{"action"\s*:\s*"\w+"/m,
+  /^\s*\{"tool"\s*:\s*"\w+"/m,
+  /"functionCall"\s*:\s*\{/m,
 ];
 
 function isToolCallContent(content: string): boolean {
@@ -38,8 +41,17 @@ function isToolCallContent(content: string): boolean {
   }
   // Check if content is primarily JSON tool call data
   const trimmed = content.trim();
-  if (trimmed.startsWith('{"name":') && trimmed.includes('"arguments"')) return true;
+  if (trimmed.startsWith('{"name":') && (trimmed.includes('"arguments"') || trimmed.includes('"args"'))) return true;
   if (trimmed.startsWith('{"name":') && trimmed.includes('"args"')) return true;
+  // Check if content is a JSON object that looks like a web_fetch/tool call result
+  // (not an artifact itself, but raw tool output)
+  if (trimmed.startsWith('{"url":') && trimmed.includes('"textContent"')) return true;
+  if (trimmed.startsWith('{"error":') && trimmed.includes('"hint"')) return true;
+  // Check if content is primarily tool execution output
+  const toolResultLines = trimmed.split('\n').filter(l => 
+    l.startsWith('Tool:') || l.startsWith('Status:') || l.startsWith('Result:')
+  );
+  if (toolResultLines.length > 2) return true;
   return false;
 }
 
