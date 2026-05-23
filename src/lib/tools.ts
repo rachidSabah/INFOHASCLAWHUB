@@ -376,6 +376,172 @@ const availableTools: ToolDefinition[] = [
       });
     },
   },
+  {
+    name: "search_replace",
+    description: "Search for a string in a file and replace it with a new string. More precise than write_file for making targeted edits. Returns the number of replacements made.",
+    parameters: {
+      filePath: { type: "string", description: "Path to the file relative to the workspace" },
+      search: { type: "string", description: "The exact string to search for" },
+      replace: { type: "string", description: "The string to replace it with" },
+    },
+    execute: async (params, workspacePath) => {
+      const filePath = params.filePath as string;
+      const search = params.search as string;
+      const replace = params.replace as string;
+      if (!filePath || !search) return JSON.stringify({ error: "filePath and search are required" });
+      try {
+        const resolved = resolvePath(filePath, workspacePath);
+        if (!fs.existsSync(resolved)) return JSON.stringify({ error: `File not found: ${resolved}` });
+        const content = fs.readFileSync(resolved, "utf-8");
+        const count = (content.match(new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+        if (count === 0) return JSON.stringify({ error: `Search string not found in ${resolved}`, hint: "Make sure the search string matches exactly, including whitespace and indentation." });
+        const newContent = content.split(search).join(replace);
+        fs.writeFileSync(resolved, newContent, "utf-8");
+        return JSON.stringify({ path: resolved, replacements: count, success: true });
+      } catch (e: any) {
+        return JSON.stringify({ error: e.message });
+      }
+    },
+  },
+  {
+    name: "get_env_var",
+    description: "Get the value of an environment variable. Useful for checking configuration, API keys paths, and system settings.",
+    parameters: {
+      name: { type: "string", description: "The name of the environment variable" },
+    },
+    execute: async (params) => {
+      const name = params.name as string;
+      if (!name) return JSON.stringify({ error: "No variable name provided" });
+      const value = process.env[name];
+      if (value === undefined) return JSON.stringify({ name, exists: false, hint: "Variable not set. Check .env files or system configuration." });
+      // Don't expose full API keys for security - mask them
+      const masked = value.length > 8 && (name.includes("KEY") || name.includes("SECRET") || name.includes("TOKEN") || name.includes("PASSWORD"))
+        ? value.substring(0, 4) + "..." + value.substring(value.length - 4)
+        : value;
+      return JSON.stringify({ name, value: masked, exists: true });
+    },
+  },
+  {
+    name: "memory_save",
+    description: "Save an important fact, preference, or instruction to persistent memory for future conversations. Use this to remember user preferences, project context, or important decisions.",
+    parameters: {
+      key: { type: "string", description: "A short unique identifier for this memory (e.g., 'user_preferred_framework', 'project_uses_postgresql')" },
+      content: { type: "string", description: "The content to remember" },
+    },
+    execute: async (params) => {
+      const key = params.key as string;
+      const content = params.content as string;
+      if (!key || !content) return JSON.stringify({ error: "Both key and content are required" });
+      try {
+        const { db } = require("@/lib/db");
+        // Upsert: update if exists, create if not
+        const existing = await db.memory.findFirst({ where: { key } });
+        if (existing) {
+          await db.memory.update({ where: { id: existing.id }, data: { content } });
+          return JSON.stringify({ key, content, updated: true });
+        } else {
+          await db.memory.create({ data: { key, content, source: "agent_tool" } });
+          return JSON.stringify({ key, content, created: true });
+        }
+      } catch (e: any) {
+        return JSON.stringify({ error: e.message, hint: "Memory system uses SQLite. Check that the database is accessible." });
+      }
+    },
+  },
+  {
+    name: "memory_recall",
+    description: "Recall previously saved memories. Search by key or get all memories. Use this to retrieve user preferences, project context, or past decisions.",
+    parameters: {
+      query: { type: "string", description: "Search query to find relevant memories (optional - leave empty to get all)" },
+    },
+    execute: async (params) => {
+      const query = (params.query as string || "").trim();
+      try {
+        const { db } = require("@/lib/db");
+        let memories;
+        if (query) {
+          memories = await db.memory.findMany({
+            where: {
+              OR: [
+                { key: { contains: query } },
+                { content: { contains: query } },
+              ]
+            },
+            take: 20,
+            orderBy: { createdAt: "desc" },
+          });
+        } else {
+          memories = await db.memory.findMany({
+            take: 50,
+            orderBy: { createdAt: "desc" },
+          });
+        }
+        return JSON.stringify({ memories: memories.map((m: any) => ({ key: m.key, content: m.content, saved: m.createdAt })), count: memories.length });
+      } catch (e: any) {
+        return JSON.stringify({ error: e.message, memories: [] });
+      }
+    },
+  },
+  {
+    name: "diff_files",
+    description: "Compare two files and show their differences. Useful for reviewing changes, comparing versions, or understanding modifications.",
+    parameters: {
+      filePath1: { type: "string", description: "Path to the first file" },
+      filePath2: { type: "string", description: "Path to the second file" },
+    },
+    execute: async (params, workspacePath) => {
+      const filePath1 = params.filePath1 as string;
+      const filePath2 = params.filePath2 as string;
+      if (!filePath1 || !filePath2) return JSON.stringify({ error: "Both filePath1 and filePath2 are required" });
+      try {
+        const resolved1 = resolvePath(filePath1, workspacePath);
+        const resolved2 = resolvePath(filePath2, workspacePath);
+        if (!fs.existsSync(resolved1)) return JSON.stringify({ error: `File not found: ${resolved1}` });
+        if (!fs.existsSync(resolved2)) return JSON.stringify({ error: `File not found: ${resolved2}` });
+        const content1 = fs.readFileSync(resolved1, "utf-8").split("\n");
+        const content2 = fs.readFileSync(resolved2, "utf-8").split("\n");
+        // Simple diff - show lines only in one file
+        const onlyIn1 = content1.filter(l => !content2.includes(l));
+        const onlyIn2 = content2.filter(l => !content1.includes(l));
+        return JSON.stringify({
+          file1: resolved1,
+          file2: resolved2,
+          linesOnlyInFile1: onlyIn1.length,
+          linesOnlyInFile2: onlyIn2.length,
+          diff: [
+            ...onlyIn1.slice(0, 30).map(l => `- ${l}`),
+            ...onlyIn2.slice(0, 30).map(l => `+ ${l}`),
+          ].join("\n"),
+          summary: `File1: ${content1.length} lines, File2: ${content2.length} lines, ${onlyIn1.length + onlyIn2.length} lines different`,
+        });
+      } catch (e: any) {
+        return JSON.stringify({ error: e.message });
+      }
+    },
+  },
+  {
+    name: "append_file",
+    description: "Append content to an existing file. If the file doesn't exist, creates it. Useful for adding to logs, appending to configs, or incrementally building files.",
+    parameters: {
+      filePath: { type: "string", description: "Path to the file relative to the workspace" },
+      content: { type: "string", description: "Content to append" },
+    },
+    execute: async (params, workspacePath) => {
+      const filePath = params.filePath as string;
+      const content = params.content as string;
+      if (!filePath || content === undefined) return JSON.stringify({ error: "filePath and content are required" });
+      try {
+        const resolved = resolvePath(filePath, workspacePath);
+        const parentDir = path.dirname(resolved);
+        if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
+        fs.appendFileSync(resolved, content, "utf-8");
+        const stats = fs.statSync(resolved);
+        return JSON.stringify({ path: resolved, appended: true, fileSize: stats.size });
+      } catch (e: any) {
+        return JSON.stringify({ error: e.message });
+      }
+    },
+  },
 ];
 
 export function getToolDefinitions(): ToolDefinition[] {
@@ -574,6 +740,12 @@ You can call tools using ANY of these formats:
 <longcat_arg_value>src/main.ts</longcat_arg_value>
 
 You can call multiple tools at once. Each tool call will be executed and the result fed back to you.
+
+[TOOL CATEGORIES]
+📄 FILE OPERATIONS: read_file, write_file, append_file, search_replace, list_files, diff_files
+🌐 WEB: web_search, web_fetch
+🧠 MEMORY: memory_save, memory_recall
+💻 SYSTEM: local_cmd, get_system_info, get_env_var, calculator, get_current_time
 
 ${lines.join("\n")}`;
 }

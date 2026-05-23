@@ -33,31 +33,82 @@ const TOOL_CALL_PATTERNS = [
   /^\s*\{"action"\s*:\s*"\w+"/m,
   /^\s*\{"tool"\s*:\s*"\w+"/m,
   /"functionCall"\s*:\s*\{/m,
+  /⚙️/,
+  /\[Executed System Action\]/m,
+  /^\s*\{"url":\s*"/m,  // web_fetch result
+  /^\s*\{"path":\s*"/m,  // file operation result
+  /^\s*\{"query":\s*"/m,  // search result
+  /^\s*\{"expression":\s*"/m,  // calculator result
+  /^\s*\{"stdout"/m,  // command result
 ];
 
 function isToolCallContent(content: string): boolean {
   for (const pattern of TOOL_CALL_PATTERNS) {
     if (pattern.test(content)) return true;
   }
-  // Check if content is primarily JSON tool call data
   const trimmed = content.trim();
-  if (trimmed.startsWith('{"name":') && (trimmed.includes('"arguments"') || trimmed.includes('"args"'))) return true;
-  if (trimmed.startsWith('{"name":') && trimmed.includes('"args"')) return true;
-  // Check if content is a JSON object that looks like a web_fetch/tool call result
-  // (not an artifact itself, but raw tool output)
-  if (trimmed.startsWith('{"url":') && trimmed.includes('"textContent"')) return true;
-  if (trimmed.startsWith('{"error":') && trimmed.includes('"hint"')) return true;
-  // Check if content is primarily tool execution output
+  
+  // Check for JSON tool call patterns
+  if (trimmed.startsWith('{"name":') && (trimmed.includes('"arguments"') || trimmed.includes('"args"') || trimmed.includes('"params"'))) return true;
+  if (trimmed.startsWith('{"action":') || trimmed.startsWith('{"tool":')) return true;
+  
+  // Check for tool result JSON patterns
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      // Tool results from our tools
+      if (parsed.url && (parsed.textContent !== undefined || parsed.fetched !== undefined)) return true;
+      if (parsed.path && parsed.content !== undefined && !trimmed.includes('import ')) return true;
+      if (parsed.query && parsed.results !== undefined) return true;
+      if (parsed.expression && parsed.result !== undefined) return true;
+      if (parsed.stdout !== undefined || parsed.exitCode !== undefined) return true;
+      if (parsed.error && parsed.hint) return true;
+      if (parsed.error && parsed.url) return true;
+      if (parsed.path && parsed.files !== undefined) return true;
+      if (parsed.path && parsed.written !== undefined) return true;
+      if (parsed.path && parsed.replacements !== undefined) return true;
+      if (parsed.appended !== undefined) return true;
+      if (parsed.name && parsed.exists !== undefined) return true;
+      if (parsed.memories !== undefined) return true;
+      if (parsed.iso && parsed.timezone) return true;
+      if (parsed.platform && parsed.cpus) return true;
+      // Web fetch results
+      if (parsed.url && parsed.title && parsed.textContent) return true;
+    } catch {}
+  }
+  
+  // Check for tool execution output patterns
   const toolResultLines = trimmed.split('\n').filter(l => 
     l.startsWith('Tool:') || l.startsWith('Status:') || l.startsWith('Result:')
   );
   if (toolResultLines.length > 2) return true;
+  
+  // Check for "Executed System Action" blocks
+  if (trimmed.includes('[Executed System Action]')) return true;
+  if (trimmed.includes('⚙️')) return true;
+  
   return false;
 }
 
 export function detectArtifact(content: string, _chunk: string): DetectedArtifact | null {
   // Skip content that is primarily tool call data
   if (isToolCallContent(content)) return null;
+
+  // Additional check: if content starts with { and is valid JSON that looks like a tool result, return null
+  const trimmedContent = content.trim();
+  if (trimmedContent.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmedContent);
+      // Check if it has keys that indicate it's a tool result, not an artifact
+      const toolResultKeys = ["url", "textContent", "path", "content", "query", "results", "stdout", "exitCode", "error", "hint", "files", "written", "replacements", "appended", "exists", "memories", "iso", "timezone", "platform", "cpus", "fetched"];
+      const parsedKeys = Object.keys(parsed);
+      if (parsedKeys.some(k => toolResultKeys.includes(k))) {
+        return null;
+      }
+    } catch {
+      // Not valid JSON, continue with artifact detection
+    }
+  }
 
   const scores: Record<string, number> = {};
   scores["markdown"] = 1;

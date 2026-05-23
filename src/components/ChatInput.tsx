@@ -219,10 +219,16 @@ export function ChatInput() {
                 setStreamingContent(fullContent);
                 // Use the robust stripToolCallXml from tools.ts instead of fragile regexes
                 // It properly handles nested JSON, XML tags, and code blocks
-                const cleanContent = stripToolCallXml(fullContent)
+                let cleanContent = stripToolCallXml(fullContent)
                   .replace(/⚙️\s*\*\*\[Executed System Action\]\*\*:[\s\S]*?```/g, "")
                   .replace(/\n{3,}/g, "\n\n")
                   .trim();
+                // Extra filter: strip any remaining JSON that looks like tool calls
+                // This catches {"name": "...", "arguments": {...}} patterns that survived stripToolCallXml
+                cleanContent = cleanContent.replace(/\{"name"\s*:\s*"[^"]*"\s*,\s*"(arguments|args|params)"\s*:\s*\{[^}]*\}\s*\}/g, "");
+                // Also strip tool result JSON objects that leak through
+                cleanContent = cleanContent.replace(/\{"(url|path|query|expression|stdout|error)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "");
+                cleanContent = cleanContent.replace(/\n{3,}/g, "\n\n").trim();
                 const detected = detectArtifact(cleanContent, data.content);
                 if (shouldAutoOpen(detected, cleanContent.length)) {
                   const store = useArtifactPreviewStore.getState();
@@ -340,10 +346,14 @@ export function ChatInput() {
                 const store = useArtifactPreviewStore.getState();
                 const active = store.tabs.find(t => t.id === store.activeTabId);
                 if (active) {
-                  const cleanContent = stripToolCallXml(fullContent)
+                  let cleanContent = stripToolCallXml(fullContent)
                     .replace(/⚙️\s*\*\*\[Executed System Action\]\*\*:[\s\S]*?```/g, "")
                     .replace(/\n{3,}/g, "\n\n")
                     .trim();
+                  // Extra filter: strip any remaining JSON that looks like tool calls
+                  cleanContent = cleanContent.replace(/\{"name"\s*:\s*"[^"]*"\s*,\s*"(arguments|args|params)"\s*:\s*\{[^}]*\}\s*\}/g, "");
+                  cleanContent = cleanContent.replace(/\{"(url|path|query|expression|stdout|error)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "");
+                  cleanContent = cleanContent.replace(/\n{3,}/g, "\n\n").trim();
                   store.updateTab(active.id, { content: cleanContent, isStreaming: false });
                 }
                 try {
