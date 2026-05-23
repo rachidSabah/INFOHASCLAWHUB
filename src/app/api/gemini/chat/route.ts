@@ -1103,6 +1103,10 @@ export async function POST(req: NextRequest) {
           // Track tool results for passing back to the model in the next iteration
           let pendingToolResults: { toolCallId: string; toolName: string; result: string; nativeFunctionCall?: any }[] = [];
           let hasHadSuccessfulToolRun = false;
+          // Global tool call ID counter to ensure unique IDs across iterations
+          // (Date.now() alone causes duplicates when same tool is called multiple times)
+          let toolCallIdCounter = 0;
+          const nextToolCallId = (toolName: string) => `call_${toolName}_${requestId}_${++toolCallIdCounter}`;
           // Track assistant content and reasoning content from previous iteration
           let previousAssistantContent: string | undefined;
           let previousReasoningContent: string | undefined;
@@ -1210,7 +1214,7 @@ export async function POST(req: NextRequest) {
             for (const fc of nativeFunctionCalls) {
               const matchingResult = allToolCalls.find((tc, idx) => idx >= toolCallCountBefore && tc.name === fc.name);
               pendingToolResults.push({
-                toolCallId: `call_${fc.name}_${Date.now()}`,
+                toolCallId: nextToolCallId(fc.name),
                 toolName: fc.name,
                 result: matchingResult?.result || "{}",
                 nativeFunctionCall: fc,
@@ -1221,7 +1225,7 @@ export async function POST(req: NextRequest) {
               const tc = allToolCalls[i];
               if (!nativeCallNames.has(tc.name)) {
                 pendingToolResults.push({
-                  toolCallId: `call_${tc.name}_${Date.now()}`,
+                  toolCallId: nextToolCallId(tc.name),
                   toolName: tc.name,
                   result: tc.result,
                   nativeFunctionCall: { name: tc.name, args: tc.arguments },

@@ -70,6 +70,53 @@ function detectChromeVersion(): string | null {
     }
   }
 
+  // WSL: Try to detect Chrome on the Windows side
+  if (process.platform === "linux") {
+    const wslChromeVersion = detectWindowsChromeViaWSL();
+    if (wslChromeVersion) return wslChromeVersion;
+  }
+
+  return null;
+}
+
+/**
+ * Detect Chrome/Edge installed on the Windows side when running in WSL.
+ * Uses WSL interop (cmd.exe) to check Windows paths.
+ */
+function detectWindowsChromeViaWSL(): string | null {
+  try {
+    // Check if we're in WSL
+    if (!fs.existsSync("/proc/version")) return null;
+    const versionInfo = fs.readFileSync("/proc/version", "utf-8").toLowerCase();
+    if (!versionInfo.includes("microsoft")) return null;
+
+    // Try using cmd.exe via WSL interop to find Chrome
+    const windowsPaths = [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    ];
+
+    for (const winPath of windowsPaths) {
+      const result = execSafe(`cmd.exe /c "if exist "${winPath}" (echo FOUND)" 2>/dev/null`);
+      if (result && result.includes("FOUND")) {
+        // Get version
+        const versionResult = execSafe(`cmd.exe /c ""${winPath}" --version" 2>/dev/null`);
+        if (versionResult) {
+          const match = versionResult.match(/(\d+[\d.]*)/);
+          if (match) return `${match[1]} (Windows/WSL)`;
+        }
+        return "detected (Windows/WSL)";
+      }
+    }
+
+    // Also try the `which` approach via Windows PATH interop
+    const whichResult = execSafe(`cmd.exe /c "where chrome" 2>/dev/null`);
+    if (whichResult && whichResult.includes("chrome")) {
+      return "detected via Windows PATH (WSL)";
+    }
+  } catch {
+    // WSL interop not available or failed
+  }
   return null;
 }
 
@@ -106,6 +153,34 @@ function detectEdgeVersion(): string | null {
   if (result) {
     const match = result.match(/(\d+[\d.]*)/);
     return match ? match[1] : result.replace(/[^\d.]/g, "").trim();
+  }
+
+  // WSL: Try to detect Edge on the Windows side
+  if (process.platform === "linux") {
+    try {
+      if (!fs.existsSync("/proc/version")) return null;
+      const versionInfo = fs.readFileSync("/proc/version", "utf-8").toLowerCase();
+      if (!versionInfo.includes("microsoft")) return null;
+
+      const windowsEdgePaths = [
+        'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+        'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+      ];
+
+      for (const winPath of windowsEdgePaths) {
+        const result = execSafe(`cmd.exe /c "if exist "${winPath}" (echo FOUND)" 2>/dev/null`);
+        if (result && result.includes("FOUND")) {
+          const versionResult = execSafe(`cmd.exe /c ""${winPath}" --version" 2>/dev/null`);
+          if (versionResult) {
+            const match = versionResult.match(/(\d+[\d.]*)/);
+            if (match) return `${match[1]} (Windows/WSL)`;
+          }
+          return "detected (Windows/WSL)";
+        }
+      }
+    } catch {
+      // WSL interop not available or failed
+    }
   }
 
   return null;
@@ -416,8 +491,8 @@ async function runAllChecks(): Promise<{ checks: DoctorCheck[]; summary: DoctorS
       checks.push({
         name: "Chrome / Browser",
         status: "warning",
-        message: "No browser detected in WSL Linux paths",
-        details: "WSL detected. Chrome/Edge may be installed on the Windows side. agent-browser can use the Windows browser via WSL interop. You can also install Chrome in WSL: wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add - && sudo apt-get install google-chrome-stable",
+        message: "No browser detected in WSL Linux paths — checking Windows side...",
+        details: "WSL detected. Checking for Windows-side Chrome/Edge via WSL interop...\n\nIf you have Chrome or Edge installed on Windows, agent-browser can use it via WSL interop.\n\nTo install Chrome in WSL:\n  wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -\n  sudo apt-get install google-chrome-stable\n\nOr set BROWSER_PATH to your Windows Chrome path:\n  export BROWSER_PATH=\"/mnt/c/Program Files/Google/Chrome/Application/chrome.exe\"",
       });
     } else {
       checks.push({
