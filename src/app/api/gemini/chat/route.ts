@@ -133,7 +133,8 @@ ${assistantText.slice(0, 4000)}`;
 
       responseText = await new Promise<string>((resolve, reject) => {
         const proc = spawn("gemini", [...cliArgs, "--no-stream", "--skip-trust"], {
-          env: { ...process.env, ...providerEnv, ...(apiKey ? { GEMINI_API_KEY: apiKey } : {}), GEMINI_CLI_TRUST_WORKSPACE: "true" },
+          cwd: os.homedir(),
+          env: { ...process.env, ...providerEnv, ...(apiKey ? { GEMINI_API_KEY: apiKey } : {}), GEMINI_CLI_TRUST_WORKSPACE: "true", HOME: process.env.HOME || os.homedir() },
           shell: true,
           stdio: ["pipe", "pipe", "pipe"],
         });
@@ -411,7 +412,9 @@ async function queryLLM(
   pendingToolResults?: { toolCallId: string; toolName: string; result: string; nativeFunctionCall?: any }[],
   // Assistant content and reasoning content from previous iteration (for OpenAI-compatible providers)
   assistantContent?: string,
-  assistantReasoningContent?: string
+  assistantReasoningContent?: string,
+  // Workspace path for setting cwd on CLI processes (fixes trusted directory error)
+  workspacePath?: string
 ): Promise<{ text: string; reasoningContent: string; nativeFunctionCalls: any[] }> {
   let accumulatedText = "";
   let reasoningContent = "";
@@ -548,7 +551,7 @@ async function queryLLM(
     const mappedHistory = conversationHistory.map((msg: any) => {
       const msgObj: any = {
         role: msg.role === "user" ? "user" : "assistant",
-        content: msg.content
+        content: msg.content || ""
       };
       if (msg.reasoning_content) {
         msgObj.reasoning_content = msg.reasoning_content;
@@ -581,7 +584,7 @@ async function queryLLM(
 
       const assistantMsg: any = {
         role: "assistant",
-        content: assistantContent ?? null,
+        content: assistantContent || "",
         tool_calls: assistantToolCalls,
       };
       // CRITICAL: DeepSeek thinking models require reasoning_content to be passed back
@@ -838,7 +841,11 @@ async function queryLLM(
     const cliArgs = getCliArgs(model);
     console.log(`[${requestId}] Spawning: gemini ${cliArgs.join(" ")}`);
 
+    // Use workspace path or home directory as cwd for Gemini CLI
+    const cliCwd = workspacePath || os.homedir();
+
     const geminiProcess = spawn("gemini", cliArgs, {
+      cwd: cliCwd,
       env: {
         ...process.env,
         ...providerEnv,
@@ -846,6 +853,8 @@ async function queryLLM(
         // Fix "Gemini CLI is not running in a trusted directory" error
         // See: https://geminicli.com/docs/cli/trusted-folders/#headless-and-automated-environments
         GEMINI_CLI_TRUST_WORKSPACE: "true",
+        // Ensure HOME is set for CLI config resolution
+        HOME: process.env.HOME || os.homedir(),
       },
       shell: true,
       stdio: ["pipe", "pipe", "pipe"],
@@ -1042,6 +1051,56 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // === SMART CONTEXT ENRICHMENT ===
+    // Automatically inject relevant code context when the user asks about files or code
+    let enrichedContext = "";
+    if (workspacePath && !fileContents) {
+      const codeKeywords = ["function", "class", "component", "module", "file", "code", "import", "export", "api", "route", "bug", "fix", "error", "implement", "refactor", "debug"];
+      const promptLower = (prompt || "").toLowerCase();
+      const needsCodeContext = codeKeywords.some(kw => promptLower.includes(kw));
+      
+      if (needsCodeContext) {
+        try {
+          // Quick scan for relevant files based on prompt keywords
+          const fs = require("fs");
+          const pathMod = require("path");
+          const baseDir = workspacePath;
+          const srcDir = pathMod.join(baseDir, "src");
+          if (fs.existsSync(srcDir)) {
+            // Find recently modified files as likely context
+            const recentFiles: {path: string; mtime: number}[] = [];
+            const scanDir = (dir: string, depth: number = 0) => {
+              if (depth > 2) return;
+              try {
+                const entries = fs.readdirSync(dir, { withFileTypes: true });
+                for (const entry of entries) {
+                  if (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name === ".next") continue;
+                  const fullPath = pathMod.join(dir, entry.name);
+                  if (entry.isDirectory()) scanDir(fullPath, depth + 1);
+                  else if (entry.isFile() && /\.(ts|tsx|js|jsx|py|rs|go)$/.test(entry.name)) {
+                    try {
+                      const stat = fs.statSync(fullPath);
+                      recentFiles.push({ path: fullPath.replace(baseDir + "/", ""), mtime: stat.mtimeMs });
+                    } catch {}
+                  }
+                }
+              } catch {}
+            };
+            scanDir(srcDir);
+            // Sort by modification time (most recent first)
+            recentFiles.sort((a: any, b: any) => b.mtime - a.mtime);
+            const topFiles = recentFiles.slice(0, 5).map(f => f.path);
+            if (topFiles.length > 0) {
+              enrichedContext = `\n\n[Auto-detected recent project files for context: ${topFiles.join(", ")}]`;
+            }
+          }
+        } catch {}
+      }
+    }
+    if (enrichedContext) {
+      prompt = `${enrichedContext}\n\n${prompt}`;
+    }
+
     // Agent lookup
     let agentSystemPrompt = "";
     let agentSkills: string[] = [];
@@ -1142,6 +1201,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // === SMART MODEL FALLBACK ===
+    // If the primary model fails, try a fallback model from the same or different provider
+    const modelFallbackChain: string[] = [];
+    if (targetModel.includes("deepseek")) {
+      modelFallbackChain.push("deepseek-chat"); // Fallback from deepseek-reasoner to deepseek-chat
+    }
+    if (targetModel.includes("qwen")) {
+      modelFallbackChain.push("qwen2.5-72b-instruct");
+    }
+    // Generic fallbacks
+    modelFallbackChain.push("gemini-2.0-flash");
+
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
@@ -1167,6 +1238,31 @@ export async function POST(req: NextRequest) {
           // === REASONING ENGINE INTEGRATION ===
           // Assess task complexity for dynamic CoT and planning
           const taskComplexity = assessTaskComplexity(prompt || "", conversationHistory.length);
+
+          // === SMART TOOL-AWARENESS ===
+          // Detect if the task requires specific tools and add targeted guidance
+          const toolAwarenessAdditions: string[] = [];
+          const promptLower = (prompt || "").toLowerCase();
+          
+          if (promptLower.includes("website") || promptLower.includes("web page") || promptLower.includes("url")) {
+            toolAwarenessAdditions.push("For website analysis, use web_fetch first, then analyze the content thoroughly.");
+          }
+          if (promptLower.includes("search") || promptLower.includes("find") || promptLower.includes("look up")) {
+            toolAwarenessAdditions.push("Use web_search to find information, then web_fetch to get detailed content from relevant URLs.");
+          }
+          if (promptLower.includes("file") || promptLower.includes("code") || promptLower.includes("project")) {
+            toolAwarenessAdditions.push("Use tree_view and list_files to understand the project structure before making changes. Use grep_code to find specific patterns.");
+          }
+          if (promptLower.includes("bug") || promptLower.includes("fix") || promptLower.includes("error")) {
+            toolAwarenessAdditions.push("Use read_file to examine the problematic code, then search_replace for targeted fixes. Verify the fix works afterward.");
+          }
+          if (promptLower.includes("create") || promptLower.includes("write") || promptLower.includes("build")) {
+            toolAwarenessAdditions.push("Plan the structure first, then write files using write_file. Use tree_view to verify the result.");
+          }
+          
+          const toolAwarenessPrompt = toolAwarenessAdditions.length > 0 
+            ? `\n[TOOL GUIDANCE]: ${toolAwarenessAdditions.join(" ")}`
+            : "";
 
           // Calculate adaptive max iterations based on task complexity
           let maxIterations = getAdaptiveMaxIterations(taskComplexity, 0, false);
@@ -1211,7 +1307,7 @@ export async function POST(req: NextRequest) {
             console.log(`[${requestId}] Agent Loop Iteration ${iteration}`);
 
             const localInstructions = await buildLocalSystemInstructions(taskComplexity, prompt, taskEnhancement);
-            const enhancedSystemPrompt = `${basePromptWithSkills}\n\n${localInstructions}\n\n${routingAddition}`;
+            const enhancedSystemPrompt = `${basePromptWithSkills}\n\n${localInstructions}\n\n${routingAddition}${toolAwarenessPrompt}`;
 
             const responseResult = await queryLLM(
               model,
@@ -1229,7 +1325,8 @@ export async function POST(req: NextRequest) {
               // Pass tool results from previous iteration (works for all providers)
               pendingToolResults.length > 0 ? pendingToolResults : undefined,
               previousAssistantContent,
-              previousReasoningContent
+              previousReasoningContent,
+              workspacePath
             );
             const responseText = responseResult.text;
             const responseReasoningContent = responseResult.reasoningContent;
@@ -1289,7 +1386,7 @@ export async function POST(req: NextRequest) {
                 currentHistory.push({ role: "user", content: currentPrompt });
                 currentHistory.push({ 
                   role: "assistant", 
-                  content: responseText,
+                  content: responseText || "",
                   ...(responseReasoningContent ? { reasoning_content: responseReasoningContent } : {})
                 });
                 pendingToolResults = [];
@@ -1310,7 +1407,7 @@ You MUST try at least 2 different approaches before providing a partial answer. 
                 currentHistory.push({ role: "user", content: currentPrompt });
                 currentHistory.push({ 
                   role: "assistant", 
-                  content: responseText,
+                  content: responseText || "",
                   ...(responseReasoningContent ? { reasoning_content: responseReasoningContent } : {})
                 });
                 pendingToolResults = [];
@@ -1320,11 +1417,31 @@ You MUST try at least 2 different approaches before providing a partial answer. 
                 continue;
               }
               
+              // === QUALITY GATE ===
+              // If the response is suspiciously short after tool usage, try one more iteration
+              const cleanResponseText = stripToolCallXml(responseText).trim();
+              const isLowQuality = hasHadSuccessfulToolRun && cleanResponseText.length < 100 && iteration < maxIterations;
+              
+              if (isLowQuality) {
+                console.log(`[${requestId}] Quality gate: response too short (${cleanResponseText.length} chars), retrying`);
+                currentHistory.push({ role: "user", content: currentPrompt });
+                currentHistory.push({ 
+                  role: "assistant", 
+                  content: responseText || "",
+                  ...(responseReasoningContent ? { reasoning_content: responseReasoningContent } : {})
+                });
+                pendingToolResults = [];
+                previousAssistantContent = undefined;
+                previousReasoningContent = undefined;
+                currentPrompt = "Your previous response was too brief. Please provide a comprehensive and detailed answer that fully addresses the original request. Include specific details, analysis, and actionable information.";
+                continue;
+              }
+              
               // Final response (no tool calls) — push to history for context
               currentHistory.push({ role: "user", content: currentPrompt });
               currentHistory.push({ 
                 role: "assistant", 
-                content: responseText,
+                content: responseText || "",
                 ...(responseReasoningContent ? { reasoning_content: responseReasoningContent } : {})
               });
               break;
@@ -1343,54 +1460,39 @@ You MUST try at least 2 different approaches before providing a partial answer. 
             // Build pendingToolResults for the next iteration
             // Only include tool calls from THIS iteration, not all accumulated ones
             pendingToolResults = [];
-            const nativeCallNames = new Set(nativeFunctionCalls.map((fc: any) => fc.name));
 
-            // Add native function calls first (from Gemini or OpenAI native tool_calls)
-            // Use index-based matching instead of name-based to handle duplicate tool calls correctly
-            // (e.g., two web_fetch calls would both match the first one with name-based find)
-            const usedIndices = new Set<number>();
-            for (const fc of nativeFunctionCalls) {
-              // Try to find a matching tool result by index position relative to the native call order
-              let matchingResult: ToolCallResult | undefined;
-              // First try: match by name AND in the new tool calls range (prefer not-yet-used indices)
-              for (let i = toolCallCountBefore; i < allToolCalls.length; i++) {
-                if (!usedIndices.has(i) && allToolCalls[i].name === fc.name) {
-                  matchingResult = allToolCalls[i];
-                  usedIndices.add(i);
-                  break;
-                }
-              }
-              // Fallback: match by index position (i-th native call → i-th new tool call)
-              if (!matchingResult) {
-                const nativeCallIdx = nativeFunctionCalls.indexOf(fc);
-                const toolCallIdx = toolCallCountBefore + nativeCallIdx;
-                if (toolCallIdx < allToolCalls.length && !usedIndices.has(toolCallIdx)) {
-                  matchingResult = allToolCalls[toolCallIdx];
-                  usedIndices.add(toolCallIdx);
-                }
-              }
-              pendingToolResults.push({
-                toolCallId: nextToolCallId(fc.name),
-                toolName: fc.name,
-                result: matchingResult?.result || "{}",
-                nativeFunctionCall: fc,
-              });
-            }
-            // Also add text-based tool calls from THIS iteration only
-            for (let i = toolCallCountBefore; i < allToolCalls.length; i++) {
-              const tc = allToolCalls[i];
-              if (!usedIndices.has(i) && !nativeCallNames.has(tc.name)) {
+            // If we have native function calls from the API, match them to results first
+            if (nativeFunctionCalls.length > 0) {
+              // Match native function calls to tool results by index position
+              // This is more reliable than name matching for handling duplicate tool calls
+              for (let ni = 0; ni < nativeFunctionCalls.length; ni++) {
+                const fc = nativeFunctionCalls[ni];
+                const toolIdx = toolCallCountBefore + ni;
+                const matchingResult = (toolIdx < allToolCalls.length) ? allToolCalls[toolIdx] : undefined;
                 pendingToolResults.push({
-                  toolCallId: nextToolCallId(tc.name),
-                  toolName: tc.name,
-                  result: tc.result,
-                  nativeFunctionCall: { name: tc.name, args: tc.arguments },
+                  toolCallId: nextToolCallId(fc.name),
+                  toolName: fc.name,
+                  result: matchingResult?.result || "{}",
+                  nativeFunctionCall: fc,
                 });
               }
             }
 
+            // Add remaining tool results from this iteration that weren't matched to native calls
+            // Use the count of native calls to know how many were already consumed
+            const nativeCallsConsumed = nativeFunctionCalls.length;
+            for (let i = toolCallCountBefore + nativeCallsConsumed; i < allToolCalls.length; i++) {
+              const tc = allToolCalls[i];
+              pendingToolResults.push({
+                toolCallId: nextToolCallId(tc.name),
+                toolName: tc.name,
+                result: tc.result,
+                nativeFunctionCall: { name: tc.name, args: tc.arguments },
+              });
+            }
+
             // Track assistant content and reasoning content for next iteration
-            previousAssistantContent = stripToolCallXml(responseText) || undefined;
+            previousAssistantContent = stripToolCallXml(responseText) || "";
             previousReasoningContent = responseReasoningContent || undefined;
 
             // CRITICAL: Do NOT push assistant message to currentHistory when there are tool calls.

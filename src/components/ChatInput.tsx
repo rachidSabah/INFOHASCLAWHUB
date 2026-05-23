@@ -94,6 +94,18 @@ function stripToolCallJson(content: string): string {
     }
   }
   
+  // Also strip standalone tool result JSON objects that leaked through
+  // Pattern: {"url": "...", "textContent": "..."} or {"path": "...", "content": "..."}
+  const toolResultPatterns = [
+    /\{"url"\s*:\s*"[^"]*"\s*,\s*"(textContent|title|description|fetched)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g,
+    /\{"path"\s*:\s*"[^"]*"\s*,\s*"(content|files|written|replacements)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g,
+    /\{"query"\s*:\s*"[^"]*"\s*,\s*"(results|source)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g,
+    /\{"expression"\s*:\s*"[^"]*"\s*,\s*"result"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g,
+  ];
+  for (const pattern of toolResultPatterns) {
+    result = result.replace(pattern, "");
+  }
+  
   return result;
 }
 
@@ -287,7 +299,13 @@ export function ChatInput() {
                 // Only detect artifacts in non-tool-execution content
                 const isToolExecution = cleanContent.includes('⚙️') || cleanContent.includes('[Executed System Action]');
                 // Skip artifact detection if content is just tool call data
-                const isJustToolData = cleanContent.trim().startsWith('{"name":') || cleanContent.trim().length < 20;
+                const isJustToolData = cleanContent.trim().startsWith('{"name":') || 
+                  cleanContent.trim().startsWith('{"url":') ||
+                  cleanContent.trim().startsWith('{"path":') ||
+                  cleanContent.trim().startsWith('{"query":') ||
+                  cleanContent.trim().startsWith('{"expression":') ||
+                  cleanContent.trim().startsWith('Tool:') ||
+                  cleanContent.trim().length < 20;
                 const detected = (isToolExecution || isJustToolData) ? null : detectArtifact(cleanContent, data.content);
                 if (!isToolExecution && shouldAutoOpen(detected, cleanContent.length)) {
                   const store = useArtifactPreviewStore.getState();
@@ -334,8 +352,8 @@ export function ChatInput() {
                       const websiteTab = {
                         title: fetchResult.title || fetchResult.url || "Website Preview",
                         type: "website" as const,
-                        content: resultStr,
-                        metadata: { url: fetchResult.url, title: fetchResult.title, description: fetchResult.description },
+                        content: resultStr, // Keep raw JSON for WebsiteView to parse
+                        metadata: { url: fetchResult.url, title: fetchResult.title, description: fetchResult.description, indicators: fetchResult.indicators },
                         isStreaming: false,
                       };
                       if (existing) {

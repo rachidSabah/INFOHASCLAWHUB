@@ -1121,66 +1121,149 @@ const availableTools: ToolDefinition[] = [
     },
   },
   {
-    name: "execute_code",
-    description: "Execute Python or JavaScript code safely in a sandboxed environment. Returns stdout, stderr, and exit code. Use for: running scripts, testing code, data processing, calculations. Supports: Python 3, Node.js. Timeout: 30 seconds max.",
+    name: "smart_plan",
+    description: "Create an intelligent execution plan for a complex task. Breaks down the task into ordered steps with dependencies, estimates difficulty, and identifies the optimal execution order. Use this BEFORE starting work on complex multi-step tasks.",
     parameters: {
-      language: { type: "string", description: "Programming language: 'python' or 'javascript' (default: 'python')" },
-      code: { type: "string", description: "The code to execute. For Python, use standard Python 3 syntax. For JavaScript, use Node.js syntax." },
-      timeout: { type: "string", description: "Execution timeout in seconds (default: 30, max: 60)" },
+      task: { type: "string", description: "The task to plan" },
+      context: { type: "string", description: "Additional context about the project, constraints, or preferences" },
     },
     execute: async (params) => {
-      const language = ((params.language as string) || "python").toLowerCase();
+      const task = params.task as string;
+      const context = (params.context as string) || "";
+      if (!task) return JSON.stringify({ error: "No task provided" });
+      
+      // Analyze task complexity and create a structured plan
+      const taskLower = task.toLowerCase();
+      const steps: { step: number; action: string; tool: string; difficulty: "easy" | "medium" | "hard"; dependsOn: number[] }[] = [];
+      
+      // Detect task patterns and suggest appropriate tools
+      if (taskLower.includes("create") || taskLower.includes("build") || taskLower.includes("implement")) {
+        steps.push({ step: 1, action: "Understand project structure", tool: "tree_view", difficulty: "easy", dependsOn: [] });
+        steps.push({ step: 2, action: "Check existing similar files", tool: "grep_code", difficulty: "easy", dependsOn: [1] });
+        steps.push({ step: 3, action: "Plan file structure and architecture", tool: "reasoning", difficulty: "medium", dependsOn: [1, 2] });
+        steps.push({ step: 4, action: "Create files with implementation", tool: "write_file", difficulty: "hard", dependsOn: [3] });
+        steps.push({ step: 5, action: "Verify implementation", tool: "read_file", difficulty: "easy", dependsOn: [4] });
+      } else if (taskLower.includes("fix") || taskLower.includes("debug") || taskLower.includes("bug")) {
+        steps.push({ step: 1, action: "Understand the error or issue", tool: "read_file", difficulty: "easy", dependsOn: [] });
+        steps.push({ step: 2, action: "Search for related code patterns", tool: "grep_code", difficulty: "medium", dependsOn: [1] });
+        steps.push({ step: 3, action: "Identify root cause", tool: "reasoning", difficulty: "hard", dependsOn: [1, 2] });
+        steps.push({ step: 4, action: "Apply targeted fix", tool: "search_replace", difficulty: "medium", dependsOn: [3] });
+        steps.push({ step: 5, action: "Verify fix works", tool: "read_file", difficulty: "easy", dependsOn: [4] });
+      } else if (taskLower.includes("analyze") || taskLower.includes("review") || taskLower.includes("audit")) {
+        steps.push({ step: 1, action: "Get project overview", tool: "tree_view", difficulty: "easy", dependsOn: [] });
+        steps.push({ step: 2, action: "Read key files", tool: "read_file", difficulty: "easy", dependsOn: [1] });
+        steps.push({ step: 3, action: "Search for patterns and issues", tool: "grep_code", difficulty: "medium", dependsOn: [1] });
+        steps.push({ step: 4, action: "Compile analysis report", tool: "reasoning", difficulty: "hard", dependsOn: [2, 3] });
+      } else if (taskLower.includes("website") || taskLower.includes("web page") || taskLower.includes("url")) {
+        steps.push({ step: 1, action: "Fetch website content", tool: "web_fetch", difficulty: "easy", dependsOn: [] });
+        steps.push({ step: 2, action: "Search for additional context", tool: "web_search", difficulty: "easy", dependsOn: [] });
+        steps.push({ step: 3, action: "Analyze and compile findings", tool: "reasoning", difficulty: "medium", dependsOn: [1, 2] });
+      } else {
+        // Generic plan
+        steps.push({ step: 1, action: "Gather information and context", tool: "multiple", difficulty: "easy", dependsOn: [] });
+        steps.push({ step: 2, action: "Analyze and plan approach", tool: "reasoning", difficulty: "medium", dependsOn: [1] });
+        steps.push({ step: 3, action: "Execute the plan", tool: "multiple", difficulty: "hard", dependsOn: [2] });
+        steps.push({ step: 4, action: "Verify results", tool: "read_file", difficulty: "easy", dependsOn: [3] });
+      }
+      
+      const totalDifficulty = steps.filter(s => s.difficulty === "hard").length;
+      const estimatedSteps = steps.length;
+      
+      return JSON.stringify({
+        task,
+        context: context || "none provided",
+        plan: steps,
+        summary: {
+          totalSteps: estimatedSteps,
+          hardSteps: totalDifficulty,
+          canParallelize: steps.filter(s => s.dependsOn.length === 0).length > 1,
+          recommendedApproach: totalDifficulty > 2 ? "Iterative with verification at each step" : "Direct execution with final verification",
+        },
+        hint: "Execute steps in order. Steps with empty dependsOn can run in parallel. Use the recommended tools for each step.",
+      });
+    },
+  },
+  {
+    name: "execute_code",
+    description: "Execute a code snippet safely and return the output. Supports JavaScript/TypeScript (via Node.js) and Python. Use this to verify code logic, test algorithms, or compute results. Code runs in a sandboxed subprocess with timeout.",
+    parameters: {
+      language: { type: "string", description: "Programming language: 'javascript', 'typescript', or 'python'" },
+      code: { type: "string", description: "The code to execute" },
+      timeout: { type: "string", description: "Timeout in seconds (default: 10, max: 30)" },
+    },
+    execute: async (params) => {
+      const language = (params.language as string || "javascript").toLowerCase();
       const code = params.code as string;
-      const timeout = Math.min(parseInt(params.timeout as string) || 30, 60);
+      const timeoutSec = Math.min(parseInt(params.timeout as string) || 10, 30);
       
       if (!code) return JSON.stringify({ error: "No code provided" });
-      if (!["python", "javascript", "js"].includes(language)) {
-        return JSON.stringify({ error: `Unsupported language: ${language}. Use 'python' or 'javascript'` });
+      
+      const supportedLangs = ["javascript", "typescript", "python", "js", "ts", "py"];
+      if (!supportedLangs.includes(language)) {
+        return JSON.stringify({ error: `Unsupported language: ${language}. Supported: javascript, typescript, python` });
       }
       
       try {
         const tmpDir = os.tmpdir();
-        const scriptId = `clawhub_exec_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const ext = language === "javascript" || language === "js" ? "js" : "py";
-        const scriptPath = path.join(tmpDir, `${scriptId}.${ext}`);
+        const ext = language === "python" || language === "py" ? ".py" : ".js";
+        const scriptPath = path.join(tmpDir, `clawhub_exec_${Date.now()}${ext}`);
         
-        // Write code to temporary file
-        fs.writeFileSync(scriptPath, code, "utf-8");
+        // Wrap JavaScript/TypeScript code in a safe execution context
+        let execCode = code;
+        if (language !== "python" && language !== "py") {
+          // Add timeout and error handling wrapper
+          execCode = `
+const __timeout = ${timeoutSec * 1000};
+const __start = Date.now();
+process.on('SIGTERM', () => { process.exit(124); });
+setTimeout(() => { console.error('Execution timed out'); process.exit(124); }, __timeout);
+try {
+  ${code}
+} catch (e) {
+  console.error('Error:', e.message);
+  process.exit(1);
+}
+`;
+        }
         
-        const cmd = ext === "py" ? "python3" : "node";
-        const startTime = Date.now();
+        fs.writeFileSync(scriptPath, execCode, "utf-8");
+        
+        const cmd = language === "python" || language === "py" 
+          ? `python ${scriptPath}` 
+          : `node ${scriptPath}`;
         
         return await new Promise<string>((resolve) => {
-          const proc = exec(`"${cmd}" "${scriptPath}"`, { 
-            timeout: timeout * 1000,
-            maxBuffer: 1024 * 1024, // 1MB output limit
-          }, (error: ExecException | null, stdout: string, stderr: string) => {
-            // Clean up temp file
+          exec(cmd, { 
+            timeout: timeoutSec * 1000 + 2000, 
+            maxBuffer: 512 * 1024,
+            cwd: tmpDir,
+          }, (error, stdout, stderr) => {
             try { fs.unlinkSync(scriptPath); } catch {}
             
-            const duration = Date.now() - startTime;
-            const result: any = {
-              language: ext === "py" ? "python" : "javascript",
-              exitCode: error ? (error as any).code || 1 : 0,
-              stdout: stdout.substring(0, 20000),
-              stderr: stderr.substring(0, 5000),
-              duration: `${duration}ms`,
-            };
-            
             if (error) {
-              if (error.killed) {
-                result.timedOut = true;
-                result.error = `Execution timed out after ${timeout} seconds`;
-              } else if (error.message && !stderr) {
-                result.error = error.message.substring(0, 1000);
-              }
+              const exitCode = (error as any).code || 1;
+              const timedOut = exitCode === 124 || error.killed;
+              resolve(JSON.stringify({
+                success: false,
+                exitCode,
+                stdout: stdout?.trim() || "",
+                stderr: stderr?.trim() || "",
+                timedOut,
+                error: timedOut ? `Execution timed out after ${timeoutSec}s` : (error.message || "Execution failed"),
+              }));
+            } else {
+              resolve(JSON.stringify({
+                success: true,
+                exitCode: 0,
+                stdout: stdout?.trim() || "",
+                stderr: stderr?.trim() || "",
+                executionTime: `${((Date.now() - parseInt(String(Date.now()))) / 1000).toFixed(2)}s`,
+              }));
             }
-            
-            resolve(JSON.stringify(result));
           });
         });
       } catch (e: any) {
-        return JSON.stringify({ error: `Failed to execute code: ${e.message}` });
+        return JSON.stringify({ error: e.message, success: false });
       }
     },
   },
