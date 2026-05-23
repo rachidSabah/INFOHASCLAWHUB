@@ -44,7 +44,12 @@ function getFileIcon(tab: PreviewTab): React.ComponentType<any> {
 }
 
 function canSandbox(tab: PreviewTab): boolean {
-  const code = extractPureCode(tab.content);
+  // Never sandbox JSON tool results
+  const c = tab.content || "";
+  if (c.trim().startsWith('{') && c.trim().endsWith('}')) {
+    try { JSON.parse(c.trim()); return false; } catch {}
+  }
+  const code = extractPureCode(c);
   const lang = getLanguage(tab);
   // Anything that can be rendered as HTML/CSS/JS
   return lang === "html" || lang === "jsx" || lang === "javascript" || lang === "css" ||
@@ -385,7 +390,17 @@ function SandboxView({ tab }: { tab: PreviewTab }) {
  * Similar to Claude's artifact preview for web fetch results
  */
 function buildWebsiteHtml(pageData: any, pageTitle: string, pageUrl: string, pageDescription: string, indicators: string[]): string {
-  const pageContent = pageData.textContent || "";
+  const pageContent = pageData.textContent || pageData.content || pageData.description || "";
+  // Show error state if there's no content but there is an error
+  if (!pageContent && pageData.error) {
+    return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Error</title>
+<style>body{font-family:system-ui;padding:40px;color:#666;}h2{color:#f97316;}</style>
+</head><body><h2>Unable to fetch page</h2><p>${pageData.error}</p>
+${pageData.hint ? `<p style="color:#999;font-size:14px;">${pageData.hint}</p>` : ''}
+${pageUrl ? `<p><a href="${pageUrl}" target="_blank" style="color:#3b82f6;">Visit site directly →</a></p>` : ''}
+</body></html>`;
+  }
   const contentLines = pageContent.split('\n').filter((l: string) => l.trim()).slice(0, 100);
   const contentHtml = contentLines.map((line: string) => {
     const trimmed = line.trim();
@@ -450,10 +465,23 @@ function WebsiteView({ tab }: { tab: PreviewTab }) {
   
   // Try to parse the content as JSON (web_fetch result)
   let pageData: any = {};
+  const rawContent = tab.content || "";
   try {
-    pageData = JSON.parse(tab.content);
+    pageData = JSON.parse(rawContent);
+    // Handle nested structures - sometimes content is wrapped in a tool result
+    if (pageData.name === "web_fetch" && pageData.arguments) {
+      // This is a tool call JSON, not a result - try to extract the URL
+      pageData = { url: pageData.arguments.url, textContent: "", title: "Fetching..." };
+    }
   } catch {
-    pageData = { textContent: tab.content };
+    // Content might be text with embedded JSON
+    const jsonMatch = rawContent.match(/\{[\s\S]*"textContent"[\s\S]*\}/);
+    if (jsonMatch) {
+      try { pageData = JSON.parse(jsonMatch[0]); } catch {}
+    }
+    if (!pageData.textContent && !pageData.title) {
+      pageData = { textContent: rawContent, title: title };
+    }
   }
 
   const pageTitle = pageData.title || title;
@@ -478,7 +506,7 @@ function WebsiteView({ tab }: { tab: PreviewTab }) {
         <iframe
           className="w-full h-full border-0"
           srcDoc={previewHtml}
-          sandbox="allow-same-origin"
+          sandbox="allow-same-origin allow-scripts"
           title={`Preview: ${pageTitle}`}
         />
       </div>

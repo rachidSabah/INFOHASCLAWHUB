@@ -6,6 +6,7 @@ import path from "path";
 import os from "os";
 import { parseToolCalls, executeToolCall, getToolsPrompt, getMcpTools, getGeminiFunctionDeclarations, getOpenAIToolsDefinitions, stripToolCallXml, type ToolCallResult } from "@/lib/tools";
 import { countTokens, estimateCost } from "@/lib/tokens";
+import { routePrompt } from "@/lib/prompt-router";
 
 let cachedProviders: any[] | null = null;
 let providersCacheTime = 0;
@@ -582,6 +583,7 @@ async function queryLLM(
       model: targetModel,
       messages,
       stream: true,
+      max_tokens: 16384,
     };
 
     // Add tools if available — enables native function calling for compatible models
@@ -1117,13 +1119,20 @@ export async function POST(req: NextRequest) {
           let currentPrompt = prompt;
           let currentHistory = [...conversationHistory];
           let iteration = 0;
-          const maxIterations = 8;
+          const maxIterations = 15;
           let totalResponseText = "";
           const allToolCalls: ToolCallResult[] = [];
 
           const baseSystemPrompt = agentSystemPrompt || manualSystemPrompt || "";
           const assignedSkillsText = agentSkills.length > 0 ? `[Assigned Skills]: ${agentSkills.join(", ")}` : "";
           const basePromptWithSkills = assignedSkillsText ? `${baseSystemPrompt}\n${assignedSkillsText}` : baseSystemPrompt;
+
+          // Auto-route prompt to specialized agent mode
+          const routing = routePrompt(prompt || "");
+          if (routing.systemPromptAddition) {
+            console.log(`[${requestId}] Prompt routed to: ${routing.agentType} mode`);
+          }
+          const routingAddition = routing.systemPromptAddition || "";
 
           let lastAssistantText = "";
           const conversationId = (body as any).conversationId || "unknown";
@@ -1146,7 +1155,7 @@ export async function POST(req: NextRequest) {
             console.log(`[${requestId}] Agent Loop Iteration ${iteration}`);
 
             const localInstructions = await buildLocalSystemInstructions();
-            const enhancedSystemPrompt = `${basePromptWithSkills}\n\n${localInstructions}`;
+            const enhancedSystemPrompt = `${basePromptWithSkills}\n\n${localInstructions}\n\n${routingAddition}`;
 
             const responseResult = await queryLLM(
               model,
@@ -1194,11 +1203,41 @@ export async function POST(req: NextRequest) {
               // Don't break immediately if the model has been running tools
               // and the response looks like it might be incomplete
               const trimmedResponse = cleanText.trim();
-              const looksIncomplete = trimmedResponse.length > 0 && trimmedResponse.length < 50 &&
+              // Detect responses where the model gave up without completing the task
+              const gaveUp = trimmedResponse.toLowerCase().includes("i apologize") ||
+                trimmedResponse.toLowerCase().includes("i'm unable") ||
+                trimmedResponse.toLowerCase().includes("i cannot") ||
+                trimmedResponse.toLowerCase().includes("i'm sorry, but") ||
+                trimmedResponse.toLowerCase().includes("unfortunately, i") ||
+                trimmedResponse.toLowerCase().includes("i don't have access") ||
+                (trimmedResponse.toLowerCase().includes("cannot") && trimmedResponse.toLowerCase().includes("complete"));
+              const looksIncomplete = (trimmedResponse.length > 0 && trimmedResponse.length < 50 &&
                 (trimmedResponse.endsWith(":") || trimmedResponse.endsWith("...") || 
                  trimmedResponse.toLowerCase().includes("let me") || 
                  trimmedResponse.toLowerCase().includes("i'll") ||
-                 trimmedResponse.toLowerCase().includes("i will"));
+                 trimmedResponse.toLowerCase().includes("i will"))) ||
+                (gaveUp && hasHadSuccessfulToolRun && iteration < maxIterations);
+              
+              if (gaveUp && hasHadSuccessfulToolRun && iteration < maxIterations) {
+                console.log(`[${requestId}] Model gave up, forcing continuation with alternatives`);
+                // Push to history for context tracking, then clear pendingToolResults
+                currentHistory.push({ role: "user", content: currentPrompt });
+                currentHistory.push({ 
+                  role: "assistant", 
+                  content: responseText,
+                  ...(responseReasoningContent ? { reasoning_content: responseReasoningContent } : {})
+                });
+                pendingToolResults = [];
+                previousAssistantContent = undefined;
+                previousReasoningContent = undefined;
+                currentPrompt = `[CRITICAL] Do NOT give up. The user needs this task completed. Try alternative tools and approaches:
+- If web_fetch failed, try web_search with different keywords
+- If web_search returned no results, try web_fetch with a direct URL
+- If a file was not found, try list_files to find the correct path
+- If a command failed, try a different command or built-in tool
+You MUST try at least 2 different approaches before providing a partial answer. Continue now.`;
+                continue;
+              }
               
               if (looksIncomplete && hasHadSuccessfulToolRun && iteration < maxIterations) {
                 console.log(`[${requestId}] Response looks incomplete, re-prompting to continue`);
@@ -1296,7 +1335,21 @@ export async function POST(req: NextRequest) {
             // Use a simple continuation prompt. The tool results are provided via pendingToolResults
             // for API providers. For Gemini CLI, the tool results are included in the prompt text
             // by the queryLLM function.
-            currentPrompt = `Based on the tool execution results above, continue with the next steps or provide your final answer. If a tool returned an error, try alternative approaches.`;
+            currentPrompt = `[SYSTEM INSTRUCTION - MANDATORY COMPLIANCE]
+You just executed tool(s). You MUST now take the NEXT action based on the results. DO NOT stop here.
+
+RULES:
+1. If a tool succeeded → Analyze the result and take the NEXT step toward completing the user's task. Do NOT just summarize the result.
+2. If a tool failed → Try an ALTERNATIVE approach immediately. For example:
+   - web_search failed → Try web_fetch with a specific URL
+   - web_fetch failed → Try web_search with different keywords
+   - read_file not found → Use list_files to find the correct path
+   - Any tool error → Use a different tool or different parameters
+3. If the task requires multiple steps → CONTINUE executing tools until COMPLETE.
+4. NEVER respond with "I apologize" or "I cannot" or "I'm unable" without trying at least 2 alternative approaches first.
+5. If you have gathered enough information, provide a COMPLETE, DETAILED final answer.
+
+The user's ORIGINAL request must be FULLY completed. Continue now.`;
           }
 
           const promptContext = [

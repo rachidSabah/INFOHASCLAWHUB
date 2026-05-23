@@ -229,8 +229,10 @@ export function ChatInput() {
                 // Also strip tool result JSON objects that leak through
                 cleanContent = cleanContent.replace(/\{"(url|path|query|expression|stdout|error)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "");
                 cleanContent = cleanContent.replace(/\n{3,}/g, "\n\n").trim();
-                const detected = detectArtifact(cleanContent, data.content);
-                if (shouldAutoOpen(detected, cleanContent.length)) {
+                // Only detect artifacts in non-tool-execution content
+                const isToolExecution = cleanContent.includes('⚙️') || cleanContent.includes('[Executed System Action]');
+                const detected = isToolExecution ? null : detectArtifact(cleanContent, data.content);
+                if (!isToolExecution && shouldAutoOpen(detected, cleanContent.length)) {
                   const store = useArtifactPreviewStore.getState();
                   if (!store.isOpen) {
                     const previewTab = {
