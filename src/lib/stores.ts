@@ -155,7 +155,22 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const res = await fetch("/api/models");
       if (res.ok) {
         const dynamicGroups = await res.json();
-        set({ modelGroups: [...AVAILABLE_MODEL_GROUPS, ...dynamicGroups] });
+        // Merge with static groups, deduplicating by group name
+        const staticGroupNames = new Set(AVAILABLE_MODEL_GROUPS.map(g => g.name));
+        const newDynamicGroups = Array.isArray(dynamicGroups)
+          ? dynamicGroups.filter((g: any) => !staticGroupNames.has(g.name))
+          : [];
+        // Deduplicate models across all groups by model ID
+        const seenModelIds = new Set<string>();
+        const allGroups = [...AVAILABLE_MODEL_GROUPS, ...newDynamicGroups].map(group => ({
+          ...group,
+          models: group.models.filter((m: any) => {
+            if (seenModelIds.has(m.id)) return false;
+            seenModelIds.add(m.id);
+            return true;
+          })
+        })).filter(group => group.models.length > 0);
+        set({ modelGroups: allGroups });
       }
     } catch {
       // Providers may be offline — models fallback to built-in list

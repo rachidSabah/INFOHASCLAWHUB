@@ -4,7 +4,7 @@ import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { parseToolCalls, executeToolCall, getToolsPrompt, getMcpTools, getGeminiFunctionDeclarations, type ToolCallResult } from "@/lib/tools";
+import { parseToolCalls, executeToolCall, getToolsPrompt, getMcpTools, getGeminiFunctionDeclarations, getOpenAIToolsDefinitions, stripToolCallXml, type ToolCallResult } from "@/lib/tools";
 import { countTokens, estimateCost } from "@/lib/tokens";
 
 let cachedProviders: any[] | null = null;
@@ -379,8 +379,12 @@ async function queryLLM(
       const fullResponseText = textParts + toolCallText;
 
       // Stream the text parts to the client (not the tool_call parts)
+      // Strip any tool-call XML from the displayed text
       if (textParts) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: textParts })}\n\n`));
+        const cleanText = stripToolCallXml(textParts);
+        if (cleanText.trim()) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: cleanText })}\n\n`));
+        }
       }
 
       // Store native function calls for the agent loop to process
@@ -394,24 +398,40 @@ async function queryLLM(
     const baseUrl = (providerData.baseUrl?.replace(/\/$/, "") || "https://api.openai.com/v1").replace("://localhost", "://127.0.0.1");
     const url = `${baseUrl}/chat/completions`;
 
+    // Build OpenAI-compatible tools array for native function calling
+    let openaiTools: any[] = [];
+    try {
+      openaiTools = await getOpenAIToolsDefinitions();
+    } catch (e) {
+      console.error(`[${requestId}] Failed to build OpenAI tools:`, e);
+    }
+
+    const requestBody: any = {
+      model: targetModel,
+      messages: [
+        ...(finalSystemPrompt ? [{ role: "system", content: finalSystemPrompt }] : []),
+        ...conversationHistory.map((msg: any) => ({
+          role: msg.role === "user" ? "user" : "assistant",
+          content: msg.content
+        })),
+        { role: "user", content: prompt }
+      ],
+      stream: true,
+    };
+
+    // Add tools if available — enables native function calling for compatible models
+    if (openaiTools.length > 0) {
+      requestBody.tools = openaiTools;
+      requestBody.tool_choice = "auto";
+    }
+
     const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${providerData.apiKey}`,
       },
-      body: JSON.stringify({
-        model: targetModel,
-        messages: [
-          ...(finalSystemPrompt ? [{ role: "system", content: finalSystemPrompt }] : []),
-          ...conversationHistory.map((msg: any) => ({
-            role: msg.role === "user" ? "user" : "assistant",
-            content: msg.content
-          })),
-          { role: "user", content: prompt }
-        ],
-        stream: true,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -424,6 +444,11 @@ async function queryLLM(
 
     const decoder = new TextDecoder();
     let buffer = "";
+    // Collect native tool_calls from the streaming response
+    const nativeToolCalls: Map<number, { id: string; function: { name: string; arguments: string } }> = new Map();
+    // Buffer for filtering out <longcat_tool_call> XML from streamed content
+    let streamBuffer = "";
+    const TOOL_XML_START = "<longcat_tool_call";
 
     while (true) {
       const { done, value } = await reader.read();
@@ -440,16 +465,96 @@ async function queryLLM(
         if (trimmed.startsWith("data: ")) {
           try {
             const data = JSON.parse(trimmed.slice(6));
-            const content = data.choices[0]?.delta?.content || "";
+            const delta = data.choices[0]?.delta;
+            const content = delta?.content || "";
             if (content) {
               accumulatedText += content;
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content })}\n\n`));
+
+              // Filter out <longcat_tool_call> XML from streamed content
+              // so the user doesn't see raw XML tags
+              streamBuffer += content;
+
+              // If we're inside a tool_call XML block, don't stream to user
+              const hasOpenTag = streamBuffer.includes("<longcat_tool_call");
+              const hasCloseTag = streamBuffer.includes("</longcat_tool_call>");
+
+              if (hasOpenTag && !hasCloseTag) {
+                // We're inside an opening tag but haven't seen the close tag yet
+                // Don't stream anything — wait for the closing tag
+                continue;
+              }
+
+              if (hasOpenTag && hasCloseTag) {
+                // We have both open and close tags — strip them and stream the rest
+                const cleaned = stripToolCallXml(streamBuffer);
+                streamBuffer = "";
+                if (cleaned.trim()) {
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: cleaned })}\n\n`));
+                }
+                continue;
+              }
+
+              // No tool XML — check if content ends with a partial XML tag
+              const partialTagMatch = streamBuffer.match(/<longcat[_a-z]*$/);
+              if (partialTagMatch) {
+                // Might be start of a tool_call tag — buffer it
+                const safePart = streamBuffer.substring(0, partialTagMatch.index!);
+                streamBuffer = streamBuffer.substring(partialTagMatch.index!);
+                if (safePart) {
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: safePart })}\n\n`));
+                }
+                continue;
+              }
+
+              // Normal content — stream it all
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: streamBuffer })}\n\n`));
+              streamBuffer = "";
+            }
+            // Handle native tool_calls from the streaming delta
+            if (delta?.tool_calls) {
+              for (const tc of delta.tool_calls) {
+                const idx = tc.index ?? 0;
+                if (!nativeToolCalls.has(idx)) {
+                  nativeToolCalls.set(idx, {
+                    id: tc.id || `tc_${idx}`,
+                    function: { name: "", arguments: "" },
+                  });
+                }
+                const existing = nativeToolCalls.get(idx)!;
+                if (tc.id) existing.id = tc.id;
+                if (tc.function?.name) existing.function.name += tc.function.name;
+                if (tc.function?.arguments) existing.function.arguments += tc.function.arguments;
+              }
+            }
+            // Also check finish_reason for tool_calls
+            if (data.choices[0]?.finish_reason === "tool_calls" && nativeToolCalls.size > 0) {
+              // Convert native tool calls to text-based tool_call format for parseToolCalls
+              for (const [, tc] of nativeToolCalls) {
+                try {
+                  const args = JSON.parse(tc.function.arguments || "{}");
+                  const toolCallText = `\n\`\`\`tool_call\n${JSON.stringify({ name: tc.function.name, arguments: args })}\n\`\`\`\n`;
+                  accumulatedText += toolCallText;
+                  // Don't stream the tool call text to the user
+                } catch {
+                  // If args parsing fails, add as-is
+                  accumulatedText += `\n\`\`\`tool_call\n${JSON.stringify({ name: tc.function.name, arguments: tc.function.arguments })}\n\`\`\`\n`;
+                }
+              }
             }
           } catch (e) {
             console.error(`[${requestId}] Error parsing SSE line: ${trimmed}`, e);
           }
         }
       }
+    }
+
+    // Flush any remaining stream buffer (strip tool XML)
+    if (streamBuffer) {
+      const cleaned = stripToolCallXml(streamBuffer);
+      if (cleaned.trim()) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: cleaned })}\n\n`));
+      }
+      streamBuffer = "";
     }
   } else {
     // Spawn Gemini CLI
@@ -496,10 +601,43 @@ async function queryLLM(
     geminiProcess.stdin?.end();
 
     const processComplete = new Promise<void>((resolve, reject) => {
+      let cliBuffer = "";
       geminiProcess.stdout.on("data", (chunk: Buffer) => {
         const text = chunk.toString();
         accumulatedText += text;
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: text })}\n\n`));
+        cliBuffer += text;
+
+        // Filter out <longcat_tool_call> XML from CLI output
+        const hasOpenTag = cliBuffer.includes("<longcat_tool_call");
+        const hasCloseTag = cliBuffer.includes("</longcat_tool_call>");
+
+        if (hasOpenTag && !hasCloseTag) {
+          // Buffering — don't stream yet
+          return;
+        }
+
+        if (hasOpenTag && hasCloseTag) {
+          const cleaned = stripToolCallXml(cliBuffer);
+          cliBuffer = "";
+          if (cleaned.trim()) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: cleaned })}\n\n`));
+          }
+          return;
+        }
+
+        // Check for partial XML tag at the end
+        const partialMatch = cliBuffer.match(/<longcat[_a-z]*$/);
+        if (partialMatch) {
+          const safePart = cliBuffer.substring(0, partialMatch.index!);
+          cliBuffer = cliBuffer.substring(partialMatch.index!);
+          if (safePart) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: safePart })}\n\n`));
+          }
+          return;
+        }
+
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: cliBuffer })}\n\n`));
+        cliBuffer = "";
       });
 
       let stderrData = "";
@@ -800,11 +938,17 @@ export async function POST(req: NextRequest) {
             );
 
             if (!toolRun) {
-              lastAssistantText = responseText;
+              // Check if the response contains tool call XML that wasn't parsed
+              // (this can happen with malformed XML or new formats)
+              const hasUnparsedToolXml = /<longcat_tool_call>|```tool_call/.test(responseText);
+              
+              // Strip tool call XML from the last streamed text so users don't see raw XML
+              const cleanText = stripToolCallXml(responseText);
+              lastAssistantText = cleanText;
               
               // Don't break immediately if the model has been running tools
               // and the response looks like it might be incomplete
-              const trimmedResponse = responseText.trim();
+              const trimmedResponse = cleanText.trim();
               const looksIncomplete = trimmedResponse.length > 0 && trimmedResponse.length < 50 &&
                 (trimmedResponse.endsWith(":") || trimmedResponse.endsWith("...") || 
                  trimmedResponse.toLowerCase().includes("let me") || 

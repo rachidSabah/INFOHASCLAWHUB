@@ -435,6 +435,68 @@ export async function getGeminiFunctionDeclarations(): Promise<any[]> {
   return functionDeclarations;
 }
 
+/**
+ * Build OpenAI-compatible tools array for native function calling.
+ * This enables OpenAI-compatible models (GPT-4, DeepSeek, Qwen, Ollama, LM Studio, etc.)
+ * to use structured tool calls instead of outputting text-based XML/JSON.
+ */
+export async function getOpenAIToolsDefinitions(): Promise<any[]> {
+  const allTools = [...availableTools];
+
+  // Include MCP tools
+  try {
+    const mcpTools = await getMcpTools();
+    allTools.push(...mcpTools);
+  } catch {}
+
+  const tools = allTools.map((tool) => {
+    const properties: Record<string, any> = {};
+    const required: string[] = [];
+
+    for (const [key, param] of Object.entries(tool.parameters)) {
+      properties[key] = {
+        type: param.type,
+        description: param.description,
+      };
+      required.push(key);
+    }
+
+    return {
+      type: "function" as const,
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: {
+          type: "object" as const,
+          properties,
+          required: required.length > 0 ? required : undefined,
+        },
+      },
+    };
+  });
+
+  // Add local_cmd as a tool (it's handled separately in executeToolCall)
+  tools.push({
+    type: "function" as const,
+    function: {
+      name: "local_cmd",
+      description: "Execute a command in the terminal. Returns stdout, stderr, and exit code. Use for system commands, scripts, and tools not available as built-in tools.",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          command: {
+            type: "string",
+            description: "The shell command to execute",
+          },
+        },
+        required: ["command"],
+      },
+    },
+  });
+
+  return tools;
+}
+
 export function getToolByName(name: string): ToolDefinition | undefined {
   return availableTools.find((t) => t.name === name);
 }
@@ -554,33 +616,62 @@ export function parseToolCalls(text: string): ToolCallRequest[] {
     } catch {}
   }
 
-  // --- Format 4: <longcat_tool_call> XML format (used by Gemini CLI models) ---
-  // Pattern: <longcat_tool_call>tool_name</longcat_tool_call>
-  //          <longcat_arg_key>param_name</longcat_arg_key>
-  //          <longcat_arg_value>param_value</longcat_arg_value>
-  const longcatRegex = /<longcat_tool_call>\s*([\w_]+)\s*<\/longcat_tool_call>/g;
-  while ((match = longcatRegex.exec(text)) !== null) {
-    const toolName = match[1].trim();
+  // --- Format 4: <longcat_tool_call> XML format (used by Gemini CLI and many LLM models) ---
+  // Supports TWO sub-formats:
+  // A) Args INSIDE the tag: <longcat_tool_call>tool_name <longcat_arg_key>key</longcat_arg_key> <longcat_arg_value>value</longcat_arg_value> </longcat_tool_call>
+  // B) Args OUTSIDE the tag: <longcat_tool_call>tool_name</longcat_tool_call> <longcat_arg_key>key</longcat_arg_key> <longcat_arg_value>value</longcat_arg_value>
+
+  // Extract each <longcat_tool_call>...</longcat_tool_call> block (including nested tags)
+  const longcatBlockRegex = /<longcat_tool_call>([\s\S]*?)<\/longcat_tool_call>/g;
+  while ((match = longcatBlockRegex.exec(text)) !== null) {
+    const blockContent = match[1].trim();
     const args: Record<string, any> = {};
-    
-    // Find the arguments for this tool call - they appear after the tool_call tag
-    const afterToolCall = text.substring(match.index + match[0].length);
-    
-    // Parse key-value pairs: <longcat_arg_key>key</longcat_arg_key> <longcat_arg_value>value</longcat_arg_value>
-    const argKeyRegex = /<longcat_arg_key>\s*([^<]*?)\s*<\/longcat_arg_key>\s*<longcat_arg_value>\s*([^]*?)\s*<\/longcat_arg_value>/g;
+
+    // Parse key-value pairs inside this block
+    const argKeyRegex = /<longcat_arg_key>\s*([^<]*?)\s*<\/longcat_arg_key>\s*<longcat_arg_value>\s*([\s\S]*?)\s*<\/longcat_arg_value>/g;
     let argMatch;
-    const searchFrom = text.substring(match.index);
-    while ((argMatch = argKeyRegex.exec(searchFrom)) !== null) {
-      // Stop if we hit the next tool call
-      if (argMatch.index > 0 && searchFrom.substring(0, argMatch.index).includes("<longcat_tool_call>")) break;
+    while ((argMatch = argKeyRegex.exec(blockContent)) !== null) {
       const key = argMatch[1].trim();
       const value = argMatch[2].trim();
       args[key] = value;
     }
-    
-    if (!calls.some((c) => c.name === toolName && JSON.stringify(c.arguments) === JSON.stringify(args))) {
-      calls.push({ name: toolName, arguments: args });
+
+    // Tool name is the text before the first <longcat_arg_key> tag, trimmed
+    const firstArgTag = blockContent.indexOf('<longcat_arg_key>');
+    const toolName = (firstArgTag > 0 ? blockContent.substring(0, firstArgTag) : blockContent)
+      .replace(/<[^>]+>/g, '') // Remove any residual XML tags
+      .trim();
+
+    if (toolName && /^[\w_]+$/.test(toolName)) {
+      if (!calls.some((c) => c.name === toolName && JSON.stringify(c.arguments) === JSON.stringify(args))) {
+        calls.push({ name: toolName, arguments: args });
+      }
     }
+  }
+
+  // Also handle the outside-tag format: args appear AFTER the closing tag
+  // <longcat_tool_call>tool_name</longcat_tool_call> <longcat_arg_key>...</longcat_arg_key> <longcat_arg_value>...</longcat_arg_value>
+  const longcatOutsideRegex = /<longcat_tool_call>\s*([\w_]+)\s*<\/longcat_tool_call>/g;
+  while ((match = longcatOutsideRegex.exec(text)) !== null) {
+    const toolName = match[1].trim();
+    // Skip if already captured by the block regex above
+    if (calls.some((c) => c.name === toolName)) continue;
+
+    const args: Record<string, any> = {};
+    // Look for arg key-value pairs after this tag, before the next <longcat_tool_call>
+    const afterTag = text.substring(match.index + match[0].length);
+    const nextToolCall = afterTag.indexOf('<longcat_tool_call>');
+    const searchRegion = nextToolCall > 0 ? afterTag.substring(0, nextToolCall) : afterTag;
+
+    const argKeyRegex2 = /<longcat_arg_key>\s*([^<]*?)\s*<\/longcat_arg_key>\s*<longcat_arg_value>\s*([\s\S]*?)\s*<\/longcat_arg_value>/g;
+    let argMatch2;
+    while ((argMatch2 = argKeyRegex2.exec(searchRegion)) !== null) {
+      const key = argMatch2[1].trim();
+      const value = argMatch2[2].trim();
+      args[key] = value;
+    }
+
+    calls.push({ name: toolName, arguments: args });
   }
 
   // --- Format 5: Gemini function_call style: {"name": "...", "args": {...}} ---
@@ -634,6 +725,31 @@ export function parseToolCalls(text: string): ToolCallRequest[] {
   }
 
   return calls;
+}
+
+/**
+ * Strip tool-call XML/JSON markup from model response text so the user
+ * doesn't see raw <longcat_tool_call>, ```tool_call```, etc.
+ */
+export function stripToolCallXml(text: string): string {
+  let clean = text;
+  // 1. Remove <longcat_tool_call>...</longcat_tool_call> blocks (including nested tags)
+  clean = clean.replace(/<longcat_tool_call>[\s\S]*?<\/longcat_tool_call>/g, "");
+  // 2. Remove orphaned <longcat_arg_key>/<longcat_arg_value> tags
+  clean = clean.replace(/<longcat_arg_key>[\s\S]*?<\/longcat_arg_key>/g, "");
+  clean = clean.replace(/<longcat_arg_value>[\s\S]*?<\/longcat_arg_value>/g, "");
+  // 3. Remove ```tool_call ... ``` code blocks
+  clean = clean.replace(/```tool_call\s*\n[\s\S]*?```/g, "");
+  // 4. Remove inline JSON tool calls: {"name": "...", "arguments": {...}}
+  clean = clean.replace(/\{\s*"name"\s*:\s*"\w+"\s*,\s*"arguments"\s*:\s*\{[^{}]*\}\s*\}/g, "");
+  // 5. Remove <local_cmd>...</local_cmd>, <list_files>...</list_files>, etc.
+  clean = clean.replace(/<local_cmd>[\s\S]*?<\/local_cmd>/g, "");
+  clean = clean.replace(/<list_files>[\s\S]*?<\/list_files>/g, "");
+  clean = clean.replace(/<read_file>[\s\S]*?<\/read_file>/g, "");
+  clean = clean.replace(/<write_file\s+path="[\s\S]*?">[\s\S]*?<\/write_file>/g, "");
+  // 6. Clean up extra whitespace
+  clean = clean.replace(/\n{3,}/g, "\n\n").trim();
+  return clean;
 }
 
 export async function executeToolCall(
