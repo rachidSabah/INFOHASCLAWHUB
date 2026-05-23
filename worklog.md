@@ -529,3 +529,23 @@ Stage Summary:
 - Each panel has 3 tabs with appropriate features for its domain
 - API integration wired up for all 10 panels
 - Zero TypeScript errors in new files
+---
+Task ID: responsive-layout-readme
+Agent: Main Agent
+Task: Fix dashboard layout for small screens + rewrite professional README with Gemini CLI install guide
+
+Work Log:
+- Analyzed dashboard layout files: page.tsx, TopBar.tsx, globals.css, layout.tsx
+- Identified responsive issues: fixed height TopBar, no scaling for <1280px screens, sidebar too wide
+- Applied CSS media queries in globals.css: font-size scaling for <800px height, compact classes for <1280px
+- Changed page.tsx: h-screen → h-dvh, sidebar default 260px on small screens, compact chat tabs
+- Changed TopBar.tsx: h-10 lg:h-12, compact padding, hidden text labels below 1280px (topbar-dropdown-text, topbar-logo-text)
+- Rewrote README.md with: centered header + badges, Gemini CLI install for Windows AND WSL, startup commands, 8-tier features, AI Provider setup, troubleshooting
+- Built successfully and pushed to GitHub
+
+Stage Summary:
+- Dashboard now auto-fits screens from 1024px-1280px without needing 80% zoom
+- README now includes Gemini CLI installation for both Windows and WSL
+- README includes precise startup commands (dev, prod, LAN, WSL)
+- Professional 8-tier feature descriptions with tables
+- Pushed commit 25c233b to main branch
