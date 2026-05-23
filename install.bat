@@ -59,7 +59,9 @@ echo ╔════════════════════════
 echo ║        Installation Complete!               ║
 echo ╠══════════════════════════════════════════════╣
 echo ║  Start:  cd %INSTALL_DIR% ^&^& npm run dev ║
+echo ║  Browser: Opens automatically!              ║
 echo ║  URL:    http://localhost:3000              ║
+echo ║  No-open: npm run dev:no-open              ║
 echo ║  Uninstall:  run uninstall.bat             ║
 echo ╚══════════════════════════════════════════════╝
 echo.

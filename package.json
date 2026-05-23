@@ -3,10 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "dev:lan": "next dev -H 0.0.0.0 -p 3000",
+    "dev": "node scripts/dev.js",
+    "dev:lan": "node scripts/dev.js -- -H 0.0.0.0 -p 3000",
+    "dev:no-open": "node scripts/dev.js --no-open",
+    "dev:raw": "next dev",
     "build": "next build",
-    "start": "next dev",
+    "start": "node scripts/dev.js",
     "lint": "next lint"
   },
   "dependencies": {
