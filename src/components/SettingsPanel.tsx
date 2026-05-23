@@ -32,6 +32,7 @@ import { checkForUpdates, applyUpdate } from "@/lib/updater";
 import { cn } from "@/lib/utils";
 
 const KNOWN_PROVIDERS = [
+  { name: "Google Gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta" },
   { name: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1" },
   { name: "DeepSeek", baseUrl: "https://api.deepseek.com" },
   { name: "DeepSeek (Free via ds2api)", baseUrl: "http://localhost:8000/v1" },

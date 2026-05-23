@@ -29,9 +29,51 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Base URL and API Key are required" }, { status: 400 });
     }
 
-    // Try standard OpenAI-compatible /models endpoint
-    const url = baseUrl.endsWith("/") ? `${baseUrl}models` : `${baseUrl}/models`;
-    
+    const base = baseUrl.replace(/\/$/, "");
+
+    // Detect Google Gemini API — uses ?key= query param instead of Authorization header
+    const isGeminiApi = base.includes("generativelanguage.googleapis.com");
+
+    if (isGeminiApi) {
+      // Google Gemini API: GET /v1beta/models?key=API_KEY
+      const geminiUrl = `${base}/models?key=${apiKey}`;
+
+      const res = await fetch(geminiUrl, {
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        return NextResponse.json({ error: `Gemini API error: ${res.status} ${errText}` }, { status: res.status });
+      }
+
+      const data = await res.json();
+
+      // Gemini API returns { models: [{ name: "models/gemini-2.5-pro", displayName: "Gemini 2.5 Pro", ... }] }
+      let models: Array<{ id: string; name: string; description: string }> = [];
+
+      if (data.models && Array.isArray(data.models)) {
+        models = data.models
+          .filter((m: any) => {
+            // Only include models that support generateContent (not embedding-only)
+            const methods: string[] = m.supportedGenerationMethods || [];
+            return methods.includes("generateContent");
+          })
+          .map((m: any) => {
+            // Extract model ID from "models/gemini-2.5-pro" format
+            const modelId = m.name?.replace("models/", "") || m.name || "";
+            const displayName = m.displayName || modelId;
+            const description = m.description || `Gemini model — ${m.inputTokenLimit || "?"} input tokens`;
+            return { id: modelId, name: displayName, description };
+          });
+      }
+
+      return NextResponse.json(models);
+    }
+
+    // Standard OpenAI-compatible /models endpoint
+    const url = `${base}/models`;
+
     const res = await fetch(url, {
       headers: {
         "Authorization": `Bearer ${apiKey}`,
@@ -45,7 +87,7 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json();
-    
+
     // Standard OpenAI response is { data: [{ id: "model-name", ... }] }
     let models: Array<{ id: string; name: string; description: string }> = [];
     if (data.data && Array.isArray(data.data)) {

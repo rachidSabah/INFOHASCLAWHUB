@@ -57,6 +57,24 @@ const FALLBACK_MODELS: Record<string, { id: string; name: string; description: s
     { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (Free)", description: "Google's most capable model" },
     { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (Free)", description: "Fast thinking with high quality" },
   ],
+  "google-gemini": [
+    { id: "gemini-3.1-pro", name: "Gemini 3.1 Pro", description: "Latest flagship model via Google Gemini API" },
+    { id: "gemini-3-flash", name: "Gemini 3 Flash", description: "Fastest Gemini 3 model via API" },
+    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", description: "Complex tasks, long context via API" },
+    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", description: "Fast and versatile via API" },
+    { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", description: "Lightweight and fast via API" },
+    { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", description: "Legacy pro model via API" },
+    { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash", description: "Legacy flash model via API" },
+  ],
+  "gemini": [
+    { id: "gemini-3.1-pro", name: "Gemini 3.1 Pro", description: "Latest flagship model via Google Gemini API" },
+    { id: "gemini-3-flash", name: "Gemini 3 Flash", description: "Fastest Gemini 3 model via API" },
+    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", description: "Complex tasks, long context via API" },
+    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", description: "Fast and versatile via API" },
+    { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", description: "Lightweight and fast via API" },
+    { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", description: "Legacy pro model via API" },
+    { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash", description: "Legacy flash model via API" },
+  ],
   "kimi-moonshot": [
     { id: "kimi-latest", name: "Kimi Latest (via web bridge)", description: "Free Kimi through web-to-API bridge" },
     { id: "moonshot-v1-8k", name: "Moonshot v1 8K (via web bridge)", description: "Standard context via web bridge" },
@@ -97,50 +115,88 @@ export async function GET() {
 
       // Only attempt live fetch if baseUrl is configured and apiKey is set/not blank
       if (provider.baseUrl && provider.apiKey && provider.apiKey !== "none") {
-        // Try multiple potential endpoints
         const base = provider.baseUrl.replace(/\/$/, "");
-        const endpoints = [
-          `${base}/models`,
-          `${base}/v1/models`
-        ];
 
-        for (const url of endpoints) {
-          if (success) break;
+        // Detect Google Gemini API — uses ?key= query param instead of Authorization header
+        const isGeminiApi = base.includes("generativelanguage.googleapis.com");
 
+        if (isGeminiApi) {
+          // Google Gemini API: GET /v1beta/models?key=API_KEY
           try {
-            const res = await fetch(url, {
-              headers: {
-                "Authorization": `Bearer ${provider.apiKey}`,
-                "Content-Type": "application/json",
-              },
+            const geminiUrl = `${base}/models?key=${provider.apiKey}`;
+            const res = await fetch(geminiUrl, {
+              headers: { "Content-Type": "application/json" },
               cache: "no-store"
             });
 
             if (res.ok) {
               const data = await res.json();
-              
-              let fetchedModels: any[] = [];
-              if (data.data && Array.isArray(data.data)) {
-                fetchedModels = data.data;
-              } else if (Array.isArray(data)) {
-                fetchedModels = data;
-              }
-
-              if (fetchedModels.length > 0) {
-                models = fetchedModels.map((m: any) => {
-                  const modelId = typeof m === 'string' ? m : m.id || m.name;
-                  const modelName = typeof m === 'string' ? m : m.name || m.id;
-                  return {
-                    id: `${providerSlug}/${modelId}`,
-                    name: modelName,
-                    description: m.description || m.owned_by || `Model from ${provider.name}`
-                  };
-                });
-                success = true;
+              if (data.models && Array.isArray(data.models)) {
+                models = data.models
+                  .filter((m: any) => {
+                    const methods: string[] = m.supportedGenerationMethods || [];
+                    return methods.includes("generateContent");
+                  })
+                  .map((m: any) => {
+                    const modelId = m.name?.replace("models/", "") || m.name || "";
+                    const displayName = m.displayName || modelId;
+                    return {
+                      id: `${providerSlug}/${modelId}`,
+                      name: displayName,
+                      description: m.description || `Gemini model — ${m.inputTokenLimit || "?"} input tokens`
+                    };
+                  });
+                if (models.length > 0) success = true;
               }
             }
           } catch (err) {
-            // Bridge may be offline — skip silently
+            // Gemini API may be offline — fall through to fallback
+          }
+        } else {
+          // Standard OpenAI-compatible endpoints
+          const endpoints = [
+            `${base}/models`,
+            `${base}/v1/models`
+          ];
+
+          for (const url of endpoints) {
+            if (success) break;
+
+            try {
+              const res = await fetch(url, {
+                headers: {
+                  "Authorization": `Bearer ${provider.apiKey}`,
+                  "Content-Type": "application/json",
+                },
+                cache: "no-store"
+              });
+
+              if (res.ok) {
+                const data = await res.json();
+                
+                let fetchedModels: any[] = [];
+                if (data.data && Array.isArray(data.data)) {
+                  fetchedModels = data.data;
+                } else if (Array.isArray(data)) {
+                  fetchedModels = data;
+                }
+
+                if (fetchedModels.length > 0) {
+                  models = fetchedModels.map((m: any) => {
+                    const modelId = typeof m === 'string' ? m : m.id || m.name;
+                    const modelName = typeof m === 'string' ? m : m.name || m.id;
+                    return {
+                      id: `${providerSlug}/${modelId}`,
+                      name: modelName,
+                      description: m.description || m.owned_by || `Model from ${provider.name}`
+                    };
+                  });
+                  success = true;
+                }
+              }
+            } catch (err) {
+              // Bridge may be offline — skip silently
+            }
           }
         }
       }
