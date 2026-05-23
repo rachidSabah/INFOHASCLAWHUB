@@ -4,7 +4,7 @@ import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { parseToolCalls, executeToolCall, getToolsPrompt, getMcpTools, type ToolCallResult } from "@/lib/tools";
+import { parseToolCalls, executeToolCall, getToolsPrompt, getMcpTools, getGeminiFunctionDeclarations, type ToolCallResult } from "@/lib/tools";
 import { countTokens, estimateCost } from "@/lib/tokens";
 
 let cachedProviders: any[] | null = null;
@@ -201,6 +201,15 @@ You can also use XML tool tags for backward compatibility:
 <write_file path="file_path_here">file_content_here</write_file>
 
 When you call a tool, the system will automatically execute it, append the result to the conversation, and trigger your next turn.
+
+[TOOL ERROR RECOVERY - CRITICAL RULES]
+- If a tool returns an error (ENOENT, not found, etc.), do NOT stop. Instead, try alternative approaches using different tools.
+- If local_cmd returns ENOENT (command not found), use built-in tools like web_fetch, read_file, write_file instead.
+- If web_search returns no results, try a broader query OR use web_fetch to directly access a known URL.
+- If web_fetch fails for a URL, try web_search to find cached/alternative versions of the content.
+- ALWAYS provide a useful and complete response to the user, even if some tools fail. Use your knowledge to supplement missing tool data.
+- Never give up after a tool error — always try at least one alternative approach before providing a partial answer.
+- If you cannot complete the task with available tools, explain what you were able to accomplish and what limitations you encountered, and suggest next steps the user can take.
 `;
 }
 
@@ -271,7 +280,9 @@ async function queryLLM(
   apiKey: string | undefined,
   controller: ReadableStreamDefaultController,
   encoder: TextEncoder,
-  requestId: string
+  requestId: string,
+  // For Gemini native function calling: pass functionResponses from previous tool executions
+  geminiFunctionResponses?: any[]
 ): Promise<string> {
   let accumulatedText = "";
 
@@ -283,7 +294,8 @@ async function queryLLM(
       const geminiModel = targetModel || "gemini-2.0-flash";
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${providerData.apiKey}`;
       
-      const contents = [
+      // Build contents array for Gemini format
+      const contents: any[] = [
         ...conversationHistory.map((msg: any) => ({
           role: msg.role === "user" ? "user" : "model",
           parts: [{ text: msg.content }]
@@ -291,13 +303,48 @@ async function queryLLM(
         { role: "user", parts: [{ text: prompt }] }
       ];
 
+      // Build Gemini-native function declarations for tool use
+      const functionDeclarations = await getGeminiFunctionDeclarations();
+      
+      const requestBody: any = {
+        contents,
+        ...(finalSystemPrompt ? { systemInstruction: { parts: [{ text: finalSystemPrompt }] } } : {}),
+      };
+
+      // Add tool declarations if available
+      if (functionDeclarations.length > 0) {
+        requestBody.tools = [{ functionDeclarations }];
+      }
+
+      // If we have functionResponses from previous tool executions, add them
+      if (geminiFunctionResponses && geminiFunctionResponses.length > 0) {
+        // Add model's previous response with functionCalls
+        const modelParts: any[] = [];
+        for (const fr of geminiFunctionResponses) {
+          if (fr.functionCall) {
+            modelParts.push({ functionCall: fr.functionCall });
+          }
+        }
+        if (modelParts.length > 0) {
+          contents.push({ role: "model", parts: modelParts });
+        }
+        // Add function responses
+        const responseParts: any[] = [];
+        for (const fr of geminiFunctionResponses) {
+          responseParts.push({
+            functionResponse: {
+              name: fr.functionCall?.name || fr.name,
+              response: fr.response,
+            }
+          });
+        }
+        contents.push({ role: "user", parts: responseParts });
+      }
+
       const response = await fetch(geminiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents,
-          ...(finalSystemPrompt ? { systemInstruction: { parts: [{ text: finalSystemPrompt }] } } : {}),
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -306,9 +353,41 @@ async function queryLLM(
       }
 
       const data = await response.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: text })}\n\n`));
-      return text;
+      
+      // Extract BOTH text and functionCall parts from the response
+      const parts = data.candidates?.[0]?.content?.parts || [];
+      let textParts = "";
+      const nativeFunctionCalls: any[] = [];
+
+      for (const part of parts) {
+        if (part.text) {
+          textParts += part.text;
+        }
+        if (part.functionCall) {
+          nativeFunctionCalls.push(part.functionCall);
+        }
+      }
+
+      // Convert native function calls to text-based tool_call format for parseToolCalls
+      let toolCallText = "";
+      if (nativeFunctionCalls.length > 0) {
+        for (const fc of nativeFunctionCalls) {
+          toolCallText += `\n\`\`\`tool_call\n${JSON.stringify({ name: fc.name, arguments: fc.args || {} })}\n\`\`\`\n`;
+        }
+      }
+
+      const fullResponseText = textParts + toolCallText;
+
+      // Stream the text parts to the client (not the tool_call parts)
+      if (textParts) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: textParts })}\n\n`));
+      }
+
+      // Store native function calls for the agent loop to process
+      // We attach them to a custom property on the return value
+      (fullResponseText as any).__nativeFunctionCalls = nativeFunctionCalls;
+
+      return fullResponseText;
     }
 
     // OpenAI-compatible providers
@@ -665,7 +744,7 @@ export async function POST(req: NextRequest) {
           let currentPrompt = prompt;
           let currentHistory = [...conversationHistory];
           let iteration = 0;
-          const maxIterations = 5;
+          const maxIterations = 8;
           let totalResponseText = "";
           const allToolCalls: ToolCallResult[] = [];
 
@@ -675,6 +754,12 @@ export async function POST(req: NextRequest) {
 
           let lastAssistantText = "";
           const conversationId = (body as any).conversationId || "unknown";
+          
+          // Track Gemini native function calls for passing back as functionResponses
+          let pendingGeminiFunctionResponses: any[] = [];
+          let isGeminiProvider = isCustomProvider && providerData && 
+            (providerData.name?.toLowerCase()?.includes("gemini") || providerData.baseUrl?.includes("generativelanguage"));
+          let hasHadSuccessfulToolRun = false;
 
           while (iteration < maxIterations) {
             iteration++;
@@ -695,10 +780,15 @@ export async function POST(req: NextRequest) {
               apiKey,
               controller,
               encoder,
-              requestId
+              requestId,
+              // Pass function responses for Gemini native function calling
+              isGeminiProvider ? pendingGeminiFunctionResponses : undefined
             );
 
             totalResponseText += responseText;
+
+            // Extract native function calls if any (stored by queryLLM for Gemini)
+            const nativeFunctionCalls = (responseText as any).__nativeFunctionCalls || [];
 
             const { toolRun, resultSummary } = await parseAndExecuteTools(
               responseText,
@@ -711,18 +801,79 @@ export async function POST(req: NextRequest) {
 
             if (!toolRun) {
               lastAssistantText = responseText;
+              
+              // Don't break immediately if the model has been running tools
+              // and the response looks like it might be incomplete
+              const trimmedResponse = responseText.trim();
+              const looksIncomplete = trimmedResponse.length > 0 && trimmedResponse.length < 50 &&
+                (trimmedResponse.endsWith(":") || trimmedResponse.endsWith("...") || 
+                 trimmedResponse.toLowerCase().includes("let me") || 
+                 trimmedResponse.toLowerCase().includes("i'll") ||
+                 trimmedResponse.toLowerCase().includes("i will"));
+              
+              if (looksIncomplete && hasHadSuccessfulToolRun && iteration < maxIterations) {
+                // Re-prompt the model to continue
+                console.log(`[${requestId}] Response looks incomplete, re-prompting to continue`);
+                currentHistory.push({ role: "user", content: currentPrompt });
+                currentHistory.push({ role: "assistant", content: responseText });
+                currentPrompt = "Please continue with your response. If you were about to use a tool, please do so now. If you have a final answer, please provide it.";
+                continue;
+              }
+              
               break;
             }
+
+            hasHadSuccessfulToolRun = true;
 
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
               type: "chunk", 
               content: `\n\n⚙️ **[Executed System Action]**:\n\`\`\`\n${resultSummary}\n\`\`\`\n` 
             })}\n\n`));
 
+            // Build Gemini functionResponses for the next iteration
+            if (isGeminiProvider) {
+              pendingGeminiFunctionResponses = [];
+              // Add native function calls first
+              for (const fc of nativeFunctionCalls) {
+                // Find the matching tool result
+                const matchingResult = allToolCalls.find(tc => tc.name === fc.name);
+                let responseObj: any = {};
+                if (matchingResult) {
+                  try {
+                    responseObj = JSON.parse(matchingResult.result);
+                  } catch {
+                    responseObj = { result: matchingResult.result };
+                  }
+                }
+                pendingGeminiFunctionResponses.push({
+                  functionCall: fc,
+                  name: fc.name,
+                  response: responseObj,
+                });
+              }
+              // Also add text-based tool calls as function responses
+              const nativeCallNames = new Set(nativeFunctionCalls.map((fc: any) => fc.name));
+              for (const tc of allToolCalls) {
+                if (!nativeCallNames.has(tc.name)) {
+                  let responseObj: any = {};
+                  try {
+                    responseObj = JSON.parse(tc.result);
+                  } catch {
+                    responseObj = { result: tc.result };
+                  }
+                  pendingGeminiFunctionResponses.push({
+                    functionCall: { name: tc.name, args: tc.arguments },
+                    name: tc.name,
+                    response: responseObj,
+                  });
+                }
+              }
+            }
+
             currentHistory.push({ role: "user", content: currentPrompt });
             currentHistory.push({ role: "assistant", content: responseText });
 
-            currentPrompt = `Here is the result of the tool execution:\n${resultSummary}\n\nPlease proceed with the next steps or give your final answer based on this result.`;
+            currentPrompt = `Here is the result of the tool execution:\n${resultSummary}\n\nPlease proceed with the next steps or give your final answer based on this result. Remember: if a tool returned an error, try alternative approaches using other available tools.`;
           }
 
           const promptContext = [

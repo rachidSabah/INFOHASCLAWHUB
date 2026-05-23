@@ -549,3 +549,30 @@ Stage Summary:
 - README includes precise startup commands (dev, prod, LAN, WSL)
 - Professional 8-tier feature descriptions with tables
 - Pushed commit 25c233b to main branch
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix Gemini 3.5 Flash agent stopping after tool call failures
+
+Work Log:
+- Investigated root cause: Gemini API path in queryLLM didn't pass functionDeclarations to the API, causing Gemini to not know about available tools natively
+- Found that Gemini's native functionCall response parts were being ignored - only text parts were extracted, causing empty responseText when Gemini tried to call tools
+- Found agent loop breaks immediately when toolRun=false, even if model was mid-task
+- Fixed queryLLM to pass functionDeclarations to Gemini API for native function calling
+- Fixed queryLLM to extract both text AND functionCall parts from Gemini responses
+- Fixed queryLLM to convert native functionCall parts to text-based tool_call format for parseToolCalls compatibility
+- Added functionResponses passing back to Gemini API for multi-turn function calling
+- Added web_fetch tool for directly fetching URLs (bypasses need for curl/python)
+- Added /api/web-fetch route with CMS/framework detection
+- Improved web_search to try multiple ports and provide helpful hints when no results found
+- Fixed local_cmd ENOENT errors to provide helpful error messages with alternative tool suggestions
+- Improved get_system_info to detect and list available CLI commands
+- Added error recovery guidance to system prompt
+- Increased agent loop max iterations from 5 to 8
+- Added incomplete response detection and re-prompting logic in agent loop
+- Build passes with zero new errors
+
+Stage Summary:
+- Root cause: Gemini API was not receiving tool declarations, and native functionCall response parts were silently dropped
+- 4 files modified: src/lib/tools.ts, src/app/api/gemini/chat/route.ts, src/app/api/web-fetch/route.ts (new)
+- All fixes preserve existing functionality - no conflicts with other features

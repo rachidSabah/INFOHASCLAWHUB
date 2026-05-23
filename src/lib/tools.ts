@@ -151,7 +151,7 @@ const availableTools: ToolDefinition[] = [
   },
   {
     name: "web_search",
-    description: "Search the web for information. Returns search results with titles, URLs, and snippets.",
+    description: "Search the web for information. Returns search results with titles, URLs, and snippets. If no results found, try a simpler or broader query.",
     parameters: {
       query: { type: "string", description: "The search query string" },
     },
@@ -159,16 +159,103 @@ const availableTools: ToolDefinition[] = [
       const query = (params.query as string)?.trim();
       if (!query) return JSON.stringify({ error: "No search query provided" });
       try {
-        const res = await fetch("http://localhost:3000/api/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query }),
-        });
-        const data = await res.json();
-        if (data.error) return JSON.stringify({ error: data.error });
-        return JSON.stringify({ query, results: data.results || [], source: data.source });
+        // Try multiple ports in case the app is running on a different one
+        const ports = [3000, 3001, 3002, 3003];
+        let data: any = null;
+        for (const port of ports) {
+          try {
+            const res = await fetch(`http://127.0.0.1:${port}/api/search`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ query }),
+              signal: AbortSignal.timeout(5000),
+            });
+            if (res.ok) {
+              data = await res.json();
+              break;
+            }
+          } catch { continue; }
+        }
+        if (!data) return JSON.stringify({ query, results: [], source: "unavailable", hint: "Search API unavailable. Try using web_fetch to directly access URLs instead." });
+        if (data.error) return JSON.stringify({ error: data.error, hint: "Try a simpler search query or use web_fetch to directly fetch a URL." });
+        const results = data.results || [];
+        if (results.length === 0) {
+          return JSON.stringify({ query, results: [], source: data.source || "none", hint: "No results found. Try a broader or different search query. You can also use the web_fetch tool to directly access a specific URL." });
+        }
+        return JSON.stringify({ query, results, source: data.source });
       } catch (e: any) {
-        return JSON.stringify({ error: e.message });
+        return JSON.stringify({ error: e.message, hint: "Search failed. Try using web_fetch to directly access a URL instead." });
+      }
+    },
+  },
+  {
+    name: "web_fetch",
+    description: "Fetch the content of a web page by URL. Returns the page HTML content, title, and metadata. Use this to read specific web pages directly when you know the URL.",
+    parameters: {
+      url: { type: "string", description: "The full URL to fetch (e.g. https://example.com)" },
+    },
+    execute: async (params) => {
+      const url = (params.url as string)?.trim();
+      if (!url) return JSON.stringify({ error: "No URL provided" });
+      if (!url.startsWith("http://") && !url.startsWith("https://")) {
+        return JSON.stringify({ error: "URL must start with http:// or https://" });
+      }
+      try {
+        // Try the local web-fetch API first
+        const ports = [3000, 3001, 3002, 3003];
+        for (const port of ports) {
+          try {
+            const res = await fetch(`http://127.0.0.1:${port}/api/web-fetch`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url }),
+              signal: AbortSignal.timeout(15000),
+            });
+            if (res.ok) {
+              const data = await res.json();
+              return JSON.stringify(data);
+            }
+          } catch { continue; }
+        }
+        // Fallback: direct fetch with Node.js
+        const response = await fetch(url, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!response.ok) {
+          return JSON.stringify({ error: `HTTP ${response.status} ${response.statusText}`, url });
+        }
+        const contentType = response.headers.get("content-type") || "";
+        const html = await response.text();
+        // Extract title
+        const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, "").trim() : "No title";
+        // Extract meta description
+        const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i) ||
+                         html.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/i);
+        const description = descMatch ? descMatch[1] : "";
+        // Strip HTML tags for readable text (basic)
+        const textContent = html
+          .replace(/<script[\s\S]*?<\/script>/gi, "")
+          .replace(/<style[\s\S]*?<\/style>/gi, "")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 15000);
+        return JSON.stringify({
+          url,
+          title,
+          description,
+          contentLength: html.length,
+          textContent,
+          contentType,
+          fetched: true,
+        });
+      } catch (e: any) {
+        return JSON.stringify({ error: `Failed to fetch URL: ${e.message}`, url, hint: "The website may be blocking automated access or may be down. Try using web_search instead." });
       }
     },
   },
@@ -190,11 +277,20 @@ const availableTools: ToolDefinition[] = [
   },
   {
     name: "get_system_info",
-    description: "Returns basic system information including OS, platform, memory, and uptime.",
+    description: "Returns basic system information including OS, platform, memory, uptime, and available commands.",
     parameters: {},
     execute: async () => {
       const totalMem = os.totalmem();
       const freeMem = os.freemem();
+      // Check which common commands are available
+      const checkCmd = (cmd: string): boolean => {
+        try {
+          const result = require("child_process").execSync(`which ${cmd} 2>/dev/null || where ${cmd} 2>nul`, { encoding: "utf-8", timeout: 3000 });
+          return result.trim().length > 0;
+        } catch { return false; }
+      };
+      const availableCommands = ["curl", "wget", "python3", "python", "node", "npm", "npx", "git"]
+        .filter(cmd => checkCmd(cmd));
       return JSON.stringify({
         platform: os.platform(),
         arch: os.arch(),
@@ -207,6 +303,8 @@ const availableTools: ToolDefinition[] = [
         },
         uptime: `${(os.uptime() / 3600).toFixed(1)} hours`,
         homedir: os.homedir(),
+        availableCommands,
+        hint: availableCommands.length === 0 ? "No common CLI tools found. Use built-in tools instead of local_cmd." : undefined,
       });
     },
   },
@@ -214,6 +312,62 @@ const availableTools: ToolDefinition[] = [
 
 export function getToolDefinitions(): ToolDefinition[] {
   return availableTools;
+}
+
+/**
+ * Build Gemini-compatible functionDeclarations from available tools.
+ * This enables the Gemini API to use native function calling.
+ */
+export async function getGeminiFunctionDeclarations(): Promise<any[]> {
+  const allTools = [...availableTools];
+
+  // Include MCP tools
+  try {
+    const mcpTools = await getMcpTools();
+    allTools.push(...mcpTools);
+  } catch {}
+
+  // Include local_cmd as a function declaration
+  const functionDeclarations = allTools.map((tool) => {
+    const properties: Record<string, any> = {};
+    const required: string[] = [];
+
+    for (const [key, param] of Object.entries(tool.parameters)) {
+      properties[key] = {
+        type: param.type === "string" ? "STRING" : param.type === "number" ? "NUMBER" : param.type === "boolean" ? "BOOLEAN" : "STRING",
+        description: param.description,
+      };
+      required.push(key);
+    }
+
+    return {
+      name: tool.name,
+      description: tool.description,
+      parameters: {
+        type: "OBJECT",
+        properties,
+        required: required.length > 0 ? required : undefined,
+      },
+    };
+  });
+
+  // Add local_cmd as a function declaration (it's handled separately in executeToolCall)
+  functionDeclarations.push({
+    name: "local_cmd",
+    description: "Execute a command in the terminal. Returns stdout, stderr, and exit code. Use for system commands, scripts, and tools not available as built-in tools.",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        command: {
+          type: "STRING",
+          description: "The shell command to execute",
+        },
+      },
+      required: ["command"],
+    },
+  });
+
+  return functionDeclarations;
 }
 
 export function getToolByName(name: string): ToolDefinition | undefined {
@@ -354,6 +508,20 @@ export async function executeToolCall(
     try {
       const result = await new Promise<string>((resolve) => {
         exec(call.arguments.command, { cwd: activeDir, timeout: 30000 }, (error: ExecException | null, stdout: string, stderr: string) => {
+          if (error && (error as any).code === "ENOENT") {
+            // Extract command name for helpful error message
+            const cmdName = call.arguments.command.split(/\s+/)[0];
+            resolve(
+              JSON.stringify({
+                stdout: "(no stdout)",
+                stderr: `(no stderr)`,
+                exitCode: "ENOENT",
+                error: `Command '${cmdName}' not found on this system.`,
+                hint: `The command '${cmdName}' is not available. Try using built-in tools instead: use web_fetch to access URLs, use read_file/write_file for file operations, or use web_search for web searches.`,
+              })
+            );
+            return;
+          }
           resolve(
             JSON.stringify({
               stdout: stdout || "(no stdout)",
