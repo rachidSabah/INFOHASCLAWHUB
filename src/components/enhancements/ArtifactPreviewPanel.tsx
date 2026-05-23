@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   X, Download, Copy, Code2, Eye, ChevronLeft, ChevronRight, Maximize2, ArrowLeft, Loader2,
-  FileText, FileSpreadsheet, File, Share2,
+  FileText, FileSpreadsheet, File, Share2, Play, Terminal, RefreshCw, Monitor,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -30,10 +30,6 @@ function extractPureCode(content: string): string {
   return match?.[1]?.trim() || content.trim();
 }
 
-function hasPreview(tab: PreviewTab): boolean {
-  return true;
-}
-
 function isBinaryFile(tab: PreviewTab): boolean {
   const title = tab.title.toLowerCase();
   return title.endsWith(".docx") || title.endsWith(".pdf") || title.endsWith(".xlsx") ||
@@ -45,6 +41,118 @@ function getFileIcon(tab: PreviewTab): React.ComponentType<any> {
   if (t.endsWith(".docx")) return FileText;
   if (t.endsWith(".xlsx") || t.endsWith(".csv")) return FileSpreadsheet;
   return File;
+}
+
+function canSandbox(tab: PreviewTab): boolean {
+  const code = extractPureCode(tab.content);
+  const lang = getLanguage(tab);
+  // Anything that can be rendered as HTML/CSS/JS
+  return lang === "html" || lang === "jsx" || lang === "javascript" || lang === "css" ||
+    code.includes("<div") || code.includes("<html") || code.includes("<body") ||
+    code.includes("document.") || code.includes("console.") ||
+    code.includes("style=") || code.includes("class=") ||
+    tab.type === "sandbox" || tab.type === "html" || tab.type === "canvas";
+}
+
+/**
+ * Build a complete HTML document from code that might be:
+ * - Full HTML document
+ * - HTML fragment
+ * - CSS only
+ * - JavaScript only
+ * - Mixed HTML/CSS/JS
+ */
+function buildSandboxHtml(code: string): string {
+  // If it's already a full HTML document, use as-is
+  if (code.includes("<!DOCTYPE") || code.includes("<html")) {
+    // Inject console capture if not already present
+    if (!code.includes("__sandbox_console")) {
+      const consoleScript = `<script>
+(function() {
+  const origLog = console.log;
+  const origError = console.error;
+  const origWarn = console.warn;
+  const origInfo = console.info;
+  function send(type, args) {
+    try {
+      const msg = Array.from(args).map(a => {
+        try { return typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a); }
+        catch(e) { return String(a); }
+      }).join(' ');
+      window.parent.postMessage({ __sandbox_console: true, type, message: msg }, '*');
+    } catch(e) {}
+  }
+  console.log = function() { send('log', arguments); origLog.apply(console, arguments); };
+  console.error = function() { send('error', arguments); origError.apply(console, arguments); };
+  console.warn = function() { send('warn', arguments); origWarn.apply(console, arguments); };
+  console.info = function() { send('info', arguments); origInfo.apply(console, arguments); };
+  window.onerror = function(msg, src, line, col, err) {
+    send('error', [msg + (line ? ' (line ' + line + ')' : '')]);
+    return false;
+  };
+})();
+</script>`;
+      if (code.includes("<head>")) {
+        return code.replace("<head>", "<head>" + consoleScript);
+      }
+      return code.replace("<html", consoleScript + "<html");
+    }
+    return code;
+  }
+
+  const lang = (() => {
+    if (/^[\s\S]*<div|^[\s\S]*<span|^[\s\S]*<p|^[\s\S]*<h[1-6]/i.test(code)) return "html";
+    if (/^[\s\S]*\.\w+\s*\{|^[\s\S]*@\w+|^[\s\S]*:root|^[\s\S]*body\s*\{/i.test(code)) return "css";
+    if (/^[\s\S]*(function |const |let |var |class |=>)/i.test(code)) return "javascript";
+    return "mixed";
+  })();
+
+  // Wrap in a complete HTML document with console capture
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sandbox</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 16px; color: #1a1a2e; background: #fafafa; }
+  pre { background: #f0f0f0; padding: 8px; border-radius: 6px; overflow-x: auto; font-size: 13px; }
+  input, button, select, textarea { font-family: inherit; }
+</style>
+<script>
+(function() {
+  const origLog = console.log;
+  const origError = console.error;
+  const origWarn = console.warn;
+  const origInfo = console.info;
+  function send(type, args) {
+    try {
+      const msg = Array.from(args).map(a => {
+        try { return typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a); }
+        catch(e) { return String(a); }
+      }).join(' ');
+      window.parent.postMessage({ __sandbox_console: true, type, message: msg }, '*');
+    } catch(e) {}
+  }
+  console.log = function() { send('log', arguments); origLog.apply(console, arguments); };
+  console.error = function() { send('error', arguments); origError.apply(console, arguments); };
+  console.warn = function() { send('warn', arguments); origWarn.apply(console, arguments); };
+  console.info = function() { send('info', arguments); origInfo.apply(console, arguments); };
+  window.onerror = function(msg, src, line, col, err) {
+    send('error', [msg + (line ? ' (line ' + line + ')' : '')]);
+    return false;
+  };
+})();
+</script>
+${lang === "css" ? `<style>${code}</style>` : ""}
+</head>
+<body>
+${lang === "javascript" ? `<script>${code}<\/script>` : ""}
+${lang === "html" || lang === "mixed" ? code : ""}
+${lang === "css" ? '<div style="text-align:center;color:#888;padding:40px;font-size:14px;">CSS Sandbox — styles applied to this page</div>' : ""}
+</body>
+</html>`;
 }
 
 function CodeView({ tab }: { tab: PreviewTab }) {
@@ -128,14 +236,166 @@ function PreviewView({ tab }: { tab: PreviewTab }) {
   );
 }
 
+interface ConsoleEntry {
+  type: "log" | "error" | "warn" | "info";
+  message: string;
+  timestamp: number;
+}
+
+function SandboxView({ tab }: { tab: PreviewTab }) {
+  const code = extractPureCode(tab.content);
+  const [loading, setLoading] = useState(true);
+  const [consoleEntries, setConsoleEntries] = useState<ConsoleEntry[]>([]);
+  const [showConsole, setShowConsole] = useState(true);
+  const [sandboxKey, setSandboxKey] = useState(0);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const sandboxHtml = buildSandboxHtml(code);
+
+  // Listen for console messages from the iframe
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.__sandbox_console) {
+        setConsoleEntries(prev => [...prev.slice(-200), {
+          type: event.data.type,
+          message: event.data.message,
+          timestamp: Date.now(),
+        }]);
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
+  // Clear console on re-run
+  useEffect(() => {
+    setConsoleEntries([]);
+    setLoading(true);
+  }, [sandboxKey]);
+
+  const handleRerun = useCallback(() => {
+    setSandboxKey(k => k + 1);
+  }, []);
+
+  const consoleErrorCount = consoleEntries.filter(e => e.type === "error").length;
+
+  return (
+    <div className="flex flex-col h-full bg-[#1e1e2e]">
+      {/* Sandbox toolbar */}
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/[0.06] shrink-0">
+        <Monitor className="h-3.5 w-3.5 text-emerald-400" />
+        <span className="text-[11px] font-medium text-emerald-400 uppercase tracking-wider">Sandbox</span>
+        <div className="flex-1" />
+        <button
+          onClick={handleRerun}
+          className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium text-gray-300 hover:bg-white/[0.08] transition-colors"
+          title="Re-run code"
+        >
+          <RefreshCw className="h-3 w-3" />Re-run
+        </button>
+        <button
+          onClick={() => setShowConsole(!showConsole)}
+          className={cn(
+            "flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-colors",
+            showConsole ? "bg-white/[0.08] text-gray-200" : "text-gray-400 hover:bg-white/[0.06]"
+          )}
+          title="Toggle console"
+        >
+          <Terminal className="h-3 w-3" />Console
+          {consoleErrorCount > 0 && (
+            <span className="ml-1 px-1.5 py-0 rounded-full bg-red-500/20 text-red-400 text-[10px] font-bold">{consoleErrorCount}</span>
+          )}
+        </button>
+      </div>
+
+      {/* iframe sandbox */}
+      <div className="flex-1 relative overflow-hidden">
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white z-10">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          </div>
+        )}
+        <iframe
+          ref={iframeRef}
+          key={sandboxKey}
+          className="w-full h-full border-0 bg-white"
+          srcDoc={sandboxHtml}
+          sandbox="allow-scripts allow-modals"
+          title={`Sandbox: ${tab.title}`}
+          onLoad={() => setLoading(false)}
+        />
+      </div>
+
+      {/* Console panel */}
+      {showConsole && (
+        <div className="shrink-0 border-t border-white/[0.06] bg-[#181825] max-h-[200px] flex flex-col">
+          <div className="flex items-center px-3 py-1 border-b border-white/[0.04] shrink-0">
+            <Terminal className="h-3 w-3 text-gray-500 mr-1.5" />
+            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Console</span>
+            <div className="flex-1" />
+            <button
+              onClick={() => setConsoleEntries([])}
+              className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="overflow-y-auto text-[12px] font-mono leading-[1.5] console-scroll-area" style={{ maxHeight: 160 }}>
+            {consoleEntries.length === 0 ? (
+              <div className="px-3 py-2 text-gray-600 italic text-[11px]">Console output will appear here...</div>
+            ) : (
+              consoleEntries.map((entry, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    "px-3 py-0.5 border-b border-white/[0.02] flex gap-2",
+                    entry.type === "error" ? "bg-red-900/10 text-red-400" :
+                    entry.type === "warn" ? "bg-yellow-900/10 text-yellow-400" :
+                    entry.type === "info" ? "text-blue-300" :
+                    "text-gray-300"
+                  )}
+                >
+                  <span className="shrink-0 text-[10px] opacity-50 w-4 text-right">
+                    {entry.type === "error" ? "✕" : entry.type === "warn" ? "⚠" : entry.type === "info" ? "ℹ" : "›"}
+                  </span>
+                  <span className="whitespace-pre-wrap break-all min-w-0 flex-1">{entry.message}</span>
+                </div>
+              ))
+            )}
+          </div>
+          <style>{`
+            .console-scroll-area::-webkit-scrollbar { width: 5px; }
+            .console-scroll-area::-webkit-scrollbar-track { background: transparent; }
+            .console-scroll-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+          `}</style>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ArtifactPreviewPanel() {
   const { isOpen, tabs, activeTabId, isFullscreen, width, setOpen, setActiveTab, removeTab, setFullscreen } = useArtifactPreviewStore();
-  const [activeView, setActiveView] = useState<"code" | "preview">("code");
+  const [activeView, setActiveView] = useState<"code" | "preview" | "sandbox">("code");
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
 
-  useEffect(() => { if (activeTabId && activeTab) { const isDoc = isBinaryFile(activeTab) || activeTab.type === "document" || activeTab.type === "markdown"; setActiveView(isDoc ? "preview" : "code"); } }, [activeTabId]);
+  const sandboxAvailable = activeTab ? canSandbox(activeTab) : false;
+
+  useEffect(() => {
+    if (activeTabId && activeTab) {
+      const isDoc = isBinaryFile(activeTab) || activeTab.type === "document" || activeTab.type === "markdown";
+      // Auto-select sandbox for HTML/code content
+      if (sandboxAvailable && (activeTab.type === "sandbox" || activeTab.type === "html" || activeTab.type === "canvas")) {
+        setActiveView("sandbox");
+      } else if (isDoc) {
+        setActiveView("preview");
+      } else {
+        setActiveView("code");
+      }
+    }
+  }, [activeTabId, sandboxAvailable]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && isOpen) { isFullscreen ? setFullscreen(false) : setOpen(false); } };
@@ -198,6 +458,14 @@ export default function ArtifactPreviewPanel() {
   const hasPrev = historyIdx > 0;
   const hasNext = historyIdx < history.length - 1;
 
+  const renderContent = () => {
+    switch (activeView) {
+      case "code": return <CodeView tab={activeTab} />;
+      case "preview": return <PreviewView tab={activeTab} />;
+      case "sandbox": return <SandboxView tab={activeTab} />;
+    }
+  };
+
   return (
     <>
       {isFullscreen && (
@@ -207,7 +475,7 @@ export default function ArtifactPreviewPanel() {
             <div className="flex-1" />
             <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setOpen(false)}><X className="h-4 w-4" /></Button>
           </div>
-          <div className="flex-1 overflow-hidden">{activeView === "code" ? <CodeView tab={activeTab} /> : <PreviewView tab={activeTab} />}</div>
+          <div className="flex-1 overflow-hidden">{renderContent()}</div>
         </div>
       )}
 
@@ -231,13 +499,19 @@ export default function ArtifactPreviewPanel() {
 
           <span className="text-sm font-semibold min-w-0 flex-1 truncate" style={{ color: ACCENT }}>{title}</span>
 
+          {/* View toggle: Code | Preview | Sandbox */}
           <div className="flex items-center rounded-lg bg-muted/30 p-0.5 shrink-0">
-            <button onClick={() => setActiveView("code")} className={cn("flex items-center gap-1 px-3 py-1 rounded-md text-[12px] font-medium transition-colors duration-150", activeView === "code" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground")}>
+            <button onClick={() => setActiveView("code")} className={cn("flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors duration-150", activeView === "code" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground")}>
               <Code2 className="h-3.5 w-3.5" />Code
             </button>
-            <button onClick={() => setActiveView("preview")} className={cn("flex items-center gap-1 px-3 py-1 rounded-md text-[12px] font-medium transition-colors duration-150", activeView === "preview" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground")}>
+            <button onClick={() => setActiveView("preview")} className={cn("flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors duration-150", activeView === "preview" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground")}>
               <Eye className="h-3.5 w-3.5" />Preview
             </button>
+            {sandboxAvailable && (
+              <button onClick={() => setActiveView("sandbox")} className={cn("flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors duration-150", activeView === "sandbox" ? "bg-emerald-500/10 shadow-sm text-emerald-500" : "text-muted-foreground")}>
+                <Play className="h-3.5 w-3.5" />Sandbox
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
@@ -261,7 +535,7 @@ export default function ArtifactPreviewPanel() {
         )}
 
         <div className="flex-1 overflow-hidden">
-          {activeView === "code" ? <CodeView tab={activeTab} /> : <PreviewView tab={activeTab} />}
+          {renderContent()}
         </div>
       </div>
     </>
