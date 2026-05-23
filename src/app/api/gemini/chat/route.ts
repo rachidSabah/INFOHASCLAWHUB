@@ -12,6 +12,8 @@ import { getMemoryContext, saveMemory } from "@/lib/enhanced-memory";
 import { getContextManager } from "@/lib/context-manager";
 import { generateOptimizedPrompt, recordPromptResult } from "@/lib/prompt-optimizer";
 import { getFilteredOpenAITools, getFilteredGeminiFunctions, getFilteredToolsPrompt } from "@/lib/intelligent-tool-selection";
+import { enhanceResponse, type ResponseEnhancement } from "@/lib/response-enhancer";
+import { createProgressEvent, createStepEvent, estimateProgress, PROGRESS_MESSAGES } from "@/lib/streaming-progress";
 import {
   generateCoTPrompt,
   assessTaskComplexity,
@@ -529,7 +531,7 @@ async function queryLLM(
       // Strip any tool-call XML from the displayed text
       if (textParts) {
         const cleanText = stripToolCallXml(textParts);
-        if (cleanText.trim()) {
+        if (cleanText.length > 0) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: cleanText })}\n\n`));
         }
       }
@@ -691,7 +693,7 @@ async function queryLLM(
                 insideToolBlock = false;
                 const cleaned = stripToolCallXml(streamBuffer);
                 streamBuffer = "";
-                if (cleaned.trim()) {
+                if (cleaned.length > 0) {
                   controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: cleaned })}\n\n`));
                 }
                 continue;
@@ -713,7 +715,7 @@ async function queryLLM(
                   const safePart = streamBuffer.substring(0, jsonToolStart);
                   streamBuffer = afterStart;
                   insideToolBlock = true;
-                  if (safePart.trim()) {
+                  if (safePart.length > 0) {
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: safePart })}\n\n`));
                   }
                   continue;
@@ -730,7 +732,7 @@ async function queryLLM(
                 if (partialMatch) {
                   const safePart = streamBuffer.substring(0, partialMatch.index!);
                   streamBuffer = streamBuffer.substring(partialMatch.index!);
-                  if (safePart.trim()) {
+                  if (safePart.length > 0) {
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: safePart })}\n\n`));
                   }
                   continue;
@@ -743,7 +745,7 @@ async function queryLLM(
               // Apply final stripToolCallXml as safety net
               const cleaned = stripToolCallXml(streamBuffer);
               streamBuffer = "";
-              if (cleaned.trim()) {
+              if (cleaned.length > 0) {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: cleaned })}\n\n`));
               }
             }
@@ -794,7 +796,7 @@ async function queryLLM(
     // Flush any remaining stream buffer (strip tool XML)
     if (streamBuffer) {
       const cleaned = stripToolCallXml(streamBuffer);
-      if (cleaned.trim()) {
+      if (cleaned.length > 0) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: cleaned })}\n\n`));
       }
       streamBuffer = "";
@@ -893,7 +895,7 @@ async function queryLLM(
           cliInsideToolBlock = false;
           const cleaned = stripToolCallXml(cliBuffer);
           cliBuffer = "";
-          if (cleaned.trim()) {
+          if (cleaned.length > 0) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: cleaned })}\n\n`));
           }
           return;
@@ -908,7 +910,7 @@ async function queryLLM(
             const safePart = cliBuffer.substring(0, jsonToolStart);
             cliBuffer = afterStart;
             cliInsideToolBlock = true;
-            if (safePart.trim()) {
+            if (safePart.length > 0) {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: safePart })}\n\n`));
             }
             return;
@@ -924,7 +926,7 @@ async function queryLLM(
         // Apply stripToolCallXml as safety net
         const cleaned = stripToolCallXml(cliBuffer);
         cliBuffer = "";
-        if (cleaned.trim()) {
+        if (cleaned.length > 0) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: cleaned })}\n\n`));
         }
       });
@@ -1252,9 +1254,14 @@ export async function POST(req: NextRequest) {
           }
           const routingAddition = routing.systemPromptAddition || "";
 
+          // Send initial progress event
+          controller.enqueue(encoder.encode(createProgressEvent("reasoning", `Analyzing your request... (${routing.agentType || 'general'} mode)`, 5)));
+
           // === REASONING ENGINE INTEGRATION ===
           // Assess task complexity for dynamic CoT and planning
           const taskComplexity = assessTaskComplexity(prompt || "", conversationHistory.length);
+
+          controller.enqueue(encoder.encode(createProgressEvent("reasoning", `Task complexity: ${taskComplexity}. Planning approach...`, 10)));
 
           // === SMART TOOL-AWARENESS ===
           // Detect if the task requires specific tools and add targeted guidance
@@ -1349,6 +1356,14 @@ export async function POST(req: NextRequest) {
             iteration++;
             console.log(`[${requestId}] Agent Loop Iteration ${iteration}`);
 
+            // Send progress update for agent loop
+            const loopProgress = estimateProgress(iteration, maxIterations, allToolCalls.length > 0, false);
+            controller.enqueue(encoder.encode(createProgressEvent(
+              "streaming",
+              `Iteration ${iteration}/${maxIterations} — Processing...`,
+              loopProgress
+            )));
+
             const localInstructions = await buildLocalSystemInstructions(taskComplexity, prompt, taskEnhancement);
             // Apply prompt optimization for complex/critical tasks
             const promptOptResult = generateOptimizedPrompt(
@@ -1410,6 +1425,15 @@ export async function POST(req: NextRequest) {
               const isSuccess = tc.status === "success";
               if (!isSuccess) hadToolErrors = true;
               recordToolPerformance(tc.name, routing.agentType || "general", isSuccess, isSuccess ? 0.8 : 0.2);
+            }
+
+            // Send tool execution progress event
+            if (toolRun) {
+              controller.enqueue(encoder.encode(createProgressEvent(
+                "tool_executing",
+                `Executed ${toolsExecutedNames.length} tool(s): ${toolsExecutedNames.slice(-3).join(', ')}`,
+                estimateProgress(iteration, maxIterations, true, false)
+              )));
             }
 
             if (!toolRun) {
@@ -1609,6 +1633,16 @@ The user's ORIGINAL request must be FULLY completed. Continue now.`;
           );
           console.log(`[${requestId}] Quality Score: ${qualityScore.overall} (${qualityScore.completeness} completeness, ${qualityScore.depth} depth)`);
 
+          // === RESPONSE ENHANCEMENT ===
+          // Analyze the response for type, confidence, follow-ups, and warnings
+          controller.enqueue(encoder.encode(createProgressEvent("enhancing", "Enhancing response...", 95)));
+          const enhancement = enhanceResponse(
+            stripToolCallXml(totalResponseText),
+            prompt || "",
+            allToolCalls.length,
+            hadToolErrors
+          );
+
           // Record prompt optimization result for learning
           recordPromptResult(lastPromptVariationId, qualityScore.overall, qualityScore.overall >= 40);
 
@@ -1691,6 +1725,7 @@ Provide your improved response now:`;
 
           // Include reasoning_content in the done event so the client can save it in metadata
           // This is required by DeepSeek thinking models: "reasoning_content must be passed back"
+          controller.enqueue(encoder.encode(createProgressEvent("complete", "Done!", 100)));
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
             type: "done", 
             duration: 0, 
@@ -1700,6 +1735,13 @@ Provide your improved response now:`;
             qualityScore,
             taskComplexity,
             toolsUsed: toolsExecutedNames,
+            enhancement: {
+              confidence: enhancement.confidence,
+              responseType: enhancement.responseType,
+              followUps: enhancement.followUps,
+              warnings: enhancement.warnings,
+              verifiableClaims: enhancement.verifiableClaims,
+            },
             ...(lastReasoningContent ? { reasoningContent: lastReasoningContent } : {}) 
           })}\n\n`));
           controller.close();

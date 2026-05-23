@@ -79,7 +79,10 @@ export function stripToolCallXml(text: string): string {
   clean = clean.replace(/<list_files>[\s\S]*?<\/list_files>/g, "");
   clean = clean.replace(/<read_file>[\s\S]*?<\/read_file>/g, "");
   clean = clean.replace(/<write_file\s+path="[\s\S]*?">[\s\S]*?<\/write_file>/g, "");
-  // 7. Clean up extra whitespace and empty lines
-  clean = clean.replace(/\n{3,}/g, "\n\n").trim();
+  // 7. Clean up excessive empty lines (but preserve spaces — critical for streaming!)
+  // DO NOT use .trim() here — during streaming, spaces between words arrive as leading
+  // spaces on tokens (e.g., " how", " are", " you"), and trimming them concatenates
+  // all words together (e.g., "Hellohowareyoutoday").
+  clean = clean.replace(/\n{3,}/g, "\n\n");
   return clean;
 }
