@@ -44,10 +44,20 @@ function getFileIcon(tab: PreviewTab): React.ComponentType<any> {
 }
 
 function canSandbox(tab: PreviewTab): boolean {
-  // Never sandbox JSON tool results
+  // Never sandbox JSON tool calls or tool results
   const c = tab.content || "";
-  if (c.trim().startsWith('{') && c.trim().endsWith('}')) {
-    try { JSON.parse(c.trim()); return false; } catch {}
+  const trimmed = c.trim();
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    try { 
+      const parsed = JSON.parse(trimmed);
+      // This is a tool call JSON (has name + arguments) — not sandboxable
+      if (parsed.name && parsed.arguments) return false;
+      // This is a tool result JSON — not sandboxable unless it's HTML
+      if (parsed.path || parsed.stdout || parsed.error) return false;
+      // But if it has HTML content inside, it might be sandboxable
+      if (parsed.html || parsed.content?.includes('<!DOCTYPE') || parsed.content?.includes('<html')) return true;
+      return false; 
+    } catch {}
   }
   const code = extractPureCode(c);
   const lang = getLanguage(tab);
@@ -468,10 +478,23 @@ function WebsiteView({ tab }: { tab: PreviewTab }) {
   const rawContent = tab.content || "";
   try {
     pageData = JSON.parse(rawContent);
-    // Handle nested structures - sometimes content is wrapped in a tool result
+    // Handle tool call JSON — this means the artifact captured a tool call, not a result
+    // Show a helpful message instead of raw JSON
     if (pageData.name === "web_fetch" && pageData.arguments) {
-      // This is a tool call JSON, not a result - try to extract the URL
-      pageData = { url: pageData.arguments.url, textContent: "", title: "Fetching..." };
+      const fetchUrl = pageData.arguments.url || "";
+      pageData = { 
+        url: fetchUrl, 
+        textContent: `Fetching ${fetchUrl}...\n\nThe website preview will appear here once the content is loaded. If you see this message, the tool call was captured before the result arrived.`,
+        title: `Loading: ${fetchUrl}`,
+        error: "Preview not yet available — the tool call was captured but the result hasn't been received yet. Try asking the agent again to fetch the page."
+      };
+    } else if (pageData.name && pageData.arguments) {
+      // Generic tool call — not a web result
+      pageData = { 
+        textContent: "", 
+        title: `Tool: ${pageData.name}`,
+        error: `This artifact captured a tool call to "${pageData.name}" instead of its result. The preview will update when the tool result arrives.`
+      };
     }
   } catch {
     // Content might be text with embedded JSON

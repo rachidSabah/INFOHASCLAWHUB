@@ -21,7 +21,16 @@ export async function GET(req: Request) {
     if (status) filter.status = status;
 
     const swarms = await listSwarms(filter);
-    return NextResponse.json(swarms);
+    // Transform to format expected by SwarmCoordinationPanel
+    const formattedSwarms = swarms.map(s => ({
+      id: s.id,
+      name: s.name,
+      topology: s.topology,
+      agentCount: s.agents.length,
+      status: s.status === 'forming' ? 'inactive' : s.status === 'active' ? 'active' : s.status,
+      createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : String(s.createdAt),
+    }));
+    return NextResponse.json({ swarms: formattedSwarms });
   } catch (error: unknown) {
     console.error("[SWARM_LIST]", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";

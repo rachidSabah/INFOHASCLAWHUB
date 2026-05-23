@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
 import { getTopStrategies, storeReasoning } from "@/lib/sona-engine";
 
 export const dynamic = "force-dynamic";
@@ -12,18 +13,46 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const taskType = searchParams.get("taskType");
     const limitParam = searchParams.get("limit");
-    const limit = limitParam ? parseInt(limitParam, 10) : 10;
+    const limit = limitParam ? parseInt(limitParam, 10) : 20;
 
-    if (!taskType) {
-      return errorResponse("Missing required query param: taskType", 400);
+    // Query SONAPattern with patternType "reasoning" or "trajectory" as reasoning entries
+    const where: any = {
+      patternType: { in: ["reasoning", "trajectory", "feedback"] },
+    };
+    if (taskType) where.taskType = taskType;
+
+    let entries: any[] = [];
+    try {
+      entries = await db.sONAPattern.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: limit,
+      });
+    } catch {
+      // If SONAPattern table doesn't exist yet, try the engine
+      try {
+        if (taskType) {
+          const strategies = await getTopStrategies(taskType, limit);
+          entries = strategies;
+        }
+      } catch {}
     }
 
-    const strategies = await getTopStrategies(taskType, limit);
-    return NextResponse.json(strategies);
+    // Format as reasoning entries for the panel
+    const formattedEntries = entries.map((e: any) => ({
+      id: e.id || `re-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      agentId: e.agentId || e.model || "clawhub-agent",
+      chainOfThought: e.reasoning || e.conclusion || e.inputContext || e.action || "",
+      taskType: e.taskType || "general",
+      quality: e.score || e.confidence || 0.5,
+      createdAt: e.createdAt?.toISOString?.() || new Date().toISOString(),
+    }));
+
+    return NextResponse.json({ entries: formattedEntries });
   } catch (error: unknown) {
     console.error("[SONA_REASONING_GET]", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    return errorResponse(errorMessage, 500);
+    return NextResponse.json({ entries: [], error: errorMessage }, { status: 500 });
   }
 }
 
