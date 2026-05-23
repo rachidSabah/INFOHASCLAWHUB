@@ -21,7 +21,7 @@ import { X, MessageSquare } from "lucide-react";
 function DashboardContent() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(320);
+  const [sidebarWidth, setSidebarWidth] = useState(typeof window !== 'undefined' && window.innerWidth < 1280 ? 260 : 320);
   const [sidebarReady, setSidebarReady] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -29,7 +29,11 @@ function DashboardContent() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("clawhub_sidebar_width");
-      if (saved) setSidebarWidth(parseInt(saved));
+      if (saved) {
+        setSidebarWidth(parseInt(saved));
+      } else if (window.innerWidth < 1280) {
+        setSidebarWidth(260);
+      }
       setSidebarReady(true);
     }
   }, []);
@@ -189,7 +193,7 @@ function DashboardContent() {
   }, [setActiveConversationId]);
 
   return (
-    <div className="h-screen flex overflow-hidden bg-background">
+    <div className="h-dvh flex overflow-hidden bg-background">
       {/* Sidebar */}
       <div
         className={cn(

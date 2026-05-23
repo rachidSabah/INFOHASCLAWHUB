@@ -283,16 +283,16 @@ export function TopBar() {
   };
 
   return (
-    <div className="h-12 flex items-center gap-2 px-3 border-b border-border bg-card/30 shrink-0">
+    <div className="h-10 lg:h-12 flex items-center gap-1.5 lg:gap-2 px-2 lg:px-3 border-b border-border bg-card/30 shrink-0">
       {/* Sidebar toggle */}
       <button onClick={toggleSidebar} className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Toggle sidebar (Ctrl+B)">
         <PanelLeft className="h-4 w-4" />
       </button>
 
       {/* Logo */}
-      <div className="flex items-center gap-1.5 mr-2">
-        <ClawHubLogo size={22} />
-        <ClawHubText className="text-sm" />
+      <div className="flex items-center gap-1.5 mr-1 lg:mr-2">
+        <ClawHubLogo size={20} />
+        <span className="topbar-logo-text"><ClawHubText className="text-sm" /></span>
         {updateAvailable && (
           <button
             onClick={() => setUpdateState({ updateDialogOpen: true })}
@@ -312,12 +312,12 @@ export function TopBar() {
       <div ref={agentRef} className="relative">
         <button
           onClick={() => { setAgentDropdownOpen(!agentDropdownOpen); setSkillDropdownOpen(false); setModelDropdownOpen(false); }}
-          className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border",
+          className={cn("flex items-center gap-1 px-2 lg:px-2.5 py-1 lg:py-1.5 rounded-lg text-xs font-medium transition-colors border",
             activeAgent ? "border-primary/30 bg-primary/5 text-primary" : "border-border hover:border-primary/20 hover:bg-muted/30 text-muted-foreground"
           )}
         >
           <Bot className="h-3.5 w-3.5" />
-          <span className="max-w-[100px] truncate">{activeAgent?.name || "Default Agent"}</span>
+          <span className="topbar-dropdown-text max-w-[80px] lg:max-w-[100px] truncate">{activeAgent?.name || "Agent"}</span>
           <ChevronDown className="h-3 w-3 opacity-60" />
         </button>
         {agentDropdownOpen && (
@@ -359,12 +359,12 @@ export function TopBar() {
       <div ref={skillRef} className="relative">
         <button
           onClick={() => { setSkillDropdownOpen(!skillDropdownOpen); setAgentDropdownOpen(false); setModelDropdownOpen(false); }}
-          className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border",
+          className={cn("flex items-center gap-1 px-2 lg:px-2.5 py-1 lg:py-1.5 rounded-lg text-xs font-medium transition-colors border",
             activeSkill ? "border-amber-500/30 bg-amber-500/5 text-amber-500" : "border-border hover:border-amber-500/20 hover:bg-muted/30 text-muted-foreground"
           )}
         >
           <Zap className="h-3.5 w-3.5" />
-          <span className="max-w-[80px] truncate">{activeSkill?.name || "No Skill"}</span>
+          <span className="topbar-dropdown-text max-w-[60px] lg:max-w-[80px] truncate">{activeSkill?.name || "Skill"}</span>
           <ChevronDown className="h-3 w-3 opacity-60" />
         </button>
         {skillDropdownOpen && (
@@ -398,9 +398,9 @@ export function TopBar() {
             setSkillDropdownOpen(false);
             if (!modelDropdownOpen) fetchModels().catch(() => {});
           }}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-border hover:border-primary/20 hover:bg-muted/30 text-muted-foreground hover:text-foreground transition-colors"
+          className="flex items-center gap-1 px-2 lg:px-2.5 py-1 lg:py-1.5 rounded-lg text-xs font-medium border border-border hover:border-primary/20 hover:bg-muted/30 text-muted-foreground hover:text-foreground transition-colors"
         >
-          <span className="max-w-[150px] truncate">{activeModel?.name || currentModelId}</span>
+          <span className="max-w-[120px] lg:max-w-[150px] truncate">{activeModel?.name || currentModelId}</span>
           <ChevronDown className="h-3 w-3 opacity-60" />
         </button>
         {modelDropdownOpen && (
@@ -453,13 +453,13 @@ export function TopBar() {
       <div ref={advancedToolsRef} className="relative">
         <button
           onClick={() => { setAdvancedToolsOpen(!advancedToolsOpen); setPowerToolsOpen(false); }}
-          className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border",
+          className={cn("flex items-center gap-1 px-2 lg:px-2.5 py-1 lg:py-1.5 rounded-lg text-xs font-medium transition-colors border",
             advancedToolsOpen ? "border-orange-500/30 bg-orange-500/5 text-orange-500" : "border-border hover:border-orange-500/20 hover:bg-muted/30 text-muted-foreground"
           )}
           title="Advanced Tools — Enterprise & AI Engine"
         >
           <Zap className="h-3.5 w-3.5" />
-          <span>Advanced</span>
+          <span className="topbar-dropdown-text">Advanced</span>
           <ChevronDown className={cn("h-3 w-3 opacity-60 transition-transform", advancedToolsOpen && "rotate-180")} />
         </button>
         <AdvancedToolsDropdown
@@ -473,13 +473,13 @@ export function TopBar() {
       <div ref={powerToolsRef} className="relative">
         <button
           onClick={() => { setPowerToolsOpen(!powerToolsOpen); setAdvancedToolsOpen(false); }}
-          className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border",
+          className={cn("flex items-center gap-1 px-2 lg:px-2.5 py-1 lg:py-1.5 rounded-lg text-xs font-medium transition-colors border",
             powerToolsOpen ? "border-primary/30 bg-primary/5 text-primary" : "border-border hover:border-primary/20 hover:bg-muted/30 text-muted-foreground"
           )}
-          title="Power Tools — 19 AI Enhancement Features"
+          title="Power Tools — AI Enhancement Features"
         >
           <Rocket className="h-3.5 w-3.5" />
-          <span>Power Tools</span>
+          <span className="topbar-dropdown-text">Power Tools</span>
           <ChevronDown className={cn("h-3 w-3 opacity-60 transition-transform", powerToolsOpen && "rotate-180")} />
         </button>
         {powerToolsOpen && (
