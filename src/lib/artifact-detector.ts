@@ -1,5 +1,5 @@
 interface DetectedArtifact {
-  type: "document" | "code" | "sandbox" | "spreadsheet" | "presentation" | "diagram" | "markdown" | "html" | "canvas" | "image" | "chart";
+  type: "document" | "code" | "sandbox" | "spreadsheet" | "presentation" | "diagram" | "markdown" | "html" | "canvas" | "image" | "chart" | "website";
   title: string;
   confidence: number;
 }
@@ -21,7 +21,32 @@ const DETECTION_PATTERNS: Array<{ regex: RegExp; type: DetectedArtifact["type"];
   { regex: /```css/, type: "code", weight: 1 },
 ];
 
+// Patterns that indicate tool call JSON — should NOT be detected as artifacts
+const TOOL_CALL_PATTERNS = [
+  /^\s*\{"name"\s*:\s*"\w+"\s*,\s*"(arguments|args|params)"\s*:/m,
+  /```tool_call\s*\n/m,
+  /<longcat_tool_call>/,
+  /"toolCallId"\s*:\s*"/,
+  /^Tool:\s+\w+$/m,
+  /^Status:\s+(success|error)$/m,
+  /^Result:$/m,
+];
+
+function isToolCallContent(content: string): boolean {
+  for (const pattern of TOOL_CALL_PATTERNS) {
+    if (pattern.test(content)) return true;
+  }
+  // Check if content is primarily JSON tool call data
+  const trimmed = content.trim();
+  if (trimmed.startsWith('{"name":') && trimmed.includes('"arguments"')) return true;
+  if (trimmed.startsWith('{"name":') && trimmed.includes('"args"')) return true;
+  return false;
+}
+
 export function detectArtifact(content: string, _chunk: string): DetectedArtifact | null {
+  // Skip content that is primarily tool call data
+  if (isToolCallContent(content)) return null;
+
   const scores: Record<string, number> = {};
   scores["markdown"] = 1;
 

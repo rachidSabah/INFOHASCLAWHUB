@@ -181,35 +181,50 @@ async function getToolsDescription(): Promise<string> {
 async function buildLocalSystemInstructions(): Promise<string> {
   const toolsDescription = await getToolsDescription();
   return `
-[LOCAL AGENT CAPABILITIES]
-You are a highly capable Local AI Assistant with direct access to the user's local operating system, files, and terminal. You can autonomously execute commands, read/write files, and list directories.
+[AGENT IDENTITY & CAPABILITIES]
+You are an advanced autonomous AI coding assistant, similar to Claude Code. You have direct access to the user's local operating system, files, terminal, and the web. You think step-by-step, plan before acting, and autonomously execute multi-step tasks to completion.
 
 ${toolsDescription}
 
 You can also use XML tool tags for backward compatibility:
+1. <local_cmd>command_here</local_cmd> — Execute a terminal command
+2. <list_files>directory_path_here</list_files> — List files and folders
+3. <read_file>file_path_here</read_file> — Read file content
+4. <write_file path="file_path_here">file_content_here</write_file> — Create or overwrite a file
 
-1. Execute a command in the terminal:
-<local_cmd>command_here</local_cmd>
+[HOW TO THINK AND ACT - CRITICAL BEHAVIORAL RULES]
+1. ALWAYS think step-by-step before acting. Break complex tasks into sub-tasks.
+2. When a task requires multiple steps, execute them IN SEQUENCE using tool calls. Do NOT stop after one step.
+3. After each tool result, analyze it and decide the NEXT step. Keep going until the task is FULLY complete.
+4. If you need information, USE TOOLS to get it — don't guess or assume. Use web_search, web_fetch, read_file, etc.
+5. If you need to create something, USE TOOLS to do it — use write_file, local_cmd, etc.
+6. ALWAYS provide a final, complete answer to the user after all tool executions are done.
 
-2. List files and folders:
-<list_files>directory_path_here</list_files>
-
-3. Read file content:
-<read_file>file_path_here</read_file>
-
-4. Create or overwrite a file:
-<write_file path="file_path_here">file_content_here</write_file>
-
-When you call a tool, the system will automatically execute it, append the result to the conversation, and trigger your next turn.
+[TOOL CALLING RULES]
+- When you call a tool, the system will automatically execute it, append the result, and give you another turn.
+- You can call MULTIPLE tools in a single response if they are independent.
+- After receiving tool results, you MUST continue processing — analyze results and take the next step.
+- NEVER stop after a tool call without providing analysis or taking further action.
+- Use the tool_call code block format for best reliability:
+  \`\`\`tool_call
+  {"name": "tool_name", "arguments": {"param": "value"}}
+  \`\`\`
 
 [TOOL ERROR RECOVERY - CRITICAL RULES]
-- If a tool returns an error (ENOENT, not found, etc.), do NOT stop. Instead, try alternative approaches using different tools.
-- If local_cmd returns ENOENT (command not found), use built-in tools like web_fetch, read_file, write_file instead.
+- If a tool returns an error (ENOENT, not found, etc.), do NOT stop. Instead, try alternative approaches.
+- If local_cmd returns ENOENT, use built-in tools like web_fetch, read_file, write_file instead.
 - If web_search returns no results, try a broader query OR use web_fetch to directly access a known URL.
-- If web_fetch fails for a URL, try web_search to find cached/alternative versions of the content.
-- ALWAYS provide a useful and complete response to the user, even if some tools fail. Use your knowledge to supplement missing tool data.
-- Never give up after a tool error — always try at least one alternative approach before providing a partial answer.
-- If you cannot complete the task with available tools, explain what you were able to accomplish and what limitations you encountered, and suggest next steps the user can take.
+- If web_fetch fails for a URL, try web_search to find cached/alternative versions.
+- ALWAYS provide a useful and complete response even if some tools fail.
+- Never give up after a tool error — always try at least ONE alternative before providing a partial answer.
+- If you cannot complete the task with available tools, explain what you accomplished and suggest next steps.
+
+[WEBSITE ANALYSIS TASKS]
+When asked to scan, analyze, or review a website:
+1. Use web_fetch to get the page content
+2. Analyze the fetched content thoroughly
+3. Provide a COMPLETE analysis — do NOT just say "I fetched the page" and stop
+4. Include details about: content, structure, technologies, SEO, accessibility, security, performance
 `;
 }
 
@@ -305,9 +320,14 @@ async function queryLLM(
   encoder: TextEncoder,
   requestId: string,
   // Tool results from previous iteration for all providers
-  pendingToolResults?: { toolCallId: string; toolName: string; result: string; nativeFunctionCall?: any }[]
-): Promise<string> {
+  pendingToolResults?: { toolCallId: string; toolName: string; result: string; nativeFunctionCall?: any }[],
+  // Assistant content and reasoning content from previous iteration (for OpenAI-compatible providers)
+  assistantContent?: string,
+  assistantReasoningContent?: string
+): Promise<{ text: string; reasoningContent: string; nativeFunctionCalls: any[] }> {
   let accumulatedText = "";
+  let reasoningContent = "";
+  let nativeFunctionCallsResult: any[] = [];
 
   if (isCustomProvider && providerData) {
     const pName = providerData.name?.toLowerCase() || "";
@@ -416,11 +436,7 @@ async function queryLLM(
         }
       }
 
-      // Store native function calls for the agent loop to process
-      // We attach them to a custom property on the return value
-      (fullResponseText as any).__nativeFunctionCalls = nativeFunctionCalls;
-
-      return fullResponseText;
+      return { text: fullResponseText, reasoningContent: "", nativeFunctionCalls };
     }
 
     // OpenAI-compatible providers
@@ -439,10 +455,16 @@ async function queryLLM(
       model: targetModel,
       messages: [
         ...(finalSystemPrompt ? [{ role: "system", content: finalSystemPrompt }] : []),
-        ...conversationHistory.map((msg: any) => ({
-          role: msg.role === "user" ? "user" : "assistant",
-          content: msg.content
-        })),
+        ...conversationHistory.map((msg: any) => {
+          const msgObj: any = {
+            role: msg.role === "user" ? "user" : "assistant",
+            content: msg.content
+          };
+          if (msg.reasoning_content) {
+            msgObj.reasoning_content = msg.reasoning_content;
+          }
+          return msgObj;
+        }),
         { role: "user", content: prompt }
       ],
       stream: true,
@@ -465,16 +487,22 @@ async function queryLLM(
           name: tr.toolName,
           arguments: typeof tr.nativeFunctionCall?.args === 'object'
             ? JSON.stringify(tr.nativeFunctionCall.args)
-            : "{}",
+            : typeof tr.nativeFunctionCall?.args === 'string'
+              ? tr.nativeFunctionCall.args
+              : "{}",
         },
       }));
 
       // Add assistant message with tool_calls
-      requestBody.messages.push({
+      const assistantMsg: any = {
         role: "assistant",
-        content: null,
+        content: assistantContent ?? null,
         tool_calls: assistantToolCalls,
-      });
+      };
+      if (assistantReasoningContent) {
+        assistantMsg.reasoning_content = assistantReasoningContent;
+      }
+      requestBody.messages.push(assistantMsg);
 
       // Add tool result messages
       for (const tr of pendingToolResults) {
@@ -608,6 +636,10 @@ async function queryLLM(
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: cleaned })}\n\n`));
               }
             }
+            // Capture reasoning_content from DeepSeek thinking models
+            if (delta?.reasoning_content) {
+              reasoningContent += delta.reasoning_content;
+            }
             // Handle native tool_calls from the streaming delta
             if (delta?.tool_calls) {
               for (const tc of delta.tool_calls) {
@@ -654,6 +686,11 @@ async function queryLLM(
       }
       streamBuffer = "";
     }
+    // Capture native tool calls from OpenAI streaming for the return value
+    nativeFunctionCallsResult = Array.from(nativeToolCalls.values()).map(tc => ({
+      name: tc.function.name,
+      args: (() => { try { return JSON.parse(tc.function.arguments || "{}"); } catch { return {}; } })()
+    }));
   } else {
     // Spawn Gemini CLI
     let fullPrompt = "";
@@ -773,7 +810,7 @@ async function queryLLM(
     await processComplete;
   }
 
-  return accumulatedText;
+  return { text: accumulatedText, reasoningContent, nativeFunctionCalls: nativeFunctionCallsResult };
 }
 
 export async function POST(req: NextRequest) {
@@ -1008,6 +1045,11 @@ export async function POST(req: NextRequest) {
           // Track tool results for passing back to the model in the next iteration
           let pendingToolResults: { toolCallId: string; toolName: string; result: string; nativeFunctionCall?: any }[] = [];
           let hasHadSuccessfulToolRun = false;
+          // Track assistant content and reasoning content from previous iteration
+          let previousAssistantContent: string | undefined;
+          let previousReasoningContent: string | undefined;
+          // Track the last reasoning content for sending back to client (for DeepSeek thinking models)
+          let lastReasoningContent: string = "";
 
           while (iteration < maxIterations) {
             iteration++;
@@ -1016,7 +1058,7 @@ export async function POST(req: NextRequest) {
             const localInstructions = await buildLocalSystemInstructions();
             const enhancedSystemPrompt = `${basePromptWithSkills}\n\n${localInstructions}`;
 
-            const responseText = await queryLLM(
+            const responseResult = await queryLLM(
               model,
               targetModel,
               currentPrompt,
@@ -1030,14 +1072,21 @@ export async function POST(req: NextRequest) {
               encoder,
               requestId,
               // Pass tool results from previous iteration (works for all providers)
-              pendingToolResults.length > 0 ? pendingToolResults : undefined
+              pendingToolResults.length > 0 ? pendingToolResults : undefined,
+              previousAssistantContent,
+              previousReasoningContent
             );
+            const responseText = responseResult.text;
+            const responseReasoningContent = responseResult.reasoningContent;
+            const nativeFunctionCalls = responseResult.nativeFunctionCalls;
 
             totalResponseText += responseText;
 
-            // Extract native function calls if any (stored by queryLLM for Gemini)
-            const nativeFunctionCalls = (responseText as any).__nativeFunctionCalls || [];
-
+            // Track reasoning content from this response (for DeepSeek thinking models)
+            if (responseReasoningContent) {
+              lastReasoningContent = responseReasoningContent;
+            }
+            const toolCallCountBefore = allToolCalls.length;
             const { toolRun, resultSummary } = await parseAndExecuteTools(
               responseText,
               workspacePath,
@@ -1064,7 +1113,11 @@ export async function POST(req: NextRequest) {
               if (looksIncomplete && hasHadSuccessfulToolRun && iteration < maxIterations) {
                 console.log(`[${requestId}] Response looks incomplete, re-prompting to continue`);
                 currentHistory.push({ role: "user", content: currentPrompt });
-                currentHistory.push({ role: "assistant", content: responseText });
+                currentHistory.push({ 
+                  role: "assistant", 
+                  content: responseText,
+                  ...(responseReasoningContent ? { reasoning_content: responseReasoningContent } : {})
+                });
                 currentPrompt = "Please continue with your response. If you were about to use a tool, please do so now. If you have a final answer, please provide it.";
                 continue;
               }
@@ -1080,13 +1133,13 @@ export async function POST(req: NextRequest) {
             })}\n\n`));
 
             // Build pendingToolResults for the next iteration
-            // This works for ALL providers (OpenAI, Gemini, etc.)
+            // Only include tool calls from THIS iteration, not all accumulated ones
             pendingToolResults = [];
             const nativeCallNames = new Set(nativeFunctionCalls.map((fc: any) => fc.name));
 
             // Add native function calls first (from Gemini or OpenAI native tool_calls)
             for (const fc of nativeFunctionCalls) {
-              const matchingResult = allToolCalls.find(tc => tc.name === fc.name);
+              const matchingResult = allToolCalls.find((tc, idx) => idx >= toolCallCountBefore && tc.name === fc.name);
               pendingToolResults.push({
                 toolCallId: `call_${fc.name}_${Date.now()}`,
                 toolName: fc.name,
@@ -1094,8 +1147,9 @@ export async function POST(req: NextRequest) {
                 nativeFunctionCall: fc,
               });
             }
-            // Also add text-based tool calls
-            for (const tc of allToolCalls) {
+            // Also add text-based tool calls from THIS iteration only
+            for (let i = toolCallCountBefore; i < allToolCalls.length; i++) {
+              const tc = allToolCalls[i];
               if (!nativeCallNames.has(tc.name)) {
                 pendingToolResults.push({
                   toolCallId: `call_${tc.name}_${Date.now()}`,
@@ -1106,8 +1160,16 @@ export async function POST(req: NextRequest) {
               }
             }
 
+            // Track assistant content and reasoning content for next iteration
+            previousAssistantContent = stripToolCallXml(responseText) || undefined;
+            previousReasoningContent = responseReasoningContent || undefined;
+
             currentHistory.push({ role: "user", content: currentPrompt });
-            currentHistory.push({ role: "assistant", content: responseText });
+            currentHistory.push({ 
+              role: "assistant", 
+              content: responseText,
+              ...(responseReasoningContent ? { reasoning_content: responseReasoningContent } : {})
+            });
 
             currentPrompt = `Here is the result of the tool execution:\n${resultSummary}\n\nPlease proceed with the next steps or give your final answer based on this result. Remember: if a tool returned an error, try alternative approaches using other available tools.`;
           }
@@ -1134,7 +1196,9 @@ export async function POST(req: NextRequest) {
             conversationId
           ).catch((err) => console.error("[Memory Extraction Failed]:", err));
 
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done", duration: 0, tokens: { prompt: promptTokens, completion: completionTokens, total: totalTokens }, cost, toolCalls: allToolCalls })}\n\n`));
+          // Include reasoning_content in the done event so the client can save it in metadata
+          // This is required by DeepSeek thinking models: "reasoning_content must be passed back"
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done", duration: 0, tokens: { prompt: promptTokens, completion: completionTokens, total: totalTokens }, cost, toolCalls: allToolCalls, ...(lastReasoningContent ? { reasoningContent: lastReasoningContent } : {}) })}\n\n`));
           controller.close();
         } catch (error: unknown) {
           console.error(`[${requestId}] Stream Error:`, error);

@@ -54,6 +54,12 @@ function canSandbox(tab: PreviewTab): boolean {
     tab.type === "sandbox" || tab.type === "html" || tab.type === "canvas";
 }
 
+function isWebsitePreview(tab: PreviewTab): boolean {
+  return tab.type === "website" || 
+    (tab.metadata?.url !== undefined) ||
+    (tab.title.toLowerCase().includes("website") && tab.content.includes("textContent"));
+}
+
 /**
  * Build a complete HTML document from code that might be:
  * - Full HTML document
@@ -374,28 +380,136 @@ function SandboxView({ tab }: { tab: PreviewTab }) {
   );
 }
 
+/**
+ * Website preview view — renders fetched web content as a nicely formatted page
+ * Similar to Claude's artifact preview for web fetch results
+ */
+function buildWebsiteHtml(pageData: any, pageTitle: string, pageUrl: string, pageDescription: string, indicators: string[]): string {
+  const pageContent = pageData.textContent || "";
+  const contentLines = pageContent.split('\n').filter((l: string) => l.trim()).slice(0, 100);
+  const contentHtml = contentLines.map((line: string) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('#')) return `<h2>${trimmed.replace(/^#+\s*/, '')}</h2>`;
+    return `<p>${trimmed}</p>`;
+  }).join('\n');
+
+  const urlHtml = pageUrl ? `<div class="url">${pageUrl}</div>` : '';
+  const descHtml = pageDescription ? `<div class="meta">${pageDescription}</div>` : '';
+  const tagsHtml = indicators.length > 0 
+    ? `<div class="tags">${indicators.map(t => `<span class="tag">${t}</span>`).join('')}</div>` 
+    : '';
+  const statsHtml = pageData.contentLength 
+    ? `<div class="stats"><div class="stat"><div class="value">${(pageData.contentLength / 1024).toFixed(1)}KB</div><div class="label">Page Size</div></div>${indicators.length > 0 ? `<div class="stat"><div class="value">${indicators.length}</div><div class="label">Technologies</div></div>` : ''}</div>` 
+    : '';
+  const descParaHtml = pageDescription ? `<p class="description">${pageDescription}</p>` : '';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${pageTitle}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a2e; background: #ffffff; line-height: 1.6; }
+  .header { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); color: white; padding: 20px 24px; }
+  .header h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .header .url { font-size: 12px; opacity: 0.85; word-break: break-all; }
+  .header .meta { font-size: 12px; opacity: 0.75; margin-top: 8px; }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .tag { background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+  .content { padding: 20px 24px; max-width: 800px; }
+  .content p { margin-bottom: 10px; font-size: 14px; color: #374151; }
+  .content h2 { font-size: 16px; font-weight: 600; margin: 16px 0 8px; color: #111827; }
+  .description { font-style: italic; color: #6b7280; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #e5e7eb; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin: 16px 0; }
+  .stat { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; text-align: center; }
+  .stat .value { font-size: 18px; font-weight: 700; color: #f97316; }
+  .stat .label { font-size: 11px; color: #6b7280; margin-top: 2px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>${pageTitle}</h1>
+  ${urlHtml}
+  ${descHtml}
+  ${tagsHtml}
+</div>
+<div class="content">
+  ${statsHtml}
+  ${descParaHtml}
+  <div>${contentHtml}</div>
+</div>
+</body>
+</html>`;
+}
+
+function WebsiteView({ tab }: { tab: PreviewTab }) {
+  const url = tab.metadata?.url || "";
+  const title = tab.metadata?.title || tab.title;
+  
+  // Try to parse the content as JSON (web_fetch result)
+  let pageData: any = {};
+  try {
+    pageData = JSON.parse(tab.content);
+  } catch {
+    pageData = { textContent: tab.content };
+  }
+
+  const pageTitle = pageData.title || title;
+  const pageDescription = pageData.description || "";
+  const pageUrl = pageData.url || url;
+  const indicators: string[] = pageData.indicators || [];
+
+  const previewHtml = buildWebsiteHtml(pageData, pageTitle, pageUrl, pageDescription, indicators);
+
+  return (
+    <div className="flex flex-col h-full bg-white">
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 bg-gray-50 shrink-0">
+        <Monitor className="h-3.5 w-3.5 text-orange-500" />
+        <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Website Preview</span>
+        {pageUrl && (
+          <a href={pageUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-500 hover:underline truncate ml-2">
+            {pageUrl}
+          </a>
+        )}
+      </div>
+      <div className="flex-1 overflow-hidden">
+        <iframe
+          className="w-full h-full border-0"
+          srcDoc={previewHtml}
+          sandbox="allow-same-origin"
+          title={`Preview: ${pageTitle}`}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function ArtifactPreviewPanel() {
   const { isOpen, tabs, activeTabId, isFullscreen, width, setOpen, setActiveTab, removeTab, setFullscreen } = useArtifactPreviewStore();
-  const [activeView, setActiveView] = useState<"code" | "preview" | "sandbox">("code");
+  const [activeView, setActiveView] = useState<"code" | "preview" | "sandbox" | "website">("code");
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
 
   const sandboxAvailable = activeTab ? canSandbox(activeTab) : false;
+  const websiteAvailable = activeTab ? isWebsitePreview(activeTab) : false;
 
   useEffect(() => {
     if (activeTabId && activeTab) {
-      const isDoc = isBinaryFile(activeTab) || activeTab.type === "document" || activeTab.type === "markdown";
-      // Auto-select sandbox for HTML/code content
-      if (sandboxAvailable && (activeTab.type === "sandbox" || activeTab.type === "html" || activeTab.type === "canvas")) {
+      // Auto-select website view for web fetch results
+      if (websiteAvailable) {
+        setActiveView("website");
+      } else if (sandboxAvailable && (activeTab.type === "sandbox" || activeTab.type === "html" || activeTab.type === "canvas")) {
         setActiveView("sandbox");
-      } else if (isDoc) {
+      } else if (isBinaryFile(activeTab) || activeTab.type === "document" || activeTab.type === "markdown") {
         setActiveView("preview");
       } else {
         setActiveView("code");
       }
     }
-  }, [activeTabId, sandboxAvailable]);
+  }, [activeTabId, sandboxAvailable, websiteAvailable]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && isOpen) { isFullscreen ? setFullscreen(false) : setOpen(false); } };
@@ -463,6 +577,7 @@ export default function ArtifactPreviewPanel() {
       case "code": return <CodeView tab={activeTab} />;
       case "preview": return <PreviewView tab={activeTab} />;
       case "sandbox": return <SandboxView tab={activeTab} />;
+      case "website": return <WebsiteView tab={activeTab} />;
     }
   };
 
@@ -499,7 +614,7 @@ export default function ArtifactPreviewPanel() {
 
           <span className="text-sm font-semibold min-w-0 flex-1 truncate" style={{ color: ACCENT }}>{title}</span>
 
-          {/* View toggle: Code | Preview | Sandbox */}
+          {/* View toggle: Code | Preview | Website | Sandbox */}
           <div className="flex items-center rounded-lg bg-muted/30 p-0.5 shrink-0">
             <button onClick={() => setActiveView("code")} className={cn("flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors duration-150", activeView === "code" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground")}>
               <Code2 className="h-3.5 w-3.5" />Code
@@ -507,6 +622,11 @@ export default function ArtifactPreviewPanel() {
             <button onClick={() => setActiveView("preview")} className={cn("flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors duration-150", activeView === "preview" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground")}>
               <Eye className="h-3.5 w-3.5" />Preview
             </button>
+            {websiteAvailable && (
+              <button onClick={() => setActiveView("website")} className={cn("flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors duration-150", activeView === "website" ? "bg-orange-500/10 shadow-sm text-orange-500" : "text-muted-foreground")}>
+                <Monitor className="h-3.5 w-3.5" />Website
+              </button>
+            )}
             {sandboxAvailable && (
               <button onClick={() => setActiveView("sandbox")} className={cn("flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors duration-150", activeView === "sandbox" ? "bg-emerald-500/10 shadow-sm text-emerald-500" : "text-muted-foreground")}>
                 <Play className="h-3.5 w-3.5" />Sandbox

@@ -167,10 +167,18 @@ export function ChatInput() {
     abortRef.current = false;
 
     try {
-      const history = useChatStore.getState().messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
+      const history = useChatStore.getState().messages.map((m) => {
+        const msg: any = { role: m.role, content: m.content };
+        // Include reasoning_content from metadata for DeepSeek thinking models
+        // This is required by the API: "reasoning_content in thinking mode must be passed back"
+        try {
+          const meta = m.metadata ? (typeof m.metadata === 'string' ? JSON.parse(m.metadata) : m.metadata) : null;
+          if (meta?.reasoning_content) {
+            msg.reasoning_content = meta.reasoning_content;
+          }
+        } catch {}
+        return msg;
+      });
 
       const response = await fetch("/api/gemini/chat", {
         method: "POST",
@@ -212,13 +220,12 @@ export function ChatInput() {
                   .replace(/^Tool:.*$/gm, "")
                   .replace(/^Status:.*$/gm, "") 
                   .replace(/^Result:\s*$/gm, "")
-                  .replace(/^\{$/gm, "")
-                  .replace(/^\}$/gm, "")
-                  .replace(/"stdout"\s*:\s*"[\s\S]*?"\s*,?\s*$/gm, "")
-                  .replace(/"stderr"\s*:\s*"[^"]*"\s*,?\s*$/gm, "")
-                  .replace(/"exitCode"\s*:\s*\d+\s*$/gm, "")
-                  .replace(/(?:\n?\*Running tool:.*?\*+\n?)/g, "")
-                  .replace(/```json[\s\S]*?```/g, "")
+                  .replace(/```tool_call\s*\n[\s\S]*?```/g, "")
+                  .replace(/<longcat_tool_call>[\s\S]*?<\/longcat_tool_call>/g, "")
+                  .replace(/<longcat_arg_key>[\s\S]*?<\/longcat_arg_key>/g, "")
+                  .replace(/<longcat_arg_value>[\s\S]*?<\/longcat_arg_value>/g, "")
+                  .replace(/\{"name"\s*:\s*"[^"]*"\s*,\s*"(arguments|args)"\s*:\s*\{[\s\S]*?\}\s*\}/g, "")
+                  .replace(/⚙️\s*\*\*\[Executed System Action\]\*\*:[\s\S]*?```/g, "")
                   .replace(/\n{3,}/g, "\n\n")
                   .trim();
                 const detected = detectArtifact(cleanContent, data.content);
@@ -256,6 +263,35 @@ export function ChatInput() {
                 const resultStr = typeof data.result === "string" ? data.result : JSON.stringify(data.result);
                 const fileMatch = resultStr.match(/(\S+\.(docx|pdf|xlsx|pptx|csv|png|jpg|svg|html))\b/i);
                 const isBrowser = data.toolName === "agent-browser" || resultStr.includes("playwright") || resultStr.includes("browser_context") || resultStr.includes("Page opened");
+                
+                // Handle web_fetch results — create a website preview artifact
+                if (data.toolName === "web_fetch" && data.status === "success") {
+                  try {
+                    const fetchResult = JSON.parse(resultStr);
+                    if (fetchResult.textContent || fetchResult.title) {
+                      const store = useArtifactPreviewStore.getState();
+                      const existing = store.tabs.find(t => t.id === store.activeTabId);
+                      const websiteTab = {
+                        title: fetchResult.title || fetchResult.url || "Website Preview",
+                        type: "website" as const,
+                        content: resultStr,
+                        metadata: { url: fetchResult.url, title: fetchResult.title, description: fetchResult.description },
+                        isStreaming: false,
+                      };
+                      if (existing) {
+                        store.updateTab(existing.id, websiteTab);
+                      } else {
+                        store.addTab({
+                          id: `website-${Date.now()}`,
+                          ...websiteTab,
+                          isPinned: false,
+                          createdAt: Date.now(),
+                        });
+                      }
+                    }
+                  } catch {}
+                }
+                
                 if (isBrowser && data.status === "success") {
                   const store = useArtifactPreviewStore.getState();
                   store.addTab({
@@ -313,13 +349,12 @@ export function ChatInput() {
                     .replace(/^Tool:.*$/gm, "")
                     .replace(/^Status:.*$/gm, "")
                     .replace(/^Result:\s*$/gm, "")
-                    .replace(/^\{$/gm, "")
-                    .replace(/^\}$/gm, "")
-                    .replace(/"stdout"\s*:\s*"[\s\S]*?"\s*,?\s*$/gm, "")
-                    .replace(/"stderr"\s*:\s*"[^"]*"\s*,?\s*$/gm, "")
-                    .replace(/"exitCode"\s*:\s*\d+\s*$/gm, "")
-                    .replace(/(?:\n?\*Running tool:.*?\*+\n?)/g, "")
-                    .replace(/```json[\s\S]*?```/g, "")
+                    .replace(/```tool_call\s*\n[\s\S]*?```/g, "")
+                    .replace(/<longcat_tool_call>[\s\S]*?<\/longcat_tool_call>/g, "")
+                    .replace(/<longcat_arg_key>[\s\S]*?<\/longcat_arg_key>/g, "")
+                    .replace(/<longcat_arg_value>[\s\S]*?<\/longcat_arg_value>/g, "")
+                    .replace(/\{"name"\s*:\s*"[^"]*"\s*,\s*"(arguments|args)"\s*:\s*\{[\s\S]*?\}\s*\}/g, "")
+                    .replace(/⚙️\s*\*\*\[Executed System Action\]\*\*:[\s\S]*?```/g, "")
                     .replace(/\n{3,}/g, "\n\n")
                     .trim();
                   store.updateTab(active.id, { content: cleanContent, isStreaming: false });
@@ -332,7 +367,7 @@ export function ChatInput() {
                       role: "assistant",
                       content: fullContent,
                       agentId: activeAgentId,
-                      metadata: { model, duration: data.duration, tokens: data.tokens, cost: data.cost },
+                      metadata: { model, duration: data.duration, tokens: data.tokens, cost: data.cost, ...(data.reasoningContent ? { reasoning_content: data.reasoningContent } : {}) },
                       toolCalls: data.toolCalls || collectedToolCalls,
                     }),
                   });

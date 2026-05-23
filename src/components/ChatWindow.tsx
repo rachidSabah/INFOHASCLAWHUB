@@ -157,7 +157,17 @@ export function ChatWindow() {
           prompt: prevUserMsg.content,
           model: conv?.model || settings.defaultModel,
           systemPrompt: conv?.systemPrompt || settings.systemPrompt,
-          conversationHistory: messages.slice(0, msgIndex - 1),
+          conversationHistory: messages.slice(0, msgIndex - 1).map((m) => {
+            const msg: any = { role: m.role, content: m.content };
+            // Include reasoning_content from metadata for DeepSeek thinking models
+            try {
+              const meta = m.metadata ? (typeof m.metadata === 'string' ? JSON.parse(m.metadata) : m.metadata) : null;
+              if (meta?.reasoning_content) {
+                msg.reasoning_content = meta.reasoning_content;
+              }
+            } catch {}
+            return msg;
+          }),
           files: prevUserMsg.attachments ? JSON.parse(prevUserMsg.attachments) : [],
         }),
       });
