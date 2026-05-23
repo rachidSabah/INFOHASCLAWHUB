@@ -33,6 +33,7 @@ function execSafe(cmd: string): string | null {
 }
 
 function detectChromeVersion(): string | null {
+  // Standard installation paths
   const paths = process.platform === "win32"
     ? [
         "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -41,7 +42,7 @@ function detectChromeVersion(): string | null {
       ]
     : process.platform === "darwin"
       ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
-      : ["/usr/bin/google-chrome", "/usr/bin/chromium-browser", "/snap/bin/chromium"];
+      : ["/usr/bin/google-chrome", "/usr/bin/chromium-browser", "/snap/bin/chromium", "/usr/bin/chromium"];
 
   for (const chromePath of paths) {
     try {
@@ -58,6 +59,55 @@ function detectChromeVersion(): string | null {
       // continue
     }
   }
+
+  // Try PATH-based detection (works on Linux, macOS, WSL)
+  const pathCommands = ["google-chrome", "google-chrome-stable", "chromium-browser", "chromium", "chrome"];
+  for (const cmd of pathCommands) {
+    const result = execSafe(`${cmd} --version`);
+    if (result) {
+      const match = result.match(/(\d+[\d.]*)/);
+      return match ? match[1] : result.replace(/[^\d.]/g, "").trim();
+    }
+  }
+
+  return null;
+}
+
+function detectEdgeVersion(): string | null {
+  // Microsoft Edge (Chromium-based) - also works for agent-browser
+  const paths = process.platform === "win32"
+    ? [
+        "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+        "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+        path.join(process.env.LOCALAPPDATA || "", "Microsoft\\Edge\\Application\\msedge.exe"),
+      ]
+    : process.platform === "darwin"
+      ? ["/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"]
+      : ["/usr/bin/microsoft-edge", "/usr/bin/microsoft-edge-stable"];
+
+  for (const edgePath of paths) {
+    try {
+      if (fs.existsSync(edgePath)) {
+        const result = execSync(`"${edgePath}" --version`, {
+          encoding: "utf-8",
+          timeout: 10000,
+          windowsHide: true,
+        }).trim();
+        const match = result.match(/(\d+[\d.]*)/);
+        return match ? match[1] : result;
+      }
+    } catch {
+      // continue
+    }
+  }
+
+  // Try PATH-based detection
+  const result = execSafe("microsoft-edge --version") || execSafe("microsoft-edge-stable --version");
+  if (result) {
+    const match = result.match(/(\d+[\d.]*)/);
+    return match ? match[1] : result.replace(/[^\d.]/g, "").trim();
+  }
+
   return null;
 }
 
@@ -342,8 +392,9 @@ async function runAllChecks(): Promise<{ checks: DoctorCheck[]; summary: DoctorS
     });
   }
 
-  // --- Chrome ---
+  // --- Chrome / Browser ---
   const chromeVersion = detectChromeVersion();
+  const edgeVersion = detectEdgeVersion();
   if (chromeVersion) {
     checks.push({
       name: "Chrome / Browser",
@@ -351,13 +402,31 @@ async function runAllChecks(): Promise<{ checks: DoctorCheck[]; summary: DoctorS
       message: `Chrome v${chromeVersion} installed`,
       details: "Required for agent-browser automation",
     });
-  } else {
+  } else if (edgeVersion) {
     checks.push({
       name: "Chrome / Browser",
-      status: "warning",
-      message: "Chrome not detected in standard location",
-      details: "agent-browser skills may not function without Chrome installed",
+      status: "ok",
+      message: `Microsoft Edge v${edgeVersion} installed (Chromium-based)`,
+      details: "Edge is Chromium-based and fully compatible with agent-browser automation (Playwright/Puppeteer)",
     });
+  } else {
+    // Check if we're in WSL - Chrome might be installed on Windows side
+    const isWSL = fs.existsSync("/proc/version") && fs.readFileSync("/proc/version", "utf-8").toLowerCase().includes("microsoft");
+    if (isWSL) {
+      checks.push({
+        name: "Chrome / Browser",
+        status: "warning",
+        message: "No browser detected in WSL Linux paths",
+        details: "WSL detected. Chrome/Edge may be installed on the Windows side. agent-browser can use the Windows browser via WSL interop. You can also install Chrome in WSL: wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add - && sudo apt-get install google-chrome-stable",
+      });
+    } else {
+      checks.push({
+        name: "Chrome / Browser",
+        status: "warning",
+        message: "No Chromium-based browser detected",
+        details: "agent-browser works with Chrome, Chromium, or Microsoft Edge. Install one: sudo apt-get install chromium-browser OR download from https://www.google.com/chrome/",
+      });
+    }
   }
 
   // --- Python ---

@@ -139,6 +139,7 @@ export function TopBar() {
   const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
   const [skillDropdownOpen, setSkillDropdownOpen] = useState(false);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [modelSearchQuery, setModelSearchQuery] = useState("");
   const [tokenDashboardOpen, setTokenDashboardOpen] = useState(false);
   const [systemMonitorOpen, setSystemMonitorOpen] = useState(false);
   const [doctorOpen, setDoctorOpen] = useState(false);
@@ -438,6 +439,7 @@ export function TopBar() {
             setModelDropdownOpen(!modelDropdownOpen);
             setAgentDropdownOpen(false);
             setSkillDropdownOpen(false);
+            setModelSearchQuery("");
             if (!modelDropdownOpen) fetchModels().catch(() => {});
           }}
           className="flex items-center gap-1 px-2 lg:px-2.5 py-1 lg:py-1.5 rounded-lg text-xs font-medium border border-border hover:border-primary/20 hover:bg-muted/30 text-muted-foreground hover:text-foreground transition-colors"
@@ -447,14 +449,43 @@ export function TopBar() {
         </button>
         {modelDropdownOpen && (
           <div className="absolute top-full left-0 mt-1 w-80 bg-popover border border-border rounded-xl shadow-xl z-50 animate-fade-in overflow-hidden">
-            <div className="max-h-80 overflow-y-auto p-2 space-y-3">
-              {modelGroups.map((group) => (
+            {/* Search input */}
+            <div className="p-2 border-b border-border/40">
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={modelSearchQuery}
+                  onChange={(e) => setModelSearchQuery(e.target.value)}
+                  placeholder="Search models..."
+                  className="w-full pl-7 pr-2 py-1.5 text-xs rounded-md border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary/30 placeholder:text-muted-foreground"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="max-h-72 overflow-y-auto p-2 space-y-3">
+              {modelGroups
+                .map(group => ({
+                  ...group,
+                  models: group.models
+                    .filter((m, i, a) => a.findIndex(x => x.id === m.id) === i)
+                    .filter(m => {
+                      if (!modelSearchQuery.trim()) return true;
+                      const q = modelSearchQuery.toLowerCase();
+                      return m.name.toLowerCase().includes(q) || 
+                             m.id.toLowerCase().includes(q) || 
+                             m.description.toLowerCase().includes(q) ||
+                             group.name.toLowerCase().includes(q);
+                    })
+                }))
+                .filter(group => group.models.length > 0)
+                .map((group) => (
                 <div key={group.name} className="space-y-1">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 py-0.5 border-b border-border/40">
                     {group.name}
                   </p>
                   <div className="space-y-0.5">
-                    {group.models.filter((m,i,a) => a.findIndex(x => x.id === m.id) === i).map((model) => (
+                    {group.models.map((model) => (
                       <button
                         key={model.id}
                         onClick={() => handleModelChange(model.id)}
@@ -473,6 +504,12 @@ export function TopBar() {
               ))}
               {allModels.length === 0 && (
                 <p className="text-xs text-muted-foreground text-center py-4">No models available.</p>
+              )}
+              {modelSearchQuery.trim() && allModels.filter(m => {
+                const q = modelSearchQuery.toLowerCase();
+                return m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q) || m.description.toLowerCase().includes(q);
+              }).length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-4">No models match "{modelSearchQuery}"</p>
               )}
             </div>
           </div>

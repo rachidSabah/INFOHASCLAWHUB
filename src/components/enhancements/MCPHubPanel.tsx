@@ -45,14 +45,48 @@ export function MCPHubPanel({ open, onOpenChange }: Props) {
   const fetchServers = async () => {
     try {
       const res = await fetch("/api/mcp/servers");
-      if (res.ok) { const data = await res.json(); setServers(data.servers || data || []); }
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.servers)) {
+          setServers(data.servers);
+        } else if (Array.isArray(data)) {
+          setServers(data);
+        } else {
+          setServers([]);
+        }
+      }
     } catch { /* ignore */ }
   };
 
   const fetchTools = async () => {
     try {
       const res = await fetch("/api/mcp/tools");
-      if (res.ok) { const data = await res.json(); setTools(data.tools || data || []); }
+      if (res.ok) {
+        const data = await res.json();
+        // API returns { servers: [{ name, tools: [...], error? }] } — flatten to MCPTool[]
+        if (Array.isArray(data.tools)) {
+          setTools(data.tools);
+        } else if (Array.isArray(data.servers)) {
+          const flatTools: MCPTool[] = [];
+          for (const server of data.servers) {
+            if (Array.isArray(server.tools)) {
+              for (const tool of server.tools) {
+                flatTools.push({
+                  name: tool.name || "unknown",
+                  description: tool.description || "",
+                  serverName: server.name || "unknown",
+                });
+              }
+            }
+          }
+          setTools(flatTools);
+        } else if (Array.isArray(data)) {
+          // Fallback: if data itself is an array
+          setTools(data);
+        } else {
+          setTools([]);
+        }
+      }
     } catch { /* ignore */ }
   };
 
