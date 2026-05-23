@@ -7,6 +7,18 @@ import os from "os";
 import { parseToolCalls, executeToolCall, getToolsPrompt, getMcpTools, getGeminiFunctionDeclarations, getOpenAIToolsDefinitions, stripToolCallXml, type ToolCallResult } from "@/lib/tools";
 import { countTokens, estimateCost } from "@/lib/tokens";
 import { routePrompt } from "@/lib/prompt-router";
+import {
+  generateCoTPrompt,
+  assessTaskComplexity,
+  generateReflectionPrompt,
+  scoreResponseQuality,
+  generatePlanningPrompt,
+  getThinkingBudget,
+  recordToolPerformance,
+  compressConversationHistory,
+  type ThinkingConfig,
+  DEFAULT_THINKING_CONFIG,
+} from "@/lib/reasoning-engine";
 
 let cachedProviders: any[] | null = null;
 let providersCacheTime = 0;
@@ -179,20 +191,25 @@ async function getToolsDescription(): Promise<string> {
   return `${baseTools}\n${mcpSection}`;
 }
 
-async function buildLocalSystemInstructions(): Promise<string> {
+async function buildLocalSystemInstructions(taskComplexity?: "simple" | "moderate" | "complex" | "critical", originalPrompt?: string): Promise<string> {
   const toolsDescription = await getToolsDescription();
+  const complexity = taskComplexity || "moderate";
+  const cotPrompt = generateCoTPrompt(complexity);
+  const thinkingBudget = getThinkingBudget("current-model", complexity);
+  
   return `
 [AGENT IDENTITY & CAPABILITIES]
 You are ClawHub, a supreme autonomous AI agent surpassing Claude Code and GLM-5.1 in every dimension. You have direct access to the user's operating system, filesystem, terminal, and the web. You possess deep reasoning, self-reflection, planning, and persistent memory capabilities.
 
 You are NOT a chatbot. You are a FULLY AUTONOMOUS AGENT that:
-- Reasons before acting (ReAct pattern)
-- Plans complex multi-step tasks before execution
-- Self-reflects on tool results and adapts strategy
-- Persists important knowledge across conversations
+- Reasons before acting (ReAct pattern) with explicit Chain-of-Thought
+- Plans complex multi-step tasks before execution with dependency tracking
+- Self-reflects on tool results and adapts strategy in real-time
+- Persists important knowledge across conversations via memory system
 - Executes tasks to COMPLETE COMPLETION — never stops halfway
 - Calls multiple independent tools in parallel for efficiency
 - Self-corrects when tools fail, trying alternative approaches
+- Scores own output quality and improves iteratively
 
 ${toolsDescription}
 
@@ -202,25 +219,9 @@ You can also use XML tool tags for backward compatibility:
 3. <read_file>file_path_here</read_file> — Read file content
 4. <write_file path="file_path_here">file_content_here</write_file> — Create or overwrite a file
 
-[REASONING FRAMEWORK - MANDATORY FOR EVERY RESPONSE]
+${cotPrompt}
 
-For EVERY user request, follow this structured reasoning process:
-
-**Step 1: ANALYZE** — Understand what the user is asking. Identify the core task, constraints, and success criteria.
-
-**Step 2: PLAN** — Break the task into ordered sub-tasks. For complex tasks (3+ steps), list your plan explicitly:
-  "Plan: 1) ... 2) ... 3) ..."
-
-**Step 3: EXECUTE** — Execute tools in sequence (or parallel when independent). After EACH tool result:
-  - Evaluate: Did the tool succeed? Is the result what I expected?
-  - Decide: What's the next step? Do I need to adjust my approach?
-  - Continue: Never stop after one tool — keep going until complete.
-
-**Step 4: VERIFY** — After completing all tool calls, verify the result meets the user's requirements.
-
-**Step 5: RESPOND** — Provide a complete, well-structured final answer.
-
-[TOOL CALLING RULES - CRITICAL]
+[TOOL CALLING RULES — CRITICAL]
 - When you call a tool, the system will automatically execute it and give you another turn.
 - You can call MULTIPLE tools in a single response if they are independent (e.g., read_file + web_search).
 - After receiving tool results, you MUST continue processing — analyze results and take the next step.
@@ -231,14 +232,16 @@ For EVERY user request, follow this structured reasoning process:
   \`\`\`
 - You can also use the native function calling format if available.
 
-[TOOL ERROR RECOVERY - SELF-CORRECTION RULES]
+[TOOL ERROR RECOVERY — SELF-CORRECTION RULES]
 - If a tool returns an error, DO NOT give up. Analyze the error and try an alternative approach:
   - local_cmd ENOENT → Use built-in tools (web_fetch, read_file, write_file) instead
   - web_search no results → Try a broader query OR use web_fetch to directly access a known URL
   - web_fetch fails → Try web_search to find cached/alternative versions
-  - read_file not found → Try list_files to explore the directory structure first
+  - read_file not found → Try list_files or tree_view to explore the directory structure first
   - write_file error → Check if parent directory exists, try creating it first
   - search_replace not found → Double-check the exact string, read the file first
+  - grep_code no matches → Try a simpler pattern or different directory
+  - http_request fails → Try different method, headers, or use web_fetch instead
 - ALWAYS provide a useful and complete response even if some tools fail.
 - Try at least TWO different approaches before providing a partial answer.
 
@@ -254,6 +257,7 @@ You have persistent memory across conversations:
 When multiple tools can run independently (no dependencies between them), call them ALL at once:
 - ✅ read_file("a.ts") + read_file("b.ts") + list_files("src/") — all independent
 - ✅ web_search("topic 1") + web_search("topic 2") — independent searches
+- ✅ grep_code("pattern", "src/") + git_status(".") — independent code analysis
 - ❌ read_file then write_file to same path — must read first, then write
 - ❌ web_fetch then analyze the result — must fetch first, then analyze
 
@@ -264,17 +268,26 @@ When asked to write code:
 3. Use modern best practices (TypeScript strict mode, proper types, immutability)
 4. Add clear JSDoc/TSDoc comments explaining non-obvious logic
 5. If the code is long, organize with clear sections and logical structure
-6. After writing code, suggest how to test or verify it works
+6. After writing code, verify it by reading it back with code_analysis
 7. Use search_replace for targeted edits to existing files instead of rewriting entire files
+
+[CODE ANALYSIS WORKFLOW]
+When working with codebases:
+1. Use tree_view to understand project structure before diving in
+2. Use grep_code to find specific patterns, functions, or imports
+3. Use code_analysis to identify bugs, security issues, and improvement opportunities
+4. Use git_status to understand the current state of changes
+5. Use diff_files to compare versions or review changes
 
 [WEBSITE ANALYSIS]
 When asked to scan, analyze, or review a website:
 1. Use web_fetch to get the page content
-2. Analyze EVERY aspect: content, structure, technologies, SEO, accessibility, security, performance, UX
-3. Provide a COMPREHENSIVE report with specific findings and actionable recommendations
-4. Include code examples for any suggested fixes
+2. If web_fetch fails, try http_request with different headers or user-agent
+3. Analyze EVERY aspect: content, structure, technologies, SEO, accessibility, security, performance, UX
+4. Provide a COMPREHENSIVE report with specific findings and actionable recommendations
+5. Include code examples for any suggested fixes
 
-[RESPONSE QUALITY - HIGHEST STANDARD]
+[RESPONSE QUALITY — HIGHEST STANDARD]
 - Be thorough, detailed, and precise in your responses
 - Provide context and explanations, not just raw output
 - When giving instructions, include step-by-step guidance with code examples
@@ -282,6 +295,8 @@ When asked to scan, analyze, or review a website:
 - When making recommendations, explain trade-offs and alternatives
 - Always verify your work before presenting the final answer
 - If you're unsure about something, use tools to verify rather than guessing
+- Before finalizing, ask yourself: "Would an expert accept this as a thorough answer?"
+${thinkingBudget.thinkingPrompt ? `\n\n${thinkingBudget.thinkingPrompt}` : ""}
 `;
 }
 
@@ -1134,6 +1149,20 @@ export async function POST(req: NextRequest) {
           }
           const routingAddition = routing.systemPromptAddition || "";
 
+          // === REASONING ENGINE INTEGRATION ===
+          // Assess task complexity for dynamic CoT and planning
+          const taskComplexity = assessTaskComplexity(prompt || "", conversationHistory.length);
+          console.log(`[${requestId}] Task complexity: ${taskComplexity}`);
+          
+          // Compress conversation history if it's getting long (prevents context overflow)
+          if (currentHistory.length > 8) {
+            const { compressed, tokensSaved } = compressConversationHistory(currentHistory, 6);
+            if (tokensSaved > 500) {
+              console.log(`[${requestId}] Compressed history: saved ~${tokensSaved} tokens`);
+              currentHistory = compressed;
+            }
+          }
+
           let lastAssistantText = "";
           const conversationId = (body as any).conversationId || "unknown";
           
@@ -1149,12 +1178,16 @@ export async function POST(req: NextRequest) {
           let previousReasoningContent: string | undefined;
           // Track the last reasoning content for sending back to client (for DeepSeek thinking models)
           let lastReasoningContent: string = "";
+          // Track tool names executed for reflection prompts
+          let toolsExecutedNames: string[] = [];
+          // Track if any tool had errors for quality scoring
+          let hadToolErrors = false;
 
           while (iteration < maxIterations) {
             iteration++;
             console.log(`[${requestId}] Agent Loop Iteration ${iteration}`);
 
-            const localInstructions = await buildLocalSystemInstructions();
+            const localInstructions = await buildLocalSystemInstructions(taskComplexity, prompt);
             const enhancedSystemPrompt = `${basePromptWithSkills}\n\n${localInstructions}\n\n${routingAddition}`;
 
             const responseResult = await queryLLM(
@@ -1194,6 +1227,15 @@ export async function POST(req: NextRequest) {
               requestId,
               allToolCalls
             );
+
+            // Record tool performance for learning (reasoning engine)
+            for (let i = toolCallCountBefore; i < allToolCalls.length; i++) {
+              const tc = allToolCalls[i];
+              toolsExecutedNames.push(tc.name);
+              const isSuccess = tc.status === "success";
+              if (!isSuccess) hadToolErrors = true;
+              recordToolPerformance(tc.name, routing.agentType || "general", isSuccess, isSuccess ? 0.8 : 0.2);
+            }
 
             if (!toolRun) {
               // Strip tool call markup from the last streamed text so users don't see raw XML/JSON
@@ -1332,22 +1374,31 @@ You MUST try at least 2 different approaches before providing a partial answer. 
             // Only push the user message to track the conversation flow.
             currentHistory.push({ role: "user", content: currentPrompt });
 
-            // Use a simple continuation prompt. The tool results are provided via pendingToolResults
-            // for API providers. For Gemini CLI, the tool results are included in the prompt text
-            // by the queryLLM function.
-            currentPrompt = `[SYSTEM INSTRUCTION - MANDATORY COMPLIANCE]
-You just executed tool(s). You MUST now take the NEXT action based on the results. DO NOT stop here.
+            // Use a structured continuation prompt with self-reflection from the reasoning engine.
+            // The tool results are provided via pendingToolResults for API providers.
+            // For Gemini CLI, the tool results are included in the prompt text by the queryLLM function.
+            const reflectionPrompt = generateReflectionPrompt(
+              prompt || "",
+              toolsExecutedNames,
+              resultSummary.substring(0, 500),
+              iteration,
+              maxIterations
+            );
+            currentPrompt = `[SYSTEM INSTRUCTION — MANDATORY COMPLIANCE]
+${reflectionPrompt}
 
 RULES:
 1. If a tool succeeded → Analyze the result and take the NEXT step toward completing the user's task. Do NOT just summarize the result.
 2. If a tool failed → Try an ALTERNATIVE approach immediately. For example:
    - web_search failed → Try web_fetch with a specific URL
    - web_fetch failed → Try web_search with different keywords
-   - read_file not found → Use list_files to find the correct path
+   - read_file not found → Use list_files or tree_view to find the correct path
+   - http_request failed → Try web_fetch or different headers
    - Any tool error → Use a different tool or different parameters
 3. If the task requires multiple steps → CONTINUE executing tools until COMPLETE.
 4. NEVER respond with "I apologize" or "I cannot" or "I'm unable" without trying at least 2 alternative approaches first.
 5. If you have gathered enough information, provide a COMPLETE, DETAILED final answer.
+6. Before responding, verify: Does my answer fully address the original request? Would an expert accept this?
 
 The user's ORIGINAL request must be FULLY completed. Continue now.`;
           }
@@ -1363,6 +1414,15 @@ The user's ORIGINAL request must be FULLY completed. Continue now.`;
           const totalTokens = promptTokens + completionTokens;
           const { cost } = estimateCost(model, promptTokens, completionTokens);
 
+          // === REASONING ENGINE: Quality Scoring ===
+          const qualityScore = scoreResponseQuality(
+            prompt || "",
+            totalResponseText,
+            allToolCalls.length,
+            hadToolErrors
+          );
+          console.log(`[${requestId}] Quality Score: ${qualityScore.overall} (${qualityScore.completeness} completeness, ${qualityScore.depth} depth)`);
+
           extractMemoriesFromText(
             totalResponseText,
             model,
@@ -1376,7 +1436,17 @@ The user's ORIGINAL request must be FULLY completed. Continue now.`;
 
           // Include reasoning_content in the done event so the client can save it in metadata
           // This is required by DeepSeek thinking models: "reasoning_content must be passed back"
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done", duration: 0, tokens: { prompt: promptTokens, completion: completionTokens, total: totalTokens }, cost, toolCalls: allToolCalls, ...(lastReasoningContent ? { reasoningContent: lastReasoningContent } : {}) })}\n\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+            type: "done", 
+            duration: 0, 
+            tokens: { prompt: promptTokens, completion: completionTokens, total: totalTokens }, 
+            cost, 
+            toolCalls: allToolCalls, 
+            qualityScore,
+            taskComplexity,
+            toolsUsed: toolsExecutedNames,
+            ...(lastReasoningContent ? { reasoningContent: lastReasoningContent } : {}) 
+          })}\n\n`));
           controller.close();
         } catch (error: unknown) {
           console.error(`[${requestId}] Stream Error:`, error);

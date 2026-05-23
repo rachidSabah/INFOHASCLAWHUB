@@ -542,7 +542,464 @@ const availableTools: ToolDefinition[] = [
       }
     },
   },
+  {
+    name: "grep_code",
+    description: "Search for a pattern (regex or string) in files within a directory. Returns matching lines with file paths and line numbers. Like 'grep' or 'ripgrep' but built-in. Essential for finding code, configs, or text across a project.",
+    parameters: {
+      pattern: { type: "string", description: "The search pattern (supports regex, e.g., 'function\\s+\\w+', 'TODO:', 'import.*from')" },
+      dirPath: { type: "string", description: "Directory to search in (relative to workspace, use '.' for root)" },
+      filePattern: { type: "string", description: "Glob pattern to filter files (e.g., '*.ts', '*.py', '*.{js,jsx}'). Default: all files" },
+      maxResults: { type: "string", description: "Maximum number of results to return (default: 50)" },
+    },
+    execute: async (params, workspacePath) => {
+      const pattern = params.pattern as string;
+      const dirPath = (params.dirPath as string) || ".";
+      const filePattern = (params.filePattern as string) || "";
+      const maxResults = parseInt(params.maxResults as string) || 50;
+      
+      if (!pattern) return JSON.stringify({ error: "No search pattern provided" });
+      
+      try {
+        const resolved = resolvePath(dirPath, workspacePath);
+        if (!fs.existsSync(resolved)) return JSON.stringify({ error: `Directory not found: ${resolved}` });
+        if (!fs.statSync(resolved).isDirectory()) return JSON.stringify({ error: `Path is not a directory: ${resolved}` });
+        
+        const results: { file: string; line: number; content: string }[] = [];
+        let regex: RegExp;
+        try {
+          regex = new RegExp(pattern, "gi");
+        } catch {
+          // If regex is invalid, do a simple string search
+          regex = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "gi");
+        }
+        
+        const globRegex = filePattern ? globToRegex(filePattern) : null;
+        
+        function searchDir(dir: string, depth: number = 0) {
+          if (depth > 10 || results.length >= maxResults) return;
+          
+          let entries;
+          try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+          
+          // Skip common non-code directories
+          const skipDirs = new Set(["node_modules", ".git", ".next", "dist", "build", ".cache", "coverage", "__pycache__", ".venv", "venv", ".tox", "target", "vendor", ".idea", ".vscode"]);
+          
+          for (const entry of entries) {
+            if (results.length >= maxResults) break;
+            
+            const fullPath = path.join(dir, entry.name);
+            
+            if (entry.isDirectory()) {
+              if (!skipDirs.has(entry.name)) {
+                searchDir(fullPath, depth + 1);
+              }
+            } else if (entry.isFile()) {
+              // Apply file pattern filter
+              if (globRegex && !globRegex.test(entry.name)) continue;
+              
+              // Skip binary files by extension
+              const ext = path.extname(entry.name).toLowerCase();
+              const binaryExts = new Set([".png", ".jpg", ".jpeg", ".gif", ".ico", ".svg", ".woff", ".woff2", ".ttf", ".eot", ".mp3", ".mp4", ".zip", ".tar", ".gz", ".exe", ".dll", ".so", ".dylib", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".sqlite", ".db"]);
+              if (binaryExts.has(ext)) continue;
+              
+              try {
+                const content = fs.readFileSync(fullPath, "utf-8");
+                const lines = content.split("\n");
+                for (let i = 0; i < lines.length; i++) {
+                  if (results.length >= maxResults) break;
+                  regex.lastIndex = 0;
+                  if (regex.test(lines[i])) {
+                    const relPath = path.relative(resolved, fullPath);
+                    results.push({
+                      file: relPath,
+                      line: i + 1,
+                      content: lines[i].trim().substring(0, 200),
+                    });
+                  }
+                }
+              } catch { /* skip unreadable files */ }
+            }
+          }
+        }
+        
+        searchDir(resolved);
+        
+        return JSON.stringify({
+          pattern,
+          directory: dirPath,
+          filePattern: filePattern || "all",
+          matches: results.length,
+          results,
+          ...(results.length >= maxResults ? { truncated: true, hint: `Showing first ${maxResults} results. Use a more specific pattern or filePattern to narrow results.` } : {}),
+        });
+      } catch (e: any) {
+        return JSON.stringify({ error: e.message });
+      }
+    },
+  },
+  {
+    name: "tree_view",
+    description: "Display the directory tree structure of a project. Shows files and folders in a hierarchical tree format with depth control. Essential for understanding project structure before making changes.",
+    parameters: {
+      dirPath: { type: "string", description: "Directory path (relative to workspace, use '.' for root)" },
+      maxDepth: { type: "string", description: "Maximum depth to traverse (default: 3, max: 6)" },
+      showHidden: { type: "string", description: "Show hidden files/dirs like .git, .env (default: false)" },
+    },
+    execute: async (params, workspacePath) => {
+      const dirPath = (params.dirPath as string) || ".";
+      const maxDepth = Math.min(parseInt(params.maxDepth as string) || 3, 6);
+      const showHidden = (params.showHidden as string) === "true";
+      
+      try {
+        const resolved = resolvePath(dirPath, workspacePath);
+        if (!fs.existsSync(resolved)) return JSON.stringify({ error: `Directory not found: ${resolved}` });
+        if (!fs.statSync(resolved).isDirectory()) return JSON.stringify({ error: `Path is not a directory: ${resolved}` });
+        
+        const skipDirs = new Set(["node_modules", ".git", ".next", "dist", "build", ".cache", "coverage", "__pycache__", ".venv", "venv", ".tox", "target", "vendor"]);
+        const skipFiles = new Set([".DS_Store", "Thumbs.db"]);
+        
+        let totalFiles = 0;
+        let totalDirs = 0;
+        
+        function buildTree(dir: string, depth: number, prefix: string): string {
+          if (depth > maxDepth) return `${prefix}...\n`;
+          
+          let entries;
+          try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return ""; }
+          
+          // Sort: directories first, then files, both alphabetically
+          const sorted = entries
+            .filter(e => {
+              if (!showHidden && e.name.startsWith(".") && e.name !== ".") return false;
+              if (e.isDirectory() && skipDirs.has(e.name)) return false;
+              if (e.isFile() && skipFiles.has(e.name)) return false;
+              return true;
+            })
+            .sort((a, b) => {
+              if (a.isDirectory() && !b.isDirectory()) return -1;
+              if (!a.isDirectory() && b.isDirectory()) return 1;
+              return a.name.localeCompare(b.name);
+            });
+          
+          let result = "";
+          const maxEntries = 50; // Limit entries per directory for readability
+          const shown = sorted.slice(0, maxEntries);
+          
+          for (let i = 0; i < shown.length; i++) {
+            const entry = shown[i];
+            const isLast = i === shown.length - 1;
+            const connector = isLast ? "└── " : "├── ";
+            const childPrefix = isLast ? "    " : "│   ";
+            
+            if (entry.isDirectory()) {
+              totalDirs++;
+              result += `${prefix}${connector}${entry.name}/\n`;
+              result += buildTree(path.join(dir, entry.name), depth + 1, prefix + childPrefix);
+            } else {
+              totalFiles++;
+              const size = getFileSize(path.join(dir, entry.name));
+              result += `${prefix}${connector}${entry.name}${size ? ` (${size})` : ""}\n`;
+            }
+          }
+          
+          if (sorted.length > maxEntries) {
+            result += `${prefix}└── ... and ${sorted.length - maxEntries} more\n`;
+          }
+          
+          return result;
+        }
+        
+        const tree = buildTree(resolved, 0, "");
+        const rootName = path.basename(resolved);
+        
+        return JSON.stringify({
+          root: rootName,
+          path: dirPath,
+          depth: maxDepth,
+          tree: `${rootName}/\n${tree}`,
+          stats: { files: totalFiles, directories: totalDirs },
+        });
+      } catch (e: any) {
+        return JSON.stringify({ error: e.message });
+      }
+    },
+  },
+  {
+    name: "git_status",
+    description: "Get the current git repository status including branch, changed files, recent commits, and staged/unstaged changes. Essential for understanding project state before making code changes.",
+    parameters: {
+      dirPath: { type: "string", description: "Path to the git repository (relative to workspace, use '.' for root)" },
+    },
+    execute: async (params, workspacePath) => {
+      const dirPath = (params.dirPath as string) || ".";
+      
+      try {
+        const resolved = resolvePath(dirPath, workspacePath);
+        
+        const runGit = (args: string): Promise<{ stdout: string; stderr: string; exitCode: number }> => {
+          return new Promise((resolve) => {
+            exec(`git ${args}`, { cwd: resolved, timeout: 10000 }, (error, stdout, stderr) => {
+              resolve({ stdout: stdout?.trim() || "", stderr: stderr?.trim() || "", exitCode: error ? (error as any).code || 1 : 0 });
+            });
+          });
+        };
+        
+        // Run multiple git commands in parallel
+        const [branch, status, log, diffStat, remote] = await Promise.all([
+          runGit("branch --show-current"),
+          runGit("status --porcelain"),
+          runGit("log --oneline -10"),
+          runGit("diff --stat"),
+          runGit("remote -v"),
+        ]);
+        
+        if (branch.exitCode !== 0) {
+          return JSON.stringify({ error: "Not a git repository", hint: "Initialize with 'git init' or navigate to a git repository." });
+        }
+        
+        // Parse status
+        const changedFiles = status.stdout.split("\n").filter(Boolean).map(line => ({
+          status: line.substring(0, 2).trim(),
+          file: line.substring(3),
+        }));
+        
+        const staged = changedFiles.filter(f => f.status.includes("A") || f.status.includes("M") || f.status.includes("D") || f.status === "R");
+        const unstaged = changedFiles.filter(f => f.status === " M" || f.status === " D" || f.status === "??");
+        
+        // Parse recent commits
+        const commits = log.stdout.split("\n").filter(Boolean).map(line => {
+          const match = line.match(/^([a-f0-9]+)\s+(.*)/);
+          return match ? { hash: match[1], message: match[2] } : { hash: "", message: line };
+        });
+        
+        return JSON.stringify({
+          branch: branch.stdout,
+          changedFiles: changedFiles.length,
+          staged: staged.map(f => f.file),
+          unstaged: unstaged.map(f => f.file),
+          recentCommits: commits,
+          diffStat: diffStat.stdout || "No unstaged changes",
+          remote: remote.stdout.split("\n").filter(Boolean).map(r => {
+            const match = r.match(/^(\w+)\s+(.+?)\s+\(.*\)/);
+            return match ? { name: match[1], url: match[2] } : { name: "origin", url: r };
+          }),
+        });
+      } catch (e: any) {
+        return JSON.stringify({ error: e.message, hint: "Make sure git is installed and the directory is a git repository." });
+      }
+    },
+  },
+  {
+    name: "http_request",
+    description: "Make an HTTP request (GET, POST, PUT, DELETE, PATCH) to any URL. Supports custom headers, body, and authentication. More flexible than web_fetch for API calls, webhooks, and testing endpoints.",
+    parameters: {
+      url: { type: "string", description: "The full URL to request" },
+      method: { type: "string", description: "HTTP method: GET, POST, PUT, DELETE, PATCH (default: GET)" },
+      headers: { type: "string", description: "JSON object of headers, e.g. '{\"Authorization\": \"Bearer token\"}' (optional)" },
+      body: { type: "string", description: "Request body (for POST/PUT/PATCH). Can be JSON string or plain text (optional)" },
+    },
+    execute: async (params) => {
+      const url = (params.url as string)?.trim();
+      const method = ((params.method as string) || "GET").toUpperCase();
+      const headersStr = params.headers as string;
+      const bodyStr = params.body as string;
+      
+      if (!url) return JSON.stringify({ error: "No URL provided" });
+      if (!url.startsWith("http://") && !url.startsWith("https://")) {
+        return JSON.stringify({ error: "URL must start with http:// or https://" });
+      }
+      
+      const allowedMethods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
+      if (!allowedMethods.includes(method)) {
+        return JSON.stringify({ error: `Method ${method} not allowed. Use: ${allowedMethods.join(", ")}` });
+      }
+      
+      try {
+        let parsedHeaders: Record<string, string> = {
+          "User-Agent": "ClawHub-Agent/1.0",
+          "Accept": "application/json, text/html, text/plain, */*",
+        };
+        
+        if (headersStr) {
+          try {
+            const customHeaders = JSON.parse(headersStr);
+            parsedHeaders = { ...parsedHeaders, ...customHeaders };
+          } catch {
+            return JSON.stringify({ error: "Invalid headers JSON. Provide a valid JSON object." });
+          }
+        }
+        
+        const fetchOptions: any = {
+          method,
+          headers: parsedHeaders,
+          signal: AbortSignal.timeout(30000),
+          redirect: "follow",
+        };
+        
+        if (["POST", "PUT", "PATCH"].includes(method) && bodyStr) {
+          fetchOptions.body = bodyStr;
+          // Auto-set Content-Type if not specified
+          if (!parsedHeaders["Content-Type"] && !parsedHeaders["content-type"]) {
+            try {
+              JSON.parse(bodyStr);
+              fetchOptions.headers["Content-Type"] = "application/json";
+            } catch {
+              fetchOptions.headers["Content-Type"] = "text/plain";
+            }
+          }
+        }
+        
+        const startTime = Date.now();
+        const response = await fetch(url, fetchOptions);
+        const duration = Date.now() - startTime;
+        
+        const contentType = response.headers.get("content-type") || "";
+        let responseBody: string;
+        let responseJson: any = null;
+        
+        const responseText = await response.text();
+        
+        if (contentType.includes("application/json")) {
+          try {
+            responseJson = JSON.parse(responseText);
+            responseBody = JSON.stringify(responseJson, null, 2).substring(0, 20000);
+          } catch {
+            responseBody = responseText.substring(0, 20000);
+          }
+        } else {
+          responseBody = responseText.substring(0, 20000);
+        }
+        
+        // Collect response headers
+        const respHeaders: Record<string, string> = {};
+        response.headers.forEach((value, key) => { respHeaders[key] = value; });
+        
+        return JSON.stringify({
+          status: response.status,
+          statusText: response.statusText,
+          headers: respHeaders,
+          body: responseJson || responseBody,
+          duration: `${duration}ms`,
+          contentType,
+          bodyLength: responseText.length,
+          ...(responseText.length > 20000 ? { truncated: true, hint: "Response truncated to 20KB. Use web_fetch for full page content." } : {}),
+        });
+      } catch (e: any) {
+        return JSON.stringify({ error: `Request failed: ${e.message}`, hint: "Check the URL, network connectivity, and try again." });
+      }
+    },
+  },
+  {
+    name: "code_analysis",
+    description: "Analyze a code file for issues, metrics, and suggestions. Provides line count, complexity estimate, potential bugs, style issues, and improvement suggestions. Works with any programming language.",
+    parameters: {
+      filePath: { type: "string", description: "Path to the code file relative to the workspace" },
+      focus: { type: "string", description: "Analysis focus: 'bugs', 'security', 'performance', 'style', 'all' (default: 'all')" },
+    },
+    execute: async (params, workspacePath) => {
+      const filePath = params.filePath as string;
+      const focus = (params.focus as string) || "all";
+      
+      if (!filePath) return JSON.stringify({ error: "No file path provided" });
+      
+      try {
+        const resolved = resolvePath(filePath, workspacePath);
+        if (!fs.existsSync(resolved)) return JSON.stringify({ error: `File not found: ${resolved}` });
+        if (!fs.statSync(resolved).isFile()) return JSON.stringify({ error: `Path is not a file: ${resolved}` });
+        
+        const content = fs.readFileSync(resolved, "utf-8");
+        const lines = content.split("\n");
+        const ext = path.extname(resolved).toLowerCase();
+        
+        // Basic metrics
+        const metrics = {
+          totalLines: lines.length,
+          codeLines: lines.filter(l => l.trim() && !l.trim().startsWith("//") && !l.trim().startsWith("#") && !l.trim().startsWith("/*") && !l.trim().startsWith("*")).length,
+          commentLines: lines.filter(l => l.trim().startsWith("//") || l.trim().startsWith("#") || l.trim().startsWith("/*") || l.trim().startsWith("*")).length,
+          blankLines: lines.filter(l => !l.trim()).length,
+          fileSize: fs.statSync(resolved).size,
+          extension: ext,
+        };
+        
+        // Pattern-based analysis
+        const issues: { type: string; severity: "info" | "warning" | "error"; line?: number; message: string }[] = [];
+        
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          const lineNum = i + 1;
+          const trimmed = line.trim();
+          
+          if ((focus === "all" || focus === "security") && ext.match(/\.(ts|js|py|rb|php|java|go)$/)) {
+            // Security checks
+            if (/eval\s*\(/i.test(trimmed) && !trimmed.includes("//")) issues.push({ type: "security", severity: "error", line: lineNum, message: "Use of eval() — potential code injection risk" });
+            if (/innerHTML\s*=/i.test(trimmed) && !trimmed.includes("//")) issues.push({ type: "security", severity: "warning", line: lineNum, message: "Direct innerHTML assignment — potential XSS risk. Use textContent or DOMPurify." });
+            if (/password|secret|api_key|apikey/i.test(trimmed) && /=/.test(trimmed) && !trimmed.includes("env") && !trimmed.includes("process.env") && !trimmed.includes("//")) issues.push({ type: "security", severity: "error", line: lineNum, message: "Hardcoded credential/secret detected — use environment variables" });
+            if (/SELECT.*FROM.*WHERE.*\+\s*["']|`\$\{.*\}.*`/i.test(trimmed)) issues.push({ type: "security", severity: "error", line: lineNum, message: "Potential SQL injection — use parameterized queries" });
+          }
+          
+          if ((focus === "all" || focus === "bugs")) {
+            // Bug pattern checks
+            if (/console\.log/i.test(trimmed) && !trimmed.includes("//")) issues.push({ type: "bug", severity: "info", line: lineNum, message: "console.log statement — remove before production" });
+            if (/TODO|FIXME|HACK|XXX/i.test(trimmed)) issues.push({ type: "bug", severity: "info", line: lineNum, message: `Code annotation found: ${trimmed.match(/TODO|FIXME|HACK|XXX/i)?.[0]}` });
+            if (/catch\s*\(\s*\w*\s*\)\s*\{\s*\}/i.test(trimmed) || /except\s*:\s*pass/i.test(trimmed)) issues.push({ type: "bug", severity: "warning", line: lineNum, message: "Empty catch block — errors are silently swallowed" });
+            if (/\.then\s*\(\s*\)/i.test(trimmed) && !/\.catch/i.test(content.substring(content.indexOf(trimmed), content.indexOf(trimmed) + 200))) issues.push({ type: "bug", severity: "warning", line: lineNum, message: "Promise without .catch() — unhandled rejection risk" });
+          }
+          
+          if ((focus === "all" || focus === "performance")) {
+            if (/document\.querySelector.*document\.querySelector/i.test(content)) issues.push({ type: "performance", severity: "info", line: lineNum, message: "Multiple DOM queries — cache the result" });
+            if (/for\s*\(.*await/i.test(trimmed)) issues.push({ type: "performance", severity: "warning", line: lineNum, message: "Await inside loop — consider Promise.all() for parallel execution" });
+          }
+        }
+        
+        // Complexity estimate (very rough)
+        const functionCount = (content.match(/function\s|=>\s|def\s|func\s|fn\s/g) || []).length;
+        const branchCount = (content.match(/if\s*\(|else|switch|case|elif|match\s/g) || []).length;
+        const loopCount = (content.match(/for\s*\(|while\s*\(|\.forEach|\.map|\.filter|\.reduce/g) || []).length;
+        
+        return JSON.stringify({
+          file: filePath,
+          metrics,
+          complexity: {
+            functions: functionCount,
+            branches: branchCount,
+            loops: loopCount,
+            estimatedComplexity: functionCount + branchCount * 0.5 + loopCount * 0.3,
+            level: functionCount + branchCount * 0.5 + loopCount * 0.3 > 20 ? "high" : functionCount + branchCount * 0.5 + loopCount * 0.3 > 10 ? "medium" : "low",
+          },
+          issues: issues.slice(0, 30),
+          issueSummary: {
+            errors: issues.filter(i => i.severity === "error").length,
+            warnings: issues.filter(i => i.severity === "warning").length,
+            info: issues.filter(i => i.severity === "info").length,
+          },
+        });
+      } catch (e: any) {
+        return JSON.stringify({ error: e.message });
+      }
+    },
+  },
 ];
+
+// Helper functions for new tools
+function globToRegex(glob: string): RegExp {
+  const regexStr = glob
+    .replace(/\./g, "\\.")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".")
+    .replace(/\{([^}]*)\}/g, (_, group) => `(${group.split(",").join("|")})`);
+  return new RegExp(`^${regexStr}$`, "i");
+}
+
+function getFileSize(filePath: string): string {
+  try {
+    const stats = fs.statSync(filePath);
+    if (stats.size < 1024) return `${stats.size}B`;
+    if (stats.size < 1024 * 1024) return `${(stats.size / 1024).toFixed(1)}KB`;
+    return `${(stats.size / (1024 * 1024)).toFixed(1)}MB`;
+  } catch {
+    return "";
+  }
+}
 
 export function getToolDefinitions(): ToolDefinition[] {
   return availableTools;
@@ -743,8 +1200,10 @@ You can call multiple tools at once. Each tool call will be executed and the res
 
 [TOOL CATEGORIES]
 📄 FILE OPERATIONS: read_file, write_file, append_file, search_replace, list_files, diff_files
-🌐 WEB: web_search, web_fetch
+🔍 CODE: grep_code, tree_view, code_analysis
+🌐 WEB: web_search, web_fetch, http_request
 🧠 MEMORY: memory_save, memory_recall
+📦 GIT: git_status
 💻 SYSTEM: local_cmd, get_system_info, get_env_var, calculator, get_current_time
 
 ${lines.join("\n")}`;
