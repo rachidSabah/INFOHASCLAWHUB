@@ -9,6 +9,9 @@ import { countTokens, estimateCost } from "@/lib/tokens";
 import { routePrompt } from "@/lib/prompt-router";
 import { detectTaskType, getTaskSpecificPromptEnhancement, routeToBestModel } from "@/lib/model-router";
 import { getMemoryContext, saveMemory } from "@/lib/enhanced-memory";
+import { getContextManager } from "@/lib/context-manager";
+import { generateOptimizedPrompt, recordPromptResult } from "@/lib/prompt-optimizer";
+import { getFilteredOpenAITools, getFilteredGeminiFunctions, getFilteredToolsPrompt } from "@/lib/intelligent-tool-selection";
 import {
   generateCoTPrompt,
   assessTaskComplexity,
@@ -134,7 +137,7 @@ ${assistantText.slice(0, 4000)}`;
       responseText = await new Promise<string>((resolve, reject) => {
         const proc = spawn("gemini", [...cliArgs, "--no-stream", "--skip-trust"], {
           cwd: os.homedir(),
-          env: { ...process.env, ...providerEnv, ...(apiKey ? { GEMINI_API_KEY: apiKey } : {}), GEMINI_CLI_TRUST_WORKSPACE: "true", HOME: process.env.HOME || os.homedir() },
+          env: { ...process.env, ...providerEnv, ...(apiKey ? { GEMINI_API_KEY: apiKey } : {}), GEMINI_CLI_TRUST_WORKSPACE: os.homedir(), GEMINI_SANDBOX: "false", HOME: process.env.HOME || os.homedir() },
           shell: true,
           stdio: ["pipe", "pipe", "pipe"],
         });
@@ -436,8 +439,8 @@ async function queryLLM(
         })),
       ];
 
-      // Build Gemini-native function declarations for tool use
-      const functionDeclarations = await getGeminiFunctionDeclarations();
+      // Build Gemini-native function declarations for tool use (filtered by prompt relevance)
+      const { declarations: functionDeclarations } = await getFilteredGeminiFunctions(prompt);
       
       const requestBody: any = {
         contents,
@@ -538,10 +541,14 @@ async function queryLLM(
     const baseUrl = (providerData.baseUrl?.replace(/\/$/, "") || "https://api.openai.com/v1").replace("://localhost", "://127.0.0.1");
     const url = `${baseUrl}/chat/completions`;
 
-    // Build OpenAI-compatible tools array for native function calling
+    // Build OpenAI-compatible tools array for native function calling (filtered by prompt relevance)
     let openaiTools: any[] = [];
     try {
-      openaiTools = await getOpenAIToolsDefinitions();
+      const { tools: filteredTools, selection } = await getFilteredOpenAITools(prompt);
+      openaiTools = filteredTools;
+      if (selection.tokenSavings > 100) {
+        console.log(`[${requestId}] Intelligent tool selection: saved ~${selection.tokenSavings} tokens, excluded: ${selection.excludedTools.join(', ')}`);
+      }
     } catch (e) {
       console.error(`[${requestId}] Failed to build OpenAI tools:`, e);
     }
@@ -743,6 +750,8 @@ async function queryLLM(
             // Capture reasoning_content from DeepSeek thinking models
             if (delta?.reasoning_content) {
               reasoningContent += delta.reasoning_content;
+              // Stream reasoning content to client for real-time display
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "reasoning", content: delta.reasoning_content })}\n\n`));
             }
             // Handle native tool_calls from the streaming delta
             if (delta?.tool_calls) {
@@ -850,9 +859,12 @@ async function queryLLM(
         ...process.env,
         ...providerEnv,
         ...(apiKey ? { GEMINI_API_KEY: apiKey } : {}),
-        // Fix "Gemini CLI is not running in a trusted directory" error
+        // Fix "Gemini CLI is not running in a trusted directory" error (exit code 55)
         // See: https://geminicli.com/docs/cli/trusted-folders/#headless-and-automated-environments
-        GEMINI_CLI_TRUST_WORKSPACE: "true",
+        // Set to the actual workspace path instead of just "true" for newer CLI versions
+        GEMINI_CLI_TRUST_WORKSPACE: cliCwd,
+        // Disable sandbox as fallback for trust issues
+        GEMINI_SANDBOX: "false",
         // Ensure HOME is set for CLI config resolution
         HOME: process.env.HOME || os.homedir(),
       },
@@ -925,6 +937,11 @@ async function queryLLM(
       geminiProcess.on("close", (code) => {
         if (code === 0) {
           resolve();
+        } else if (code === 55) {
+          // Error code 55: "Gemini CLI is not running in a trusted directory"
+          // Provide a clear error message instead of the raw stderr
+          console.error(`[${requestId}] Gemini CLI trust error (code 55). Workspace: ${cliCwd}`);
+          reject(new Error(`Gemini CLI trust error: The directory "${cliCwd}" is not trusted. Please add it to your trusted directories or set GEMINI_CLI_TRUST_WORKSPACE to the correct path.`));
         } else {
           reject(new Error(`CLI error ${code}: ${stderrData.trim()}`));
         }
@@ -1274,11 +1291,33 @@ export async function POST(req: NextRequest) {
           console.log(`[${requestId}] Task type: ${detectedTaskType}`);
           
           // Compress conversation history if it's getting long (prevents context overflow)
+          // Use smart context management with model-aware truncation
           if (currentHistory.length > 8) {
             const { compressed, tokensSaved } = compressConversationHistory(currentHistory, 6);
             if (tokensSaved > 500) {
               console.log(`[${requestId}] Compressed history: saved ~${tokensSaved} tokens`);
               currentHistory = compressed;
+            }
+          }
+          // Apply smart truncation for model context limits
+          const ctxManager = getContextManager();
+          const truncationResult = ctxManager.smartTruncate(
+            currentHistory.map((m: any) => ({
+              id: `hist_${Math.random().toString(36).slice(2)}`,
+              role: m.role,
+              content: m.content,
+              metadata: m.reasoning_content ? { reasoning_content: m.reasoning_content } : undefined,
+            })),
+            model,
+            0, // system prompt tokens are handled separately
+            4096
+          );
+          if (truncationResult.removedCount > 0) {
+            console.log(`[${requestId}] Smart truncation: removed ${truncationResult.removedCount} messages, saved ${truncationResult.savedTokens} tokens`);
+            currentHistory = truncationResult.messages;
+            if (truncationResult.summary) {
+              // Prepend summary of removed messages
+              currentHistory.unshift({ role: "user", content: truncationResult.summary });
             }
           }
 
@@ -1299,6 +1338,10 @@ export async function POST(req: NextRequest) {
           let lastReasoningContent: string = "";
           // Track tool names executed for reflection prompts
           let toolsExecutedNames: string[] = [];
+          // Track prompt optimization variation for post-loop recording
+          let lastPromptVariationId: string = "baseline";
+          // Track the last enhanced system prompt for post-loop critique
+          let lastEnhancedSystemPrompt: string = "";
           // Track if any tool had errors for quality scoring
           let hadToolErrors = false;
 
@@ -1307,7 +1350,19 @@ export async function POST(req: NextRequest) {
             console.log(`[${requestId}] Agent Loop Iteration ${iteration}`);
 
             const localInstructions = await buildLocalSystemInstructions(taskComplexity, prompt, taskEnhancement);
-            const enhancedSystemPrompt = `${basePromptWithSkills}\n\n${localInstructions}\n\n${routingAddition}${toolAwarenessPrompt}`;
+            // Apply prompt optimization for complex/critical tasks
+            const promptOptResult = generateOptimizedPrompt(
+              `${basePromptWithSkills}\n\n${localInstructions}\n\n${routingAddition}${toolAwarenessPrompt}`,
+              detectedTaskType,
+              taskComplexity
+            );
+            const enhancedSystemPrompt = promptOptResult.prompt;
+            // Track for post-loop usage
+            lastPromptVariationId = promptOptResult.variationId;
+            lastEnhancedSystemPrompt = enhancedSystemPrompt;
+            if (promptOptResult.variationId !== "baseline") {
+              console.log(`[${requestId}] Prompt optimization: using "${promptOptResult.variationName}" (${promptOptResult.variationId})`);
+            }
 
             const responseResult = await queryLLM(
               model,
@@ -1495,12 +1550,15 @@ You MUST try at least 2 different approaches before providing a partial answer. 
             previousAssistantContent = stripToolCallXml(responseText) || "";
             previousReasoningContent = responseReasoningContent || undefined;
 
-            // CRITICAL: Do NOT push assistant message to currentHistory when there are tool calls.
-            // The pendingToolResults mechanism handles the assistant message in the correct format
-            // for OpenAI/Gemini APIs. Pushing it here would cause DUPLICATE assistant messages,
-            // which breaks DeepSeek thinking models (reasoning_content must appear exactly once).
-            // Only push the user message to track the conversation flow.
-            currentHistory.push({ role: "user", content: currentPrompt });
+            // CRITICAL: Do NOT push user or assistant messages to currentHistory when there are tool calls.
+            // The pendingToolResults mechanism handles both the assistant message (with tool_calls + reasoning_content)
+            // and the user continuation prompt in the correct format for OpenAI/Gemini APIs.
+            // Pushing the user message here causes DUPLICATE user messages across iterations:
+            //   Iteration N: currentHistory gets user:promptN → Iteration N+1: queryLLM adds user:promptN+1
+            //   → model sees: ...user:promptN, user:promptN+1, assistant(tool_calls), tool(results), user:continuation
+            //   where promptN and promptN+1 are consecutive user messages without an intervening assistant — INVALID!
+            // Instead, queryLLM already adds the continuation prompt as the final user message (line 614).
+            // We only push user+assistant to history when there are NO pending tool results (handled in the !toolRun paths).
 
             // Use a structured continuation prompt with self-reflection from the reasoning engine.
             // The tool results are provided via pendingToolResults for API providers.
@@ -1550,6 +1608,75 @@ The user's ORIGINAL request must be FULLY completed. Continue now.`;
             hadToolErrors
           );
           console.log(`[${requestId}] Quality Score: ${qualityScore.overall} (${qualityScore.completeness} completeness, ${qualityScore.depth} depth)`);
+
+          // Record prompt optimization result for learning
+          recordPromptResult(lastPromptVariationId, qualityScore.overall, qualityScore.overall >= 40);
+
+          // === ENHANCEMENT: Response Quality Self-Critique ===
+          // If quality score is below threshold and we haven't retried yet, attempt one more iteration
+          // with a self-critique prompt that includes specific improvement suggestions
+          const QUALITY_THRESHOLD = 40;
+          const cleanedResponseText = stripToolCallXml(totalResponseText).trim();
+          if (qualityScore.overall < QUALITY_THRESHOLD && cleanedResponseText.length > 50 && iteration <= maxIterations) {
+            console.log(`[${requestId}] Self-critique: quality score ${qualityScore.overall} < ${QUALITY_THRESHOLD}, attempting improvement`);
+            
+            const critiquePrompt = `[SELF-CRITIQUE — IMPROVE YOUR RESPONSE]
+Your previous response scored ${qualityScore.overall}/100 on quality. Here's what needs improvement:
+- Completeness: ${qualityScore.completeness}/100 ${qualityScore.completeness < 50 ? "(CRITICAL: Your answer is incomplete. Address ALL parts of the request.)" : ""}
+- Depth: ${qualityScore.depth}/100 ${qualityScore.depth < 50 ? "(Your answer is too shallow. Provide more details, examples, and analysis.)" : ""}
+- Tool Usage: ${allToolCalls.length > 0 ? 'Tools were used' : 'No tools were used — consider using relevant tools to gather information'}
+${hadToolErrors ? "- Some tools had errors — try alternative approaches" : ""}
+
+The user's ORIGINAL request: "${(prompt || "").slice(0, 500)}"
+
+Your previous response (for reference):
+---
+${cleanedResponseText.slice(0, 2000)}
+---
+
+IMPROVEMENT INSTRUCTIONS:
+1. If the response was incomplete, address the MISSING parts specifically
+2. If the response was too shallow, add depth with specific data, examples, or analysis
+3. If tools could provide better information, USE them now
+4. Make sure your improved response FULLY addresses the original request
+5. Provide a COMPLETE, DETAILED final answer
+
+Provide your improved response now:`;
+
+            try {
+              const critiqueResult = await queryLLM(
+                model,
+                targetModel,
+                critiquePrompt,
+                currentHistory,
+                lastEnhancedSystemPrompt,
+                isCustomProvider,
+                providerData,
+                providerEnv,
+                apiKey,
+                controller,
+                encoder,
+                requestId,
+                undefined, // No pending tool results for critique
+                undefined,
+                undefined,
+                workspacePath
+              );
+              
+              const critiqueText = stripToolCallXml(critiqueResult.text).trim();
+              if (critiqueText.length > cleanedResponseText.length * 0.5) {
+                // The improved response is substantial enough to use
+                totalResponseText += "\n\n" + critiqueResult.text;
+                if (critiqueResult.reasoningContent) {
+                  lastReasoningContent = critiqueResult.reasoningContent;
+                }
+                console.log(`[${requestId}] Self-critique produced improved response (${critiqueText.length} chars)`);
+              }
+            } catch (critiqueError) {
+              console.error(`[${requestId}] Self-critique failed:`, critiqueError);
+              // Non-critical — continue with original response
+            }
+          }
 
           extractMemoriesFromText(
             totalResponseText,

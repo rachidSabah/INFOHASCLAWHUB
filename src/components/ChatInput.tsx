@@ -299,13 +299,20 @@ export function ChatInput() {
                 // Only detect artifacts in non-tool-execution content
                 const isToolExecution = cleanContent.includes('⚙️') || cleanContent.includes('[Executed System Action]');
                 // Skip artifact detection if content is just tool call data
+                // Check both the START of content AND the content after stripping all tool JSON
+                const strippedOfAllToolData = cleanContent
+                  .replace(/\{"name"\s*:\s*"[^"]*"\s*,\s*"(arguments|args|params)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "")
+                  .replace(/\{"(url|path|query|expression|stdout|error|textContent|title|description)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "")
+                  .replace(/Tool:\s*\w+\s*\n?Status:\s*\w+\s*\n?Result:\s*/g, "")
+                  .trim();
                 const isJustToolData = cleanContent.trim().startsWith('{"name":') || 
                   cleanContent.trim().startsWith('{"url":') ||
                   cleanContent.trim().startsWith('{"path":') ||
                   cleanContent.trim().startsWith('{"query":') ||
                   cleanContent.trim().startsWith('{"expression":') ||
                   cleanContent.trim().startsWith('Tool:') ||
-                  cleanContent.trim().length < 20;
+                  cleanContent.trim().length < 20 ||
+                  strippedOfAllToolData.length < 30;
                 const detected = (isToolExecution || isJustToolData) ? null : detectArtifact(cleanContent, data.content);
                 if (!isToolExecution && shouldAutoOpen(detected, cleanContent.length)) {
                   const store = useArtifactPreviewStore.getState();
@@ -330,6 +337,9 @@ export function ChatInput() {
               } else if (data.type === "tool_call") {
                 const { setStreamingContent } = useChatStore.getState();
                 setStreamingContent(fullContent + `\n\n*Running tool: ${data.toolName}...*`);
+              } else if (data.type === "reasoning") {
+                // Handle streaming reasoning content from DeepSeek thinking models
+                useChatStore.getState().appendStreamingReasoning(data.content);
               } else if (data.type === "tool_result") {
                 useChatStore.getState().setStreamingContent(fullContent);
                 collectedToolCalls.push({
@@ -423,15 +433,21 @@ export function ChatInput() {
                 const store = useArtifactPreviewStore.getState();
                 const active = store.tabs.find(t => t.id === store.activeTabId);
                 if (active) {
-                  let cleanContent = stripToolCallXml(fullContent)
-                    .replace(/⚙️\s*\*\*\[Executed System Action\]\*\*:[\s\S]*?```/g, "")
-                    .replace(/\n{3,}/g, "\n\n")
-                    .trim();
-                  // Use robust brace-matching to strip tool call JSON that survived stripToolCallXml
-                  cleanContent = stripToolCallJson(cleanContent);
-                  cleanContent = cleanContent.replace(/\{"(url|path|query|expression|stdout|error)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "");
-                  cleanContent = cleanContent.replace(/\n{3,}/g, "\n\n").trim();
-                  store.updateTab(active.id, { content: cleanContent, isStreaming: false });
+                  // Don't overwrite website-type tabs with stripped content — they need the raw JSON
+                  // for WebsiteView to parse and render correctly
+                  if (active.type !== "website") {
+                    let cleanContent = stripToolCallXml(fullContent)
+                      .replace(/⚙️\s*\*\*\[Executed System Action\]\*\*:[\s\S]*?```/g, "")
+                      .replace(/\n{3,}/g, "\n\n")
+                      .trim();
+                    // Use robust brace-matching to strip tool call JSON that survived stripToolCallXml
+                    cleanContent = stripToolCallJson(cleanContent);
+                    cleanContent = cleanContent.replace(/\{"(url|path|query|expression|stdout|error)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "");
+                    cleanContent = cleanContent.replace(/\n{3,}/g, "\n\n").trim();
+                    store.updateTab(active.id, { content: cleanContent, isStreaming: false });
+                  } else {
+                    store.updateTab(active.id, { isStreaming: false });
+                  }
                 }
                 try {
                   const res = await fetch(`/api/conversations/${convId}/messages`, {

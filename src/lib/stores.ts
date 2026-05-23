@@ -65,6 +65,7 @@ interface ChatState {
   activeConversationId: string | null;
   messages: Message[];
   streamingContent: string;
+  streamingReasoning: string;
   setActiveConversationId: (id: string | null) => void;
   setConversations: (conversations: Conversation[]) => void;
   setMessages: (messages: Message[]) => void;
@@ -79,6 +80,8 @@ interface ChatState {
   setStreamingContent: (content: string) => void;
   appendStreamingContent: (chunk: string) => void;
   clearStreamingContent: () => void;
+  appendStreamingReasoning: (chunk: string) => void;
+  clearStreamingReasoning: () => void;
   getActiveConversation: () => Conversation | undefined;
 }
 
@@ -87,7 +90,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   activeConversationId: null,
   messages: [],
   streamingContent: "",
-  setActiveConversationId: (id) => set({ activeConversationId: id, messages: [], streamingContent: "" }),
+  streamingReasoning: "",
+  setActiveConversationId: (id) => set({ activeConversationId: id, messages: [], streamingContent: "", streamingReasoning: "" }),
   setConversations: (conversations) => set({ conversations }),
   setMessages: (messages) => set({ messages }),
   addConversation: (conversation) =>
@@ -127,7 +131,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setStreamingContent: (content) => set({ streamingContent: content }),
   appendStreamingContent: (chunk) =>
     set((s) => ({ streamingContent: s.streamingContent + chunk })),
-  clearStreamingContent: () => set({ streamingContent: "" }),
+  appendStreamingReasoning: (chunk) =>
+    set((s) => ({ streamingReasoning: s.streamingReasoning + chunk })),
+  clearStreamingReasoning: () => set({ streamingReasoning: "" }),
+  clearStreamingContent: () => set({ streamingContent: "", streamingReasoning: "" }),
   getActiveConversation: () => {
     const s = get();
     return s.conversations.find((c) => c.id === s.activeConversationId);

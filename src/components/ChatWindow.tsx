@@ -35,6 +35,7 @@ export function ChatWindow() {
     activeConversationId,
     messages,
     streamingContent,
+    streamingReasoning,
   } = useChatStore();
   const uiStore = useUIStore();
   const { isGenerating, setIsGenerating } = uiStore;
@@ -210,7 +211,7 @@ export function ChatWindow() {
                   body: JSON.stringify({
                     role: "assistant",
                     content: fullContent,
-                    metadata: { model: conv?.model, duration: data.duration, tokens: data.tokens, cost: data.cost },
+                    metadata: { model: conv?.model, duration: data.duration, tokens: data.tokens, cost: data.cost, ...(data.reasoningContent ? { reasoning_content: data.reasoningContent } : {}) },
                     toolCalls: data.toolCalls || collectedToolCalls,
                   }),
                 });
@@ -323,6 +324,29 @@ export function ChatWindow() {
                 <div className="w-2 h-2 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:0ms]" />
                 <div className="w-2 h-2 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:150ms]" />
                 <div className="w-2 h-2 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:300ms]" />
+              </div>
+            </div>
+          )}
+
+          {/* Streaming Reasoning Indicator (DeepSeek thinking models) */}
+          {streamingReasoning && isGenerating && (
+            <div className="flex items-start gap-3">
+              <div className="flex items-center justify-center w-7 h-7 rounded-full bg-orange-500/10 shrink-0">
+                <Sparkles className="h-4 w-4 text-orange-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <details className="group" open>
+                  <summary className="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground hover:text-foreground transition-colors">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
+                      Thinking...
+                    </span>
+                    <span className="text-xs text-muted-foreground/60">({streamingReasoning.length} chars)</span>
+                  </summary>
+                  <div className="mt-2 p-3 rounded-lg bg-muted/30 border border-border/40 text-xs text-muted-foreground max-h-40 overflow-y-auto whitespace-pre-wrap break-words font-mono leading-relaxed">
+                    {streamingReasoning.slice(-1000)}
+                  </div>
+                </details>
               </div>
             </div>
           )}

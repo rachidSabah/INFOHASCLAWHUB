@@ -4,6 +4,12 @@
  * Tracks token usage per conversation in real-time, provides visual
  * context window usage, auto-summarizes old messages when approaching
  * limits, and allows pinning/unpinning messages.
+ *
+ * Enhanced with:
+ * - Automatic context window estimation based on model type
+ * - Smart message truncation that preserves important context (system > recent > tool results > older)
+ * - Conversation summarization when approaching context limits
+ * - Priority-based context retention
  */
 
 import { db } from "@/lib/db";
@@ -29,6 +35,61 @@ export interface ConversationCostBreakdown {
   messageCount: number;
   byModel: Record<string, { tokens: number; cost: number; count: number }>;
 }
+
+export type MessagePriority = "system" | "critical" | "recent" | "tool_result" | "older";
+
+export interface PrioritizedMessage {
+  id: string;
+  role: string;
+  content: string;
+  priority: MessagePriority;
+  tokenCount: number;
+  metadata?: any;
+}
+
+export interface SmartTruncationResult {
+  messages: any[];
+  totalTokens: number;
+  removedCount: number;
+  savedTokens: number;
+  summary?: string;
+}
+
+// ── Model context window sizes ────────────────────────────────────────────
+
+const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  // Gemini models
+  "gemini-3.1-pro": 2_000_000,
+  "gemini-3-flash": 1_000_000,
+  "gemini-2.5-pro": 1_000_000,
+  "gemini-2.5-flash": 1_000_000,
+  "gemini-2.0-flash": 1_000_000,
+  "gemini-2.0-flash-lite": 1_000_000,
+  "gemini-1.5-pro": 2_000_000,
+  "gemini-1.5-flash": 1_000_000,
+  // OpenAI models
+  "gpt-4o": 128_000,
+  "gpt-4o-mini": 128_000,
+  "gpt-4-turbo": 128_000,
+  "gpt-4": 8_192,
+  "gpt-3.5-turbo": 16_385,
+  "o1": 200_000,
+  "o1-mini": 128_000,
+  "o3-mini": 200_000,
+  // Anthropic models
+  "claude-3.5-sonnet": 200_000,
+  "claude-3-opus": 200_000,
+  "claude-3-haiku": 200_000,
+  // DeepSeek models
+  "deepseek-chat": 64_000,
+  "deepseek-reasoner": 64_000,
+  "deepseek-coder": 16_384,
+  // Qwen models
+  "qwen2.5-72b-instruct": 131_072,
+  "qwen2.5-7b-instruct": 131_072,
+};
+
+const DEFAULT_CONTEXT_WINDOW = 128_000;
 
 // ── Cost estimates per 1K tokens (approximate) ─────────────────────────────
 
@@ -59,6 +120,192 @@ export class ContextManagerEngine {
       globalCtx.__contextManager = new ContextManagerEngine();
     }
     return globalCtx.__contextManager;
+  }
+
+  // ── Context Window Estimation ──────────────────────────────────────────
+
+  /**
+   * Get the context window size for a specific model.
+   * Falls back to fuzzy matching for model name variants.
+   */
+  getContextWindowSize(model: string): number {
+    // Exact match
+    if (MODEL_CONTEXT_WINDOWS[model]) return MODEL_CONTEXT_WINDOWS[model];
+    // Fuzzy match: check if model name contains a known model key
+    const modelLower = model.toLowerCase();
+    for (const [key, size] of Object.entries(MODEL_CONTEXT_WINDOWS)) {
+      if (modelLower.includes(key.toLowerCase())) return size;
+    }
+    // Default
+    return DEFAULT_CONTEXT_WINDOW;
+  }
+
+  /**
+   * Get the maximum tokens that should be used for prompt (leaving room for completion).
+   * Typically 70-80% of the context window.
+   */
+  getMaxPromptTokens(model: string, reservedForCompletion: number = 4096): number {
+    const windowSize = this.getContextWindowSize(model);
+    return Math.floor(windowSize * 0.75) - reservedForCompletion;
+  }
+
+  // ── Priority-Based Message Classification ─────────────────────────────
+
+  /**
+   * Classify messages by priority for context retention.
+   * Priority order: system > critical > recent > tool_result > older
+   */
+  classifyMessages(
+    messages: Array<{ id: string; role: string; content: string; metadata?: any }>,
+    currentPrompt?: string
+  ): PrioritizedMessage[] {
+    const now = Date.now();
+    const messageCount = messages.length;
+
+    return messages.map((msg, index) => {
+      const tokenCount = this.estimateTokens(msg.content);
+      let priority: MessagePriority;
+
+      // System messages are always highest priority
+      if (msg.role === "system") {
+        priority = "system";
+      }
+      // Pinned messages are critical
+      else if (msg.metadata?.pinned) {
+        priority = "critical";
+      }
+      // Recent messages (last 4) are high priority
+      else if (index >= messageCount - 4) {
+        priority = "recent";
+      }
+      // Tool results are medium priority (contain factual data)
+      else if (msg.role === "tool" || msg.content.includes("Tool:") || msg.content.includes("⚙️")) {
+        priority = "tool_result";
+      }
+      // Older messages are lowest priority
+      else {
+        priority = "older";
+      }
+
+      return {
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        priority,
+        tokenCount,
+        metadata: msg.metadata,
+      };
+    });
+  }
+
+  // ── Smart Truncation ──────────────────────────────────────────────────
+
+  /**
+   * Intelligently truncate conversation history to fit within token limits.
+   * Preserves important context using priority-based retention:
+   * 1. Always keep system messages
+   * 2. Always keep critical (pinned) messages
+   * 3. Keep the most recent messages
+   * 4. Keep tool result messages if space allows
+   * 5. Summarize older messages if needed
+   */
+  smartTruncate(
+    messages: Array<{ id: string; role: string; content: string; metadata?: any }>,
+    model: string,
+    systemPromptTokens: number = 0,
+    reservedForCompletion: number = 4096
+  ): SmartTruncationResult {
+    const maxTokens = this.getMaxPromptTokens(model, reservedForCompletion) - systemPromptTokens;
+    const prioritized = this.classifyMessages(messages);
+
+    // Calculate total tokens
+    const totalTokens = prioritized.reduce((sum, m) => sum + m.tokenCount, 0);
+
+    // If we're within budget, return as-is
+    if (totalTokens <= maxTokens) {
+      return {
+        messages: messages.map(m => ({ role: m.role, content: m.content, ...(m.metadata?.reasoning_content ? { reasoning_content: m.metadata.reasoning_content } : {}) })),
+        totalTokens,
+        removedCount: 0,
+        savedTokens: 0,
+      };
+    }
+
+    // Priority retention: keep messages in order of priority
+    const priorityOrder: MessagePriority[] = ["system", "critical", "recent", "tool_result", "older"];
+    const kept: PrioritizedMessage[] = [];
+    const removed: PrioritizedMessage[] = [];
+    let usedTokens = 0;
+
+    // First pass: always keep system and critical messages
+    for (const priority of priorityOrder) {
+      const msgsOfPriority = prioritized.filter(m => m.priority === priority);
+      for (const msg of msgsOfPriority) {
+        if (priority === "system" || priority === "critical") {
+          kept.push(msg);
+          usedTokens += msg.tokenCount;
+        }
+      }
+    }
+
+    // Second pass: add recent messages
+    const recentMsgs = prioritized.filter(m => m.priority === "recent");
+    for (const msg of recentMsgs) {
+      if (usedTokens + msg.tokenCount <= maxTokens) {
+        kept.push(msg);
+        usedTokens += msg.tokenCount;
+      } else {
+        removed.push(msg);
+      }
+    }
+
+    // Third pass: add tool results if space allows
+    const toolMsgs = prioritized.filter(m => m.priority === "tool_result");
+    for (const msg of toolMsgs) {
+      if (usedTokens + msg.tokenCount <= maxTokens) {
+        kept.push(msg);
+        usedTokens += msg.tokenCount;
+      } else {
+        removed.push(msg);
+      }
+    }
+
+    // Fourth pass: add older messages if space allows
+    const olderMsgs = prioritized.filter(m => m.priority === "older");
+    for (const msg of olderMsgs) {
+      if (usedTokens + msg.tokenCount <= maxTokens) {
+        kept.push(msg);
+        usedTokens += msg.tokenCount;
+      } else {
+        removed.push(msg);
+      }
+    }
+
+    // Sort kept messages back to original order
+    const originalOrder = new Map(messages.map((m, i) => [m.id, i]));
+    kept.sort((a, b) => (originalOrder.get(a.id) ?? 0) - (originalOrder.get(b.id) ?? 0));
+
+    // Create summary of removed messages
+    let summary: string | undefined;
+    if (removed.length > 0) {
+      const summaryText = removed
+        .slice(0, 10) // Summarize at most 10 removed messages
+        .map(m => `${m.role}: ${m.content.slice(0, 200)}`)
+        .join("\n");
+      summary = `[Earlier conversation summary]: ${summaryText.slice(0, 2000)}`;
+    }
+
+    return {
+      messages: kept.map(m => ({
+        role: m.role,
+        content: m.content,
+        ...(m.metadata?.reasoning_content ? { reasoning_content: m.metadata.reasoning_content } : {}),
+      })),
+      totalTokens: usedTokens,
+      removedCount: removed.length,
+      savedTokens: totalTokens - usedTokens,
+      summary,
+    };
   }
 
   // ── Estimate Tokens ────────────────────────────────────────────────────

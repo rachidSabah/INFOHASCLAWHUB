@@ -484,9 +484,9 @@ function WebsiteView({ tab }: { tab: PreviewTab }) {
       const fetchUrl = pageData.arguments.url || "";
       pageData = { 
         url: fetchUrl, 
-        textContent: `Fetching ${fetchUrl}...\n\nThe website preview will appear here once the content is loaded. If you see this message, the tool call was captured before the result arrived.`,
+        textContent: `Fetching ${fetchUrl}...`,
         title: `Loading: ${fetchUrl}`,
-        error: "Preview not yet available — the tool call was captured but the result hasn't been received yet. Try asking the agent again to fetch the page."
+        error: "Preview not yet available — the tool call was captured but the result hasn't been received yet. The preview will update when the tool result arrives."
       };
     } else if (pageData.name && pageData.arguments) {
       // Generic tool call — not a web result
@@ -498,9 +498,17 @@ function WebsiteView({ tab }: { tab: PreviewTab }) {
     }
   } catch {
     // Content might be text with embedded JSON
-    const jsonMatch = rawContent.match(/\{[\s\S]*"textContent"[\s\S]*\}/);
-    if (jsonMatch) {
-      try { pageData = JSON.parse(jsonMatch[0]); } catch {}
+    // Try multiple patterns to extract web_fetch result data
+    const jsonPatterns = [
+      /\{[\s\S]*"textContent"[\s\S]*\}/,  // Standard web_fetch result
+      /\{[\s\S]*"url"[\s\S]*"title"[\s\S]*\}/,  // URL + title result
+      /\{[\s\S]*"html"[\s\S]*\}/,  // HTML content result
+    ];
+    for (const pattern of jsonPatterns) {
+      const jsonMatch = rawContent.match(pattern);
+      if (jsonMatch) {
+        try { pageData = JSON.parse(jsonMatch[0]); break; } catch {}
+      }
     }
     if (!pageData.textContent && !pageData.title) {
       pageData = { textContent: rawContent, title: title };
@@ -563,7 +571,7 @@ export default function ArtifactPreviewPanel() {
   }, [activeTabId, sandboxAvailable, websiteAvailable]);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && isOpen) { isFullscreen ? setFullscreen(false) : setOpen(false); } };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && isOpen) { if (isFullscreen) { setFullscreen(false); } else { setOpen(false); } } };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
   }, [isOpen, isFullscreen, setOpen, setFullscreen]);
