@@ -268,6 +268,29 @@ async function parseAndExecuteTools(
   };
 }
 
+/**
+ * Find the index of the matching closing brace for a JSON object.
+ * Returns -1 if the string doesn't contain a complete JSON object.
+ */
+function findMatchingBrace(str: string): number {
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\' && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
 async function queryLLM(
   model: string,
   targetModel: string,
@@ -281,8 +304,8 @@ async function queryLLM(
   controller: ReadableStreamDefaultController,
   encoder: TextEncoder,
   requestId: string,
-  // For Gemini native function calling: pass functionResponses from previous tool executions
-  geminiFunctionResponses?: any[]
+  // Tool results from previous iteration for all providers
+  pendingToolResults?: { toolCallId: string; toolName: string; result: string; nativeFunctionCall?: any }[]
 ): Promise<string> {
   let accumulatedText = "";
 
@@ -317,12 +340,12 @@ async function queryLLM(
       }
 
       // If we have functionResponses from previous tool executions, add them
-      if (geminiFunctionResponses && geminiFunctionResponses.length > 0) {
+      if (pendingToolResults && pendingToolResults.length > 0) {
         // Add model's previous response with functionCalls
         const modelParts: any[] = [];
-        for (const fr of geminiFunctionResponses) {
-          if (fr.functionCall) {
-            modelParts.push({ functionCall: fr.functionCall });
+        for (const tr of pendingToolResults) {
+          if (tr.nativeFunctionCall) {
+            modelParts.push({ functionCall: tr.nativeFunctionCall });
           }
         }
         if (modelParts.length > 0) {
@@ -330,11 +353,17 @@ async function queryLLM(
         }
         // Add function responses
         const responseParts: any[] = [];
-        for (const fr of geminiFunctionResponses) {
+        for (const tr of pendingToolResults) {
+          let responseObj: any = {};
+          try {
+            responseObj = JSON.parse(tr.result);
+          } catch {
+            responseObj = { result: tr.result };
+          }
           responseParts.push({
             functionResponse: {
-              name: fr.functionCall?.name || fr.name,
-              response: fr.response,
+              name: tr.toolName,
+              response: responseObj,
             }
           });
         }
@@ -425,6 +454,46 @@ async function queryLLM(
       requestBody.tool_choice = "auto";
     }
 
+    // If we have tool results from previous iteration, add proper OpenAI-format messages:
+    // 1. Assistant message with tool_calls
+    // 2. Tool messages with results
+    if (pendingToolResults && pendingToolResults.length > 0) {
+      const assistantToolCalls = pendingToolResults.map((tr, idx) => ({
+        id: tr.toolCallId || `call_${idx}`,
+        type: "function" as const,
+        function: {
+          name: tr.toolName,
+          arguments: typeof tr.nativeFunctionCall?.args === 'object'
+            ? JSON.stringify(tr.nativeFunctionCall.args)
+            : "{}",
+        },
+      }));
+
+      // Add assistant message with tool_calls
+      requestBody.messages.push({
+        role: "assistant",
+        content: null,
+        tool_calls: assistantToolCalls,
+      });
+
+      // Add tool result messages
+      for (const tr of pendingToolResults) {
+        let resultContent: string;
+        try {
+          // Try to format the result nicely
+          const parsed = JSON.parse(tr.result);
+          resultContent = JSON.stringify(parsed);
+        } catch {
+          resultContent = tr.result;
+        }
+        requestBody.messages.push({
+          role: "tool",
+          tool_call_id: tr.toolCallId || `call_0`,
+          content: resultContent,
+        });
+      }
+    }
+
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -446,9 +515,10 @@ async function queryLLM(
     let buffer = "";
     // Collect native tool_calls from the streaming response
     const nativeToolCalls: Map<number, { id: string; function: { name: string; arguments: string } }> = new Map();
-    // Buffer for filtering out <longcat_tool_call> XML from streamed content
+    // Buffer for filtering out tool call markup from streamed content
+    // Catches: <longcat_tool_call> XML, ```tool_call``` code blocks, and {"name":...} JSON
     let streamBuffer = "";
-    const TOOL_XML_START = "<longcat_tool_call";
+    let insideToolBlock = false;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -469,23 +539,17 @@ async function queryLLM(
             const content = delta?.content || "";
             if (content) {
               accumulatedText += content;
-
-              // Filter out <longcat_tool_call> XML from streamed content
-              // so the user doesn't see raw XML tags
               streamBuffer += content;
 
-              // If we're inside a tool_call XML block, don't stream to user
-              const hasOpenTag = streamBuffer.includes("<longcat_tool_call");
-              const hasCloseTag = streamBuffer.includes("</longcat_tool_call>");
-
-              if (hasOpenTag && !hasCloseTag) {
-                // We're inside an opening tag but haven't seen the close tag yet
-                // Don't stream anything — wait for the closing tag
+              // Smart filter: detect and buffer tool-call markup
+              // 1. <longcat_tool_call> XML blocks
+              if (streamBuffer.includes("<longcat_tool_call") && !streamBuffer.includes("</longcat_tool_call>")) {
+                insideToolBlock = true;
+                // Don't stream yet — wait for closing tag
                 continue;
               }
-
-              if (hasOpenTag && hasCloseTag) {
-                // We have both open and close tags — strip them and stream the rest
+              if (insideToolBlock && streamBuffer.includes("</longcat_tool_call>")) {
+                insideToolBlock = false;
                 const cleaned = stripToolCallXml(streamBuffer);
                 streamBuffer = "";
                 if (cleaned.trim()) {
@@ -493,22 +557,56 @@ async function queryLLM(
                 }
                 continue;
               }
-
-              // No tool XML — check if content ends with a partial XML tag
-              const partialTagMatch = streamBuffer.match(/<longcat[_a-z]*$/);
-              if (partialTagMatch) {
-                // Might be start of a tool_call tag — buffer it
-                const safePart = streamBuffer.substring(0, partialTagMatch.index!);
-                streamBuffer = streamBuffer.substring(partialTagMatch.index!);
-                if (safePart) {
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: safePart })}\n\n`));
-                }
+              // 2. ```tool_call code blocks
+              if (streamBuffer.includes("```tool_call") && !streamBuffer.includes("```", streamBuffer.indexOf("```tool_call") + 13)) {
+                insideToolBlock = true;
                 continue;
               }
+              // 3. {"name": "tool_name", "arguments": {...}} JSON tool calls
+              // Detect the start of a JSON tool call pattern
+              const jsonToolStart = streamBuffer.indexOf('{"name":');
+              if (jsonToolStart >= 0 && !insideToolBlock) {
+                // Check if it looks like a complete JSON tool call
+                const afterStart = streamBuffer.substring(jsonToolStart);
+                const closingBraceIdx = findMatchingBrace(afterStart);
+                if (closingBraceIdx === -1) {
+                  // Incomplete JSON — buffer the part before it and wait
+                  const safePart = streamBuffer.substring(0, jsonToolStart);
+                  streamBuffer = afterStart;
+                  insideToolBlock = true;
+                  if (safePart.trim()) {
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: safePart })}\n\n`));
+                  }
+                  continue;
+                }
+                // Complete JSON tool call found — strip it
+                const before = streamBuffer.substring(0, jsonToolStart);
+                const after = afterStart.substring(closingBraceIdx + 1);
+                streamBuffer = before + after;
+              }
 
-              // Normal content — stream it all
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: streamBuffer })}\n\n`));
+              // Check for partial tag at the end
+              if (!insideToolBlock) {
+                const partialMatch = streamBuffer.match(/<longcat[_a-z]*$|`\`\`tool_call$|\{"name":\s*$/);
+                if (partialMatch) {
+                  const safePart = streamBuffer.substring(0, partialMatch.index!);
+                  streamBuffer = streamBuffer.substring(partialMatch.index!);
+                  if (safePart.trim()) {
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: safePart })}\n\n`));
+                  }
+                  continue;
+                }
+              }
+
+              // If we're inside a tool block, keep buffering
+              if (insideToolBlock) continue;
+
+              // Apply final stripToolCallXml as safety net
+              const cleaned = stripToolCallXml(streamBuffer);
               streamBuffer = "";
+              if (cleaned.trim()) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: cleaned })}\n\n`));
+              }
             }
             // Handle native tool_calls from the streaming delta
             if (delta?.tool_calls) {
@@ -602,21 +700,20 @@ async function queryLLM(
 
     const processComplete = new Promise<void>((resolve, reject) => {
       let cliBuffer = "";
+      let cliInsideToolBlock = false;
       geminiProcess.stdout.on("data", (chunk: Buffer) => {
         const text = chunk.toString();
         accumulatedText += text;
         cliBuffer += text;
 
-        // Filter out <longcat_tool_call> XML from CLI output
-        const hasOpenTag = cliBuffer.includes("<longcat_tool_call");
-        const hasCloseTag = cliBuffer.includes("</longcat_tool_call>");
-
-        if (hasOpenTag && !hasCloseTag) {
-          // Buffering — don't stream yet
+        // Filter out tool-call markup from CLI output
+        // 1. <longcat_tool_call> XML
+        if (cliBuffer.includes("<longcat_tool_call") && !cliBuffer.includes("</longcat_tool_call>")) {
+          cliInsideToolBlock = true;
           return;
         }
-
-        if (hasOpenTag && hasCloseTag) {
+        if (cliInsideToolBlock && cliBuffer.includes("</longcat_tool_call>")) {
+          cliInsideToolBlock = false;
           const cleaned = stripToolCallXml(cliBuffer);
           cliBuffer = "";
           if (cleaned.trim()) {
@@ -624,20 +721,35 @@ async function queryLLM(
           }
           return;
         }
-
-        // Check for partial XML tag at the end
-        const partialMatch = cliBuffer.match(/<longcat[_a-z]*$/);
-        if (partialMatch) {
-          const safePart = cliBuffer.substring(0, partialMatch.index!);
-          cliBuffer = cliBuffer.substring(partialMatch.index!);
-          if (safePart) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: safePart })}\n\n`));
+        // 2. {"name": ...} JSON tool calls
+        const jsonToolStart = cliBuffer.indexOf('{"name":');
+        if (jsonToolStart >= 0 && !cliInsideToolBlock) {
+          const afterStart = cliBuffer.substring(jsonToolStart);
+          const closingBraceIdx = findMatchingBrace(afterStart);
+          if (closingBraceIdx === -1) {
+            // Incomplete JSON — buffer and wait
+            const safePart = cliBuffer.substring(0, jsonToolStart);
+            cliBuffer = afterStart;
+            cliInsideToolBlock = true;
+            if (safePart.trim()) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: safePart })}\n\n`));
+            }
+            return;
           }
-          return;
+          // Complete JSON tool call — strip it
+          const before = cliBuffer.substring(0, jsonToolStart);
+          const after = afterStart.substring(closingBraceIdx + 1);
+          cliBuffer = before + after;
         }
 
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: cliBuffer })}\n\n`));
+        if (cliInsideToolBlock) return;
+
+        // Apply stripToolCallXml as safety net
+        const cleaned = stripToolCallXml(cliBuffer);
         cliBuffer = "";
+        if (cleaned.trim()) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "chunk", content: cleaned })}\n\n`));
+        }
       });
 
       let stderrData = "";
@@ -893,10 +1005,8 @@ export async function POST(req: NextRequest) {
           let lastAssistantText = "";
           const conversationId = (body as any).conversationId || "unknown";
           
-          // Track Gemini native function calls for passing back as functionResponses
-          let pendingGeminiFunctionResponses: any[] = [];
-          let isGeminiProvider = isCustomProvider && providerData && 
-            (providerData.name?.toLowerCase()?.includes("gemini") || providerData.baseUrl?.includes("generativelanguage"));
+          // Track tool results for passing back to the model in the next iteration
+          let pendingToolResults: { toolCallId: string; toolName: string; result: string; nativeFunctionCall?: any }[] = [];
           let hasHadSuccessfulToolRun = false;
 
           while (iteration < maxIterations) {
@@ -919,8 +1029,8 @@ export async function POST(req: NextRequest) {
               controller,
               encoder,
               requestId,
-              // Pass function responses for Gemini native function calling
-              isGeminiProvider ? pendingGeminiFunctionResponses : undefined
+              // Pass tool results from previous iteration (works for all providers)
+              pendingToolResults.length > 0 ? pendingToolResults : undefined
             );
 
             totalResponseText += responseText;
@@ -938,11 +1048,7 @@ export async function POST(req: NextRequest) {
             );
 
             if (!toolRun) {
-              // Check if the response contains tool call XML that wasn't parsed
-              // (this can happen with malformed XML or new formats)
-              const hasUnparsedToolXml = /<longcat_tool_call>|```tool_call/.test(responseText);
-              
-              // Strip tool call XML from the last streamed text so users don't see raw XML
+              // Strip tool call markup from the last streamed text so users don't see raw XML/JSON
               const cleanText = stripToolCallXml(responseText);
               lastAssistantText = cleanText;
               
@@ -956,7 +1062,6 @@ export async function POST(req: NextRequest) {
                  trimmedResponse.toLowerCase().includes("i will"));
               
               if (looksIncomplete && hasHadSuccessfulToolRun && iteration < maxIterations) {
-                // Re-prompt the model to continue
                 console.log(`[${requestId}] Response looks incomplete, re-prompting to continue`);
                 currentHistory.push({ role: "user", content: currentPrompt });
                 currentHistory.push({ role: "assistant", content: responseText });
@@ -974,43 +1079,30 @@ export async function POST(req: NextRequest) {
               content: `\n\n⚙️ **[Executed System Action]**:\n\`\`\`\n${resultSummary}\n\`\`\`\n` 
             })}\n\n`));
 
-            // Build Gemini functionResponses for the next iteration
-            if (isGeminiProvider) {
-              pendingGeminiFunctionResponses = [];
-              // Add native function calls first
-              for (const fc of nativeFunctionCalls) {
-                // Find the matching tool result
-                const matchingResult = allToolCalls.find(tc => tc.name === fc.name);
-                let responseObj: any = {};
-                if (matchingResult) {
-                  try {
-                    responseObj = JSON.parse(matchingResult.result);
-                  } catch {
-                    responseObj = { result: matchingResult.result };
-                  }
-                }
-                pendingGeminiFunctionResponses.push({
-                  functionCall: fc,
-                  name: fc.name,
-                  response: responseObj,
+            // Build pendingToolResults for the next iteration
+            // This works for ALL providers (OpenAI, Gemini, etc.)
+            pendingToolResults = [];
+            const nativeCallNames = new Set(nativeFunctionCalls.map((fc: any) => fc.name));
+
+            // Add native function calls first (from Gemini or OpenAI native tool_calls)
+            for (const fc of nativeFunctionCalls) {
+              const matchingResult = allToolCalls.find(tc => tc.name === fc.name);
+              pendingToolResults.push({
+                toolCallId: `call_${fc.name}_${Date.now()}`,
+                toolName: fc.name,
+                result: matchingResult?.result || "{}",
+                nativeFunctionCall: fc,
+              });
+            }
+            // Also add text-based tool calls
+            for (const tc of allToolCalls) {
+              if (!nativeCallNames.has(tc.name)) {
+                pendingToolResults.push({
+                  toolCallId: `call_${tc.name}_${Date.now()}`,
+                  toolName: tc.name,
+                  result: tc.result,
+                  nativeFunctionCall: { name: tc.name, args: tc.arguments },
                 });
-              }
-              // Also add text-based tool calls as function responses
-              const nativeCallNames = new Set(nativeFunctionCalls.map((fc: any) => fc.name));
-              for (const tc of allToolCalls) {
-                if (!nativeCallNames.has(tc.name)) {
-                  let responseObj: any = {};
-                  try {
-                    responseObj = JSON.parse(tc.result);
-                  } catch {
-                    responseObj = { result: tc.result };
-                  }
-                  pendingGeminiFunctionResponses.push({
-                    functionCall: { name: tc.name, args: tc.arguments },
-                    name: tc.name,
-                    response: responseObj,
-                  });
-                }
               }
             }
 
