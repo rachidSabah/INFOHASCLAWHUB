@@ -159,12 +159,18 @@ function applyEffects(effects: StateEffect[], state: WorldState): WorldState {
       case 'set':
         newState[effect.key] = effect.value;
         break;
-      case 'increment':
-        newState[effect.key] = (typeof newState[effect.key] === 'number' ? newState[effect.key] : 0) + (typeof effect.value === 'number' ? effect.value : 0);
+      case 'increment': {
+        const currentVal = typeof newState[effect.key] === 'number' ? (newState[effect.key] as number) : 0;
+        const deltaVal = typeof effect.value === 'number' ? effect.value : 0;
+        newState[effect.key] = currentVal + deltaVal;
         break;
-      case 'decrement':
-        newState[effect.key] = (typeof newState[effect.key] === 'number' ? newState[effect.key] : 0) - (typeof effect.value === 'number' ? effect.value : 0);
+      }
+      case 'decrement': {
+        const currentVal2 = typeof newState[effect.key] === 'number' ? (newState[effect.key] as number) : 0;
+        const deltaVal2 = typeof effect.value === 'number' ? effect.value : 0;
+        newState[effect.key] = currentVal2 - deltaVal2;
         break;
+      }
       case 'delete':
         delete newState[effect.key];
         break;

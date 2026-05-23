@@ -241,7 +241,7 @@ async function generatePPTX(data: {
     }
   }
 
-  const buffer = Buffer.from(await pptx.write({ outputType: "nodebuffer" }));
+  const buffer = await pptx.write({ outputType: "nodebuffer" }) as Buffer;
   return { buffer, mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", ext: "pptx" };
 }
 

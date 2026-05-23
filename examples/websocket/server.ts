@@ -1,5 +1,7 @@
+// @ts-nocheck - socket.io types not installed
 import { createServer } from 'http'
-import { Server } from 'socket.io'
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { Server } = require('socket.io')
 
 const httpServer = createServer()
 const io = new Server(httpServer, {
