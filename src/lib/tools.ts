@@ -190,72 +190,137 @@ const availableTools: ToolDefinition[] = [
   },
   {
     name: "web_fetch",
-    description: "Fetch the content of a web page by URL. Returns the page HTML content, title, and metadata. Use this to read specific web pages directly when you know the URL.",
+    description: "Fetch the content of a web page by URL. Returns the page text content, title, and metadata. Handles redirects and common blocking. Use this to read specific web pages directly when you know the URL.",
     parameters: {
       url: { type: "string", description: "The full URL to fetch (e.g. https://example.com)" },
     },
     execute: async (params) => {
       const url = (params.url as string)?.trim();
       if (!url) return JSON.stringify({ error: "No URL provided" });
-      if (!url.startsWith("http://") && !url.startsWith("https://")) {
-        return JSON.stringify({ error: "URL must start with http:// or https://" });
+      
+      // Normalize URL - add https:// if no protocol
+      let fetchUrl = url;
+      if (!fetchUrl.startsWith("http://") && !fetchUrl.startsWith("https://")) {
+        fetchUrl = "https://" + fetchUrl;
       }
+      
       try {
-        // Try the local web-fetch API first
+        // Try the local web-fetch API first (has better headers and SSL handling)
         const ports = [3000, 3001, 3002, 3003];
         for (const port of ports) {
           try {
             const res = await fetch(`http://127.0.0.1:${port}/api/web-fetch`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ url }),
+              body: JSON.stringify({ url: fetchUrl }),
               signal: AbortSignal.timeout(15000),
             });
             if (res.ok) {
               const data = await res.json();
+              // Check if the API returned an error
+              if (data.error && !data.textContent) {
+                // API failed, try direct fetch below
+                break;
+              }
               return JSON.stringify(data);
             }
           } catch { continue; }
         }
-        // Fallback: direct fetch with Node.js
-        const response = await fetch(url, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          },
-          signal: AbortSignal.timeout(15000),
-        });
-        if (!response.ok) {
-          return JSON.stringify({ error: `HTTP ${response.status} ${response.statusText}`, url });
+        
+        // Fallback: direct fetch with Node.js - try both https and http
+        const urlsToTry = [fetchUrl];
+        if (fetchUrl.startsWith("https://")) {
+          urlsToTry.push(fetchUrl.replace("https://", "http://"));
         }
-        const contentType = response.headers.get("content-type") || "";
-        const html = await response.text();
-        // Extract title
-        const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-        const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, "").trim() : "No title";
-        // Extract meta description
-        const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i) ||
-                         html.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/i);
-        const description = descMatch ? descMatch[1] : "";
-        // Strip HTML tags for readable text (basic)
-        const textContent = html
-          .replace(/<script[\s\S]*?<\/script>/gi, "")
-          .replace(/<style[\s\S]*?<\/style>/gi, "")
-          .replace(/<[^>]+>/g, " ")
-          .replace(/\s+/g, " ")
-          .trim()
-          .slice(0, 15000);
-        return JSON.stringify({
-          url,
-          title,
-          description,
-          contentLength: html.length,
-          textContent,
-          contentType,
-          fetched: true,
+        
+        for (const tryUrl of urlsToTry) {
+          try {
+            const response = await fetch(tryUrl, {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9,fr;q=0.8",
+                "Accept-Encoding": "identity",
+                "Cache-Control": "no-cache",
+              },
+              signal: AbortSignal.timeout(15000),
+              redirect: "follow",
+            });
+            
+            if (!response.ok) continue;
+            
+            const contentType = response.headers.get("content-type") || "";
+            // Skip non-text responses (PDFs, images, etc.)
+            if (!contentType.includes("text/") && !contentType.includes("html") && !contentType.includes("xml") && !contentType.includes("json")) {
+              return JSON.stringify({
+                url: tryUrl,
+                title: "Non-text content",
+                description: `Content-Type: ${contentType}`,
+                textContent: "",
+                contentLength: 0,
+                contentType,
+                fetched: true,
+                hint: "The URL returned non-text content. Try web_search for information about this site.",
+              });
+            }
+            
+            const html = await response.text();
+            if (!html || html.length < 50) continue;
+            
+            // Extract title
+            const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+            const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, "").trim() : "No title";
+            // Extract meta description
+            const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i) ||
+                             html.match(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/i);
+            const description = descMatch ? descMatch[1] : "";
+            
+            // Check for CMS/framework indicators
+            const indicators: string[] = [];
+            if (/avada/i.test(html)) indicators.push("Avada Theme");
+            if (/elementor/i.test(html)) indicators.push("Elementor");
+            if (/wp-content/i.test(html)) indicators.push("WordPress");
+            if (/divi/i.test(html)) indicators.push("Divi Theme");
+            
+            // Strip HTML tags for readable text (basic)
+            const textContent = html
+              .replace(/<script[\s\S]*?<\/script>/gi, "")
+              .replace(/<style[\s\S]*?<\/style>/gi, "")
+              .replace(/<[^>]+>/g, " ")
+              .replace(/&nbsp;/g, " ")
+              .replace(/&amp;/g, "&")
+              .replace(/&lt;/g, "<")
+              .replace(/&gt;/g, ">")
+              .replace(/&quot;/g, '"')
+              .replace(/\s+/g, " ")
+              .trim()
+              .slice(0, 15000);
+            
+            if (textContent.length > 0) {
+              return JSON.stringify({
+                url: tryUrl,
+                title,
+                description,
+                indicators,
+                contentLength: html.length,
+                textContent,
+                contentType,
+                fetched: true,
+              });
+            }
+          } catch {
+            continue;
+          }
+        }
+        
+        // All attempts failed
+        return JSON.stringify({ 
+          error: "Could not fetch content from this URL", 
+          url, 
+          hint: "The website may be blocking automated access, using JavaScript rendering, or may be down. Try using web_search to find information about this site instead.",
         });
       } catch (e: any) {
-        return JSON.stringify({ error: `Failed to fetch URL: ${e.message}`, url, hint: "The website may be blocking automated access or may be down. Try using web_search instead." });
+        return JSON.stringify({ error: `Failed to fetch URL: ${e.message}`, url, hint: "Try using web_search instead." });
       }
     },
   },
@@ -427,12 +492,31 @@ export function getToolsPrompt(): string {
       .join("\n");
     return `- **${tool.name}**: ${tool.description}\n${params}`;
   });
-  return `[AVAILABLE TOOLS]\nYou can call tools using JSON format. Wrap each tool call in a code block with language "tool_call".\nMultiple tool calls can be placed in the same block, one per line.\n\nExample:\n\`\`\`tool_call\n{"name": "read_file", "arguments": {"filePath": "src/main.ts"}}\n\`\`\`\n\n${lines.join("\n")}`;
+  return `[AVAILABLE TOOLS]
+You can call tools using ANY of these formats:
+
+1. JSON in a tool_call code block (PREFERRED):
+\`\`\`tool_call
+{"name": "read_file", "arguments": {"filePath": "src/main.ts"}}
+\`\`\`
+
+2. Inline JSON:
+{"name": "read_file", "arguments": {"filePath": "src/main.ts"}}
+
+3. XML tool call format:
+<longcat_tool_call>read_file</longcat_tool_call>
+<longcat_arg_key>filePath</longcat_arg_key>
+<longcat_arg_value>src/main.ts</longcat_arg_value>
+
+You can call multiple tools at once. Each tool call will be executed and the result fed back to you.
+
+${lines.join("\n")}`;
 }
 
 export function parseToolCalls(text: string): ToolCallRequest[] {
   const calls: ToolCallRequest[] = [];
 
+  // --- Format 1: ```tool_call code blocks ---
   const toolBlockRegex = /```tool_call\s*\n([\s\S]*?)```/g;
   let match;
   while ((match = toolBlockRegex.exec(text)) !== null) {
@@ -447,6 +531,7 @@ export function parseToolCalls(text: string): ToolCallRequest[] {
     }
   }
 
+  // --- Format 2: ```json code blocks with {name, arguments} ---
   const jsonBlockRegex = /```(?:json)?\s*\n(\s*\{[\s\S]*?\}\s*)\n```/g;
   while ((match = jsonBlockRegex.exec(text)) !== null) {
     try {
@@ -457,6 +542,7 @@ export function parseToolCalls(text: string): ToolCallRequest[] {
     } catch {}
   }
 
+  // --- Format 3: Inline JSON {name: "...", arguments: {...}} ---
   const inlineJsonRegex = /\{\s*"name"\s*:\s*"(\w+)"\s*,\s*"arguments"\s*:\s*(\{(?:[^{}]|\{[^{}]*\})*\})\s*\}/g;
   while ((match = inlineJsonRegex.exec(text)) !== null) {
     const name = match[1];
@@ -468,6 +554,61 @@ export function parseToolCalls(text: string): ToolCallRequest[] {
     } catch {}
   }
 
+  // --- Format 4: <longcat_tool_call> XML format (used by Gemini CLI models) ---
+  // Pattern: <longcat_tool_call>tool_name</longcat_tool_call>
+  //          <longcat_arg_key>param_name</longcat_arg_key>
+  //          <longcat_arg_value>param_value</longcat_arg_value>
+  const longcatRegex = /<longcat_tool_call>\s*([\w_]+)\s*<\/longcat_tool_call>/g;
+  while ((match = longcatRegex.exec(text)) !== null) {
+    const toolName = match[1].trim();
+    const args: Record<string, any> = {};
+    
+    // Find the arguments for this tool call - they appear after the tool_call tag
+    const afterToolCall = text.substring(match.index + match[0].length);
+    
+    // Parse key-value pairs: <longcat_arg_key>key</longcat_arg_key> <longcat_arg_value>value</longcat_arg_value>
+    const argKeyRegex = /<longcat_arg_key>\s*([^<]*?)\s*<\/longcat_arg_key>\s*<longcat_arg_value>\s*([^]*?)\s*<\/longcat_arg_value>/g;
+    let argMatch;
+    const searchFrom = text.substring(match.index);
+    while ((argMatch = argKeyRegex.exec(searchFrom)) !== null) {
+      // Stop if we hit the next tool call
+      if (argMatch.index > 0 && searchFrom.substring(0, argMatch.index).includes("<longcat_tool_call>")) break;
+      const key = argMatch[1].trim();
+      const value = argMatch[2].trim();
+      args[key] = value;
+    }
+    
+    if (!calls.some((c) => c.name === toolName && JSON.stringify(c.arguments) === JSON.stringify(args))) {
+      calls.push({ name: toolName, arguments: args });
+    }
+  }
+
+  // --- Format 5: Gemini function_call style: {"name": "...", "args": {...}} ---
+  const geminiFuncRegex = /"functionCall"\s*:\s*\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"args"\s*:\s*(\{[^}]*\})/g;
+  while ((match = geminiFuncRegex.exec(text)) !== null) {
+    const name = match[1];
+    try {
+      const args = JSON.parse(match[2]);
+      if (!calls.some((c) => c.name === name && JSON.stringify(c.arguments) === JSON.stringify(args))) {
+        calls.push({ name, arguments: args });
+      }
+    } catch {}
+  }
+
+  // --- Format 6: Action JSON pattern used by some models ---
+  // Pattern: {"action": "tool_name", "params": {...}} or {"tool": "tool_name", "input": {...}}
+  const actionRegex = /\{\s*"(?:action|tool)"\s*:\s*"(\w+)"\s*,\s*"(?:params|input|arguments|args)"\s*:\s*(\{(?:[^{}]|\{[^{}]*\})*\})\s*\}/g;
+  while ((match = actionRegex.exec(text)) !== null) {
+    const name = match[1];
+    try {
+      const args = JSON.parse(match[2]);
+      if (!calls.some((c) => c.name === name && JSON.stringify(c.arguments) === JSON.stringify(args))) {
+        calls.push({ name, arguments: args });
+      }
+    } catch {}
+  }
+
+  // --- Format 7: XML-style tool calls (backward compatibility) ---
   const cmdRegex = /<local_cmd>([\s\S]*?)<\/local_cmd>/;
   const cmdMatch = text.match(cmdRegex);
   if (cmdMatch) {
