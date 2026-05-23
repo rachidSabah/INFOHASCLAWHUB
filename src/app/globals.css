@@ -2,6 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Responsive viewport scaling for smaller laptop screens */
+@media (max-height: 800px) {
+  html {
+    font-size: 14px;
+  }
+}
+
+@media (max-height: 700px) {
+  html {
+    font-size: 13px;
+  }
+}
+
+/* Compact TopBar for smaller screens */
+@media (max-width: 1280px) {
+  .topbar-dropdown-text {
+    display: none;
+  }
+}
+
+@media (max-width: 1024px) {
+  .topbar-logo-text {
+    display: none;
+  }
+}
+
 :root {
   --radius: 0.625rem;
   --background: oklch(1 0 0);
