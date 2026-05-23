@@ -17,18 +17,18 @@ export async function GET(request: NextRequest) {
 
     // Build a simple dependency graph from imports/exports
     const files = Array.from(new Set<string>(symbols.map((s: any) => s.filePath as string)));
-    const imports = symbols.filter(s => s.symbolType === 'import');
-    const exports_ = symbols.filter(s => s.symbolType === 'export');
+    const imports = symbols.filter((s: any) => s.symbolType === 'import');
+    const exports_ = symbols.filter((s: any) => s.symbolType === 'export');
 
     const graph: Record<string, { imports: string[]; exports: string[] }> = {};
     for (const file of files) {
       graph[file] = {
         imports: imports
-          .filter(s => s.filePath === file)
-          .map(s => s.symbolName),
+          .filter((s: any) => s.filePath === file)
+          .map((s: any) => s.symbolName),
         exports: exports_
-          .filter(s => s.filePath === file)
-          .map(s => s.symbolName),
+          .filter((s: any) => s.filePath === file)
+          .map((s: any) => s.symbolName),
       };
     }
 

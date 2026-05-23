@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
+  // Enable Next.js instrumentation hook (src/instrumentation.ts)
+  instrumentationHook: true,
   serverExternalPackages: ["@whiskeysockets/baileys", "ws", "bufferutil", "utf-8-validate", "playwright", "playwright-core"],
   async headers() {
     return [

@@ -2,6 +2,12 @@ import cron from "node-cron";
 import { execSync } from "child_process";
 import { db } from "@/lib/db";
 
+function getBaseUrl(): string {
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return `http://localhost:${process.env.PORT || 3000}`;
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -96,7 +102,7 @@ async function callChatAPI(
   agentId?: string | null,
   conversationHistory: Array<{ role: string; content: string }> = []
 ): Promise<string> {
-  const chatUrl = "http://localhost:3000/api/gemini/chat";
+  const chatUrl = `${getBaseUrl()}/api/gemini/chat`;
 
   const res = await fetch(chatUrl, {
     method: "POST",
@@ -704,7 +710,7 @@ class CronEngine {
 
     // 1. Check /api/health
     try {
-      const healthRes = await fetch("http://localhost:3000/api/health", {
+      const healthRes = await fetch(`${getBaseUrl()}/api/health`, {
         signal: AbortSignal.timeout(10_000),
       });
       if (!healthRes.ok) {
@@ -716,7 +722,7 @@ class CronEngine {
 
     // 2. Check /api/doctor
     try {
-      const doctorRes = await fetch("http://localhost:3000/api/doctor", {
+      const doctorRes = await fetch(`${getBaseUrl()}/api/doctor`, {
         signal: AbortSignal.timeout(15_000),
       });
       if (!doctorRes.ok) {
@@ -1000,7 +1006,7 @@ class CronEngine {
 
     for (const endpoint of endpoints) {
       try {
-        const res = await fetch(`http://localhost:3000${endpoint}`, {
+        const res = await fetch(`${getBaseUrl()}${endpoint}`, {
           signal: AbortSignal.timeout(10_000),
         });
         results.push({

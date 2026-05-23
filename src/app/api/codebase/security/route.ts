@@ -20,13 +20,13 @@ export async function GET(request: NextRequest) {
     });
 
     const summary = {
-      critical: vulnerabilities.filter(v => v.severity === 'critical').length,
-      high: vulnerabilities.filter(v => v.severity === 'high').length,
-      medium: vulnerabilities.filter(v => v.severity === 'medium').length,
-      low: vulnerabilities.filter(v => v.severity === 'low').length,
-      info: vulnerabilities.filter(v => v.severity === 'info').length,
+      critical: vulnerabilities.filter((v: any) => v.severity === 'critical').length,
+      high: vulnerabilities.filter((v: any) => v.severity === 'high').length,
+      medium: vulnerabilities.filter((v: any) => v.severity === 'medium').length,
+      low: vulnerabilities.filter((v: any) => v.severity === 'low').length,
+      info: vulnerabilities.filter((v: any) => v.severity === 'info').length,
       total: vulnerabilities.length,
-      resolved: vulnerabilities.filter(v => v.isResolved).length,
+      resolved: vulnerabilities.filter((v: any) => v.isResolved).length,
     };
 
     return NextResponse.json({ summary, vulnerabilities });

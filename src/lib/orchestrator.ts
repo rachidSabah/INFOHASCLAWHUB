@@ -1,3 +1,9 @@
+function getBaseUrl(): string {
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return `http://localhost:${process.env.PORT || 3000}`;
+}
+
 export interface ProjectPlan {
   overview: string;
   category: "saas" | "crm" | "mobile" | "dashboard" | "ecommerce" | "general";
@@ -92,7 +98,7 @@ async function callChatAPI(
   agentId: string | null,
   workspacePath: string | undefined
 ): Promise<string> {
-  const chatUrl = "http://localhost:3000/api/gemini/chat";
+  const chatUrl = `${getBaseUrl()}/api/gemini/chat`;
   const res = await fetch(chatUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -404,7 +404,7 @@ export function ChatInput() {
                       .replace(/\\r/g, "")
                       .replace(/\\n/g, "\n")
                       .replace(/\\"/g, '"')
-                      .replace(/\\u([0-9a-fA-F]{4})/g, (_, c) => String.fromCharCode(parseInt(c, 16)))
+                      .replace(/\\u([0-9a-fA-F]{4})/g, (_: string, c: string) => String.fromCharCode(parseInt(c, 16)))
                       .trim();
                   }
                   const store = useArtifactPreviewStore.getState();

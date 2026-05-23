@@ -1,4 +1,4 @@
-import { chromium, BrowserContext, Page } from "playwright";
+import { chromium, BrowserContext, Page, WebSocket as PlaywrightWebSocket, Request as PlaywrightRequest } from "playwright";
 import { db } from "@/lib/db";
 import path from "path";
 import os from "os";
@@ -88,7 +88,7 @@ class SessionEngine {
       }
 
       // Websocket auth interception
-      page.on("websocket", (ws) => {
+      page.on("websocket", (ws: PlaywrightWebSocket) => {
         const url = ws.url();
         if (url.includes(provider.apiPath)) {
           console.log(`[SessionEngine] WS auth for ${provider.name}: ${url.slice(0, 100)}`);
@@ -96,7 +96,7 @@ class SessionEngine {
       });
 
       // Live request interception
-      page.on("request", async (request) => {
+      page.on("request", async (request: PlaywrightRequest) => {
         const url = request.url();
         const headers = await request.allHeaders();
 

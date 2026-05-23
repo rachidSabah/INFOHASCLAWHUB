@@ -1,5 +1,11 @@
 import { db } from '@/lib/db';
 
+function getBaseUrl(): string {
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return `http://localhost:${process.env.PORT || 3000}`;
+}
+
 // ============================================================
 // Types
 // ============================================================
@@ -187,7 +193,7 @@ async function callChatAPI(
   model: string = 'gemini-2.0-flash',
   systemPrompt?: string
 ): Promise<string> {
-  const response = await fetch('http://localhost:3000/api/gemini/chat', {
+  const response = await fetch(`${getBaseUrl()}/api/gemini/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

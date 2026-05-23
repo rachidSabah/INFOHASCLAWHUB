@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Use AI to rank results by semantic relevance
-    const symbolsSummary = symbols.slice(0, 100).map(s =>
+    const symbolsSummary = symbols.slice(0, 100).map((s: any) =>
       `${s.symbolName} (${s.symbolType}) in ${s.filePath}:${s.lineStart}`
     ).join('\n');
 
@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
 
     // Merge with actual DB data
     const results = rankedResults.slice(0, limit || 20).map((r: any) => {
-      const match = symbols.find(s => s.symbolName === r.symbolName && s.filePath === r.filePath);
+      const match = symbols.find((s: any) => s.symbolName === r.symbolName && s.filePath === r.filePath);
       return {
         ...r,
         lineStart: match?.lineStart,
