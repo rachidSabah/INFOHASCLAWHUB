@@ -27,7 +27,7 @@ const TOOL_CALL_PATTERNS = [
   /```tool_call\s*\n/m,
   /<longcat_tool_call>/,
   /"toolCallId"\s*:\s*"/,
-  /^Tool:\s+\w+$/m,
+  /^Tool:\s+\w+/m,          // "Tool: read_file" etc.
   /^Status:\s+(success|error)$/m,
   /^Result:$/m,
   /^\s*\{"action"\s*:\s*"\w+"/m,
@@ -40,6 +40,9 @@ const TOOL_CALL_PATTERNS = [
   /^\s*\{"query":\s*"/m,  // search result
   /^\s*\{"expression":\s*"/m,  // calculator result
   /^\s*\{"stdout"/m,  // command result
+  /^\s*\{"content"\s*:\s*"/m,  // read_file result
+  /^\s*\{"truncated"\s*:/m,  // read_file result with truncation flag
+  /^\s*\{"totalLength"\s*:/m,  // read_file result with totalLength
 ];
 
 function isToolCallContent(content: string): boolean {
@@ -51,6 +54,10 @@ function isToolCallContent(content: string): boolean {
   // Check for JSON tool call patterns
   if (trimmed.startsWith('{"name":') && (trimmed.includes('"arguments"') || trimmed.includes('"args"') || trimmed.includes('"params"'))) return true;
   if (trimmed.startsWith('{"action":') || trimmed.startsWith('{"tool":')) return true;
+  
+  // Check for "Tool: xxx / Status: xxx / Result:" blocks — these are tool execution results
+  // This handles the case where the model reads files and the result includes the file content
+  if (/^Tool:\s*\w+/m.test(trimmed) && /Status:\s*(success|error)/m.test(trimmed)) return true;
   
   // Check for tool result JSON patterns
   if (trimmed.startsWith('{')) {
@@ -74,6 +81,8 @@ function isToolCallContent(content: string): boolean {
       if (parsed.platform && parsed.cpus) return true;
       // Web fetch results
       if (parsed.url && parsed.title && parsed.textContent) return true;
+      // read_file results
+      if (parsed.path && parsed.content && parsed.truncated !== undefined) return true;
     } catch {}
   }
   
@@ -86,6 +95,14 @@ function isToolCallContent(content: string): boolean {
   // Check for "Executed System Action" blocks
   if (trimmed.includes('[Executed System Action]')) return true;
   if (trimmed.includes('⚙️')) return true;
+  
+  // Check if the content is primarily tool result data masquerading as code
+  // This happens when read_file returns large PHP/CSS file contents
+  // The content will contain "Tool:", "Status:", "Result:" markers mixed with code
+  const toolMarkerCount = (trimmed.match(/^Tool:/gm) || []).length;
+  const statusMarkerCount = (trimmed.match(/^Status:\s*(success|error)/gm) || []).length;
+  // If there are multiple Tool/Status markers, this is a multi-tool execution result
+  if (toolMarkerCount >= 1 && statusMarkerCount >= 1) return true;
   
   return false;
 }
@@ -100,7 +117,7 @@ export function detectArtifact(content: string, _chunk: string): DetectedArtifac
     try {
       const parsed = JSON.parse(trimmedContent);
       // Check if it has keys that indicate it's a tool result, not an artifact
-      const toolResultKeys = ["url", "textContent", "path", "content", "query", "results", "stdout", "exitCode", "error", "hint", "files", "written", "replacements", "appended", "exists", "memories", "iso", "timezone", "platform", "cpus", "fetched"];
+      const toolResultKeys = ["url", "textContent", "path", "content", "query", "results", "stdout", "exitCode", "error", "hint", "files", "written", "replacements", "appended", "exists", "memories", "iso", "timezone", "platform", "cpus", "fetched", "truncated", "totalLength"];
       const parsedKeys = Object.keys(parsed);
       if (parsedKeys.some(k => toolResultKeys.includes(k))) {
         return null;
@@ -108,6 +125,12 @@ export function detectArtifact(content: string, _chunk: string): DetectedArtifac
     } catch {
       // Not valid JSON, continue with artifact detection
     }
+  }
+
+  // Additional check: if content contains Tool:/Status:/Result: markers,
+  // this is tool execution output, NOT a code artifact
+  if (/^Tool:\s*\w+/m.test(content) && /Status:\s*(success|error)/m.test(content)) {
+    return null;
   }
 
   const scores: Record<string, number> = {};

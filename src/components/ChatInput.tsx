@@ -107,6 +107,19 @@ function stripToolCallJson(content: string): string {
     result = result.replace(pattern, "");
   }
   
+  // Strip "Tool: xxx\nStatus: xxx\nResult:\n{...}" blocks
+  // These are tool execution results that include file contents
+  result = result.replace(
+    /Tool:\s*\w+[^\n]*\nStatus:\s*(?:success|error)[^\n]*\nResult:\s*\n?\{[\s\S]*?\}(?:\s*"truncated"\s*:\s*(?:true|false)[\s\S]*?\})?/g,
+    ""
+  );
+  
+  // Strip bullet-style tool results: "•\nTool: xxx\nStatus: xxx\nResult: {...}"
+  result = result.replace(
+    /•\s*\n?Tool:\s*\w+[\s\S]*?Result:\s*\{[\s\S]*?\}/g,
+    ""
+  );
+  
   return result;
 }
 
@@ -322,19 +335,21 @@ export function ChatInput() {
                 cleanContent = cleanContent.replace(/\{"(url|path|query|expression|stdout|error)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "");
                 cleanContent = cleanContent.replace(/\n{3,}/g, "\n\n").trim();
                 // Only detect artifacts in non-tool-execution content
-                const isToolExecution = cleanContent.includes('⚙️') || cleanContent.includes('[Executed System Action]');
+                const isToolExecution = cleanContent.includes('⚙️') || cleanContent.includes('[Executed System Action]') || /^Tool:\s*\w+/m.test(cleanContent);
                 // Skip artifact detection if content is just tool call data
                 // Check both the START of content AND the content after stripping all tool JSON
                 const strippedOfAllToolData = cleanContent
                   .replace(/\{"name"\s*:\s*"[^"]*"\s*,\s*"(arguments|args|params)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "")
-                  .replace(/\{"(url|path|query|expression|stdout|error|textContent|title|description)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "")
-                  .replace(/Tool:\s*\w+\s*\n?Status:\s*\w+\s*\n?Result:\s*/g, "")
+                  .replace(/\{"(url|path|query|expression|stdout|error|textContent|title|description|content|truncated|totalLength)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "")
+                  .replace(/Tool:\s*\w+[^\n]*\n?Status:\s*\w+[^\n]*\n?Result:\s*\n?[\s\S]*?(?=\n\n|\n(?=Tool:)|$)/gm, "")
+                  .replace(/•\s*\n?Tool:\s*\w+[\s\S]*?Result:\s*\{[\s\S]*?\}/g, "")
                   .trim();
                 const isJustToolData = cleanContent.trim().startsWith('{"name":') || 
                   cleanContent.trim().startsWith('{"url":') ||
                   cleanContent.trim().startsWith('{"path":') ||
                   cleanContent.trim().startsWith('{"query":') ||
                   cleanContent.trim().startsWith('{"expression":') ||
+                  cleanContent.trim().startsWith('{"content":') ||
                   cleanContent.trim().startsWith('Tool:') ||
                   cleanContent.trim().length < 20 ||
                   strippedOfAllToolData.length < 30;
@@ -467,9 +482,22 @@ export function ChatInput() {
                       .trim();
                     // Use robust brace-matching to strip tool call JSON that survived stripToolCallXml
                     cleanContent = stripToolCallJson(cleanContent);
-                    cleanContent = cleanContent.replace(/\{"(url|path|query|expression|stdout|error)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "");
+                    cleanContent = cleanContent.replace(/\{"(url|path|query|expression|stdout|error|content|truncated|totalLength)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "");
                     cleanContent = cleanContent.replace(/\n{3,}/g, "\n\n").trim();
-                    store.updateTab(active.id, { content: cleanContent, isStreaming: false });
+                    
+                    // Check if the cleaned content is essentially just tool result data
+                    // If so, close the artifact panel instead of showing empty/garbage content
+                    const isOnlyToolData = cleanContent.trim().length < 30 ||
+                      /^Tool:\s*\w+/m.test(cleanContent) ||
+                      cleanContent.trim().startsWith('{"path":') ||
+                      cleanContent.trim().startsWith('{"url":');
+                    
+                    if (isOnlyToolData) {
+                      // Remove the tab entirely — it was a false artifact detection
+                      store.removeTab(active.id);
+                    } else {
+                      store.updateTab(active.id, { content: cleanContent, isStreaming: false });
+                    }
                   } else {
                     store.updateTab(active.id, { isStreaming: false });
                   }

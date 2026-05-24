@@ -58,6 +58,83 @@ function stripJsonToolCalls(text: string): string {
 }
 
 /**
+ * Strip "Tool: ... / Status: ... / Result: ..." blocks from text.
+ * These are tool result markers that appear in the streaming response.
+ * The Result content can be a large JSON blob (e.g., read_file returns
+ * the entire file content), so we need to strip the whole block including
+ * the result payload.
+ */
+function stripToolResultBlocks(text: string): string {
+  let clean = text;
+
+  // Pattern 1: Multi-line "Tool: xxx\nStatus: xxx\nResult:\n{...}" blocks
+  // These can span many lines because the result JSON can be huge
+  // We match "Tool:" at the start of a line through the end of the JSON result
+  clean = clean.replace(
+    /^Tool:\s*\w+.*\nStatus:\s*\w+.*\nResult:\s*\n?[\s\S]*?(?=\n\n|\n(?=Tool:)|$)/gm,
+    ""
+  );
+
+  // Pattern 2: "Tool: xxx\nStatus: xxx\nResult:\n{...}" with result on same line
+  clean = clean.replace(
+    /Tool:\s*\w+[\s\S]*?Status:\s*(?:success|error)[\s\S]*?Result:\s*\{[\s\S]*?"(?:path|url|content|textContent|files|query|expression|stdout)"[\s\S]*?\}/g,
+    ""
+  );
+
+  // Pattern 3: Bullet-separated tool results (• Tool: xxx Status: xxx Result: {...})
+  clean = clean.replace(
+    /•\s*Tool:\s*\w+[\s\S]*?Status:\s*\w+[\s\S]*?Result:\s*\{[^}]*\}/g,
+    ""
+  );
+
+  // Pattern 4: Standalone tool result JSON with known tool result keys
+  // {"path": "...", "content": "..."} — read_file / list_files results
+  // Use iterative brace-matching to handle deeply nested JSON
+  const toolResultMarkers = [
+    '{"path":',
+    '{"url":',
+    '{"query":',
+    '{"expression":',
+    '{"stdout":',
+  ];
+  for (const marker of toolResultMarkers) {
+    let searchFrom = 0;
+    let safety = 0;
+    while (clean.includes(marker, searchFrom) && safety < 30) {
+      safety++;
+      const startIdx = clean.indexOf(marker, searchFrom);
+      if (startIdx < 0) break;
+
+      // Check context: is this actually a tool result?
+      // Look back to see if there's "Result:" or "Tool:" nearby
+      const lookback = clean.substring(Math.max(0, startIdx - 200), startIdx);
+      const isAfterToolMarker =
+        lookback.includes("Result:") ||
+        lookback.includes("Tool:") ||
+        lookback.includes("Status:");
+
+      if (!isAfterToolMarker) {
+        // Not a tool result — skip
+        searchFrom = startIdx + marker.length;
+        continue;
+      }
+
+      // Find matching closing brace using brace-matching
+      const afterStart = clean.substring(startIdx);
+      const endIdx = findMatchingBraceIndex(afterStart);
+      if (endIdx >= 0) {
+        clean = clean.substring(0, startIdx) + clean.substring(startIdx + endIdx + 1);
+        // Don't advance searchFrom — re-check from same position
+      } else {
+        searchFrom = startIdx + marker.length;
+      }
+    }
+  }
+
+  return clean;
+}
+
+/**
  * Strip tool-call XML/JSON markup from model response text so the user
  * doesn't see raw <longcat_tool_call>, ```tool_call```, {"name":...}, etc.
  */
@@ -79,7 +156,9 @@ export function stripToolCallXml(text: string): string {
   clean = clean.replace(/<list_files>[\s\S]*?<\/list_files>/g, "");
   clean = clean.replace(/<read_file>[\s\S]*?<\/read_file>/g, "");
   clean = clean.replace(/<write_file\s+path="[\s\S]*?">[\s\S]*?<\/write_file>/g, "");
-  // 7. Clean up excessive empty lines (but preserve spaces — critical for streaming!)
+  // 7. Remove "Tool: / Status: / Result:" blocks (read_file, list_files, etc.)
+  clean = stripToolResultBlocks(clean);
+  // 8. Clean up excessive empty lines (but preserve spaces — critical for streaming!)
   // DO NOT use .trim() here — during streaming, spaces between words arrive as leading
   // spaces on tokens (e.g., " how", " are", " you"), and trimming them concatenates
   // all words together (e.g., "Hellohowareyoutoday").

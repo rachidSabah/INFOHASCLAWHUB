@@ -117,9 +117,28 @@ function getFileIcon(tab: PreviewTab): React.ComponentType<any> {
   return File;
 }
 
+function isToolResultContent(content: string): boolean {
+  const trimmed = content.trim();
+  // Check for "Tool: xxx / Status: xxx / Result:" patterns
+  if (/^Tool:\s*\w+/m.test(trimmed) && /Status:\s*(success|error)/m.test(trimmed)) return true;
+  // Check for read_file/list_files result JSON
+  if (trimmed.startsWith('{"path":') || trimmed.startsWith('{"url":')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed.path && parsed.content !== undefined) return true;
+      if (parsed.url && parsed.textContent !== undefined) return true;
+    } catch {}
+  }
+  // Check for tool result markers
+  if (trimmed.startsWith('Tool:') || trimmed.startsWith('Status:')) return true;
+  return false;
+}
+
 function canSandbox(tab: PreviewTab): boolean {
-  // Never sandbox JSON tool calls or tool results
+  // Never sandbox tool results or tool call content
   const c = tab.content || "";
+  if (isToolResultContent(c)) return false;
+  // Never sandbox JSON tool calls or tool results
   const trimmed = c.trim();
   if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
     try { 
