@@ -139,6 +139,28 @@ function main() {
     process.exit(code || 0);
   });
 
+  // Start WebSocket chat mini-service (optional — SSE fallback works without it)
+  const wsChatPath = require("path").join(__dirname, "..", "mini-services", "ws-chat");
+  const wsProc = spawn("bun", ["run", "index.ts"], {
+    cwd: wsChatPath,
+    stdio: "pipe",
+    shell: true,
+    env: { ...process.env },
+  });
+
+  wsProc.stdout?.on("data", (data) => {
+    process.stdout.write(`[ws-chat] ${data}`);
+  });
+
+  wsProc.stderr?.on("data", (data) => {
+    process.stderr.write(`[ws-chat] ${data}`);
+  });
+
+  wsProc.on("error", () => {
+    // WS service is optional — don't crash if it fails to start
+    console.log("  ⚠️  WebSocket chat service failed to start (SSE fallback will be used)");
+  });
+
   // If auto-open is enabled, wait for server then open browser
   if (shouldOpen) {
     waitForServer(URL)
@@ -155,8 +177,12 @@ function main() {
   // Graceful shutdown
   const shutdown = () => {
     console.log("\n  Shutting down...");
+    wsProc.kill("SIGTERM");
     nextProc.kill("SIGTERM");
-    setTimeout(() => nextProc.kill("SIGKILL"), 5000);
+    setTimeout(() => {
+      wsProc.kill("SIGKILL");
+      nextProc.kill("SIGKILL");
+    }, 5000);
   };
 
   process.on("SIGINT", shutdown);

@@ -3,7 +3,7 @@ import { create } from "zustand";
 export interface PreviewTab {
   id: string;
   title: string;
-  type: "document" | "code" | "sandbox" | "spreadsheet" | "presentation" | "diagram" | "markdown" | "html" | "canvas" | "image" | "chart" | "website";
+  type: "document" | "code" | "sandbox" | "spreadsheet" | "presentation" | "diagram" | "markdown" | "html" | "canvas" | "image" | "chart" | "website" | "sql" | "yaml" | "xml" | "json" | "mermaid" | "latex" | "python" | "typescript" | "javascript" | "css" | "shell";
   content: string;
   metadata?: Record<string, any>;
   isPinned: boolean;

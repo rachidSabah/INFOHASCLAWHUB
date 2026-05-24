@@ -872,3 +872,517 @@ export async function autoScaleSwarm(
     throw err;
   }
 }
+
+// ============================================================
+// Advanced Intelligence Features
+// ============================================================
+
+// --- Specialist Routing ---
+
+export interface AgentCapability {
+  agentId: string;
+  specialties: string[];    // e.g., ["code_review", "debugging", "web_scraping"]
+  successRate: number;      // 0-1, historical success rate
+  avgResponseTime: number;  // ms
+  currentLoad: number;      // 0-1, current task load
+}
+
+/**
+ * Route tasks to the best agent based on agent capabilities and task requirements.
+ * Scoring: specialty match (40%) + success rate (30%) + low load (20%) + fast response (10%)
+ */
+export async function routeToSpecialist(
+  swarmId: string,
+  taskDescription: string,
+  requiredCapability: string
+): Promise<{ agentId: string; confidence: number } | null> {
+  try {
+    const swarm = await db.swarm.findUnique({ where: { id: swarmId } });
+    if (!swarm) throw new Error(`Swarm not found: ${swarmId}`);
+
+    const agents = parseJsonSafe<SwarmAgent[]>(swarm.agents, []);
+    if (agents.length === 0) return null;
+
+    // Build capability profiles for each agent from the Agent table
+    const agentCapabilities: AgentCapability[] = [];
+
+    for (const agent of agents) {
+      if (agent.status === 'offline' || agent.status === 'error') continue;
+
+      const agentRecord = await db.agent.findUnique({ where: { id: agent.agentId } });
+      if (!agentRecord) continue;
+
+      // Parse skills from the agent record
+      const skills = parseJsonSafe<string[]>(agentRecord.skills, []);
+      const specialties = skills.length > 0 ? skills : ['general'];
+
+      // Get historical performance from AgentExperience
+      const experiences = await db.agentExperience.findMany({
+        where: { agentId: agent.agentId },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      });
+
+      const successCount = experiences.filter(e => e.outcome === 'success').length;
+      const totalExperiences = experiences.length;
+      const successRate = totalExperiences > 0 ? successCount / totalExperiences : 0.5;
+
+      const avgResponseTime = experiences.length > 0
+        ? experiences.reduce((sum, e) => sum + (e.duration ?? 5000), 0) / experiences.length
+        : 5000;
+
+      const currentLoad = agent.status === 'busy' ? 0.8 : 0.2;
+
+      agentCapabilities.push({
+        agentId: agent.agentId,
+        specialties,
+        successRate,
+        avgResponseTime,
+        currentLoad,
+      });
+    }
+
+    if (agentCapabilities.length === 0) return null;
+
+    // Score each agent
+    const maxResponseTime = Math.max(...agentCapabilities.map(a => a.avgResponseTime), 1);
+
+    const scored = agentCapabilities.map(cap => {
+      // Specialty match: does the agent have the required capability?
+      const hasSpecialty = cap.specialties.some(
+        s => s.toLowerCase().includes(requiredCapability.toLowerCase()) ||
+             requiredCapability.toLowerCase().includes(s.toLowerCase())
+      );
+      const specialtyScore = hasSpecialty ? 1.0 : 0.1; // Small baseline for generalists
+
+      // Normalize response time (lower is better)
+      const responseScore = 1 - (cap.avgResponseTime / maxResponseTime);
+
+      // Load score (lower load is better)
+      const loadScore = 1 - cap.currentLoad;
+
+      // Weighted composite
+      const compositeScore =
+        specialtyScore * 0.4 +
+        cap.successRate * 0.3 +
+        loadScore * 0.2 +
+        responseScore * 0.1;
+
+      return {
+        agentId: cap.agentId,
+        confidence: Math.min(1, compositeScore),
+      };
+    });
+
+    // Sort by confidence descending
+    scored.sort((a, b) => b.confidence - a.confidence);
+
+    return scored[0] ?? null;
+  } catch (err: unknown) {
+    console.error(
+      '[SwarmEngine] routeToSpecialist error:',
+      err instanceof Error ? err.message : err
+    );
+    return null;
+  }
+}
+
+// --- Self-Healing ---
+
+/**
+ * Detect and recover from failed agents in the swarm.
+ * - Agents with >50% error rate in recent tasks are marked as "degraded"
+ * - Degraded agent's pending tasks are reassigned to healthy agents
+ * - If queen is degraded in hierarchical topology, promote next senior agent
+ */
+export async function selfHealSwarm(swarmId: string): Promise<{
+  healed: boolean;
+  actions: string[];
+}> {
+  try {
+    const swarm = await db.swarm.findUnique({ where: { id: swarmId } });
+    if (!swarm) throw new Error(`Swarm not found: ${swarmId}`);
+
+    const agents = parseJsonSafe<SwarmAgent[]>(swarm.agents, []);
+    const taskQueue = parseJsonSafe<SwarmTask[]>(swarm.taskQueue, []);
+    const actions: string[] = [];
+    let healed = false;
+
+    const degradedAgentIds: Set<string> = new Set();
+
+    // Check each agent's health based on recent error rate
+    for (const agent of agents) {
+      // Get recent task outcomes from AgentExperience
+      const recentExperiences = await db.agentExperience.findMany({
+        where: { agentId: agent.agentId },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      });
+
+      if (recentExperiences.length === 0) continue;
+
+      const errorCount = recentExperiences.filter(e => e.outcome === 'failure').length;
+      const errorRate = errorCount / recentExperiences.length;
+
+      if (errorRate > 0.5) {
+        degradedAgentIds.add(agent.agentId);
+        agent.status = 'error';
+        actions.push(`Agent ${agent.agentId} marked as degraded (error rate: ${(errorRate * 100).toFixed(0)}%)`);
+        healed = true;
+      }
+    }
+
+    // Reassign degraded agent's pending tasks to healthy agents
+    const healthyAgents = agents.filter(a => !degradedAgentIds.has(a.agentId) && a.status !== 'offline');
+
+    for (const task of taskQueue) {
+      if (
+        task.assignedTo &&
+        degradedAgentIds.has(task.assignedTo) &&
+        task.status !== 'completed' &&
+        task.status !== 'failed'
+      ) {
+        // Find the least loaded healthy agent
+        const availableHealthy = healthyAgents.filter(a => a.status === 'idle');
+        if (availableHealthy.length > 0) {
+          availableHealthy.sort((a, b) => a.tasksCompleted - b.tasksCompleted);
+          const newAgent = availableHealthy[0];
+          const oldAssignee = task.assignedTo;
+          task.assignedTo = newAgent.agentId;
+          task.status = 'assigned';
+          newAgent.status = 'busy';
+          actions.push(`Task ${task.id} reassigned from ${oldAssignee} to ${newAgent.agentId}`);
+        } else {
+          // No healthy agent available — put back in pending queue
+          task.assignedTo = null;
+          task.status = 'pending';
+          actions.push(`Task ${task.id} returned to pending (no healthy agent available)`);
+        }
+      }
+    }
+
+    // If queen is degraded in hierarchical topology, promote next senior agent
+    if (
+      swarm.topology === 'hierarchical' &&
+      swarm.queenAgentId &&
+      degradedAgentIds.has(swarm.queenAgentId)
+    ) {
+      const eligibleAgents = agents.filter(
+        a => !degradedAgentIds.has(a.agentId) && a.agentId !== swarm.queenAgentId
+      );
+
+      if (eligibleAgents.length > 0) {
+        // Promote the agent with the most completed tasks
+        const newQueen = eligibleAgents.reduce((best, a) =>
+          a.tasksCompleted > best.tasksCompleted ? a : best
+        );
+        const oldQueenId = swarm.queenAgentId;
+
+        // Update roles
+        const oldQueen = agents.find(a => a.agentId === oldQueenId);
+        if (oldQueen) oldQueen.role = 'worker';
+        newQueen.role = 'queen';
+
+        actions.push(`Queen ${oldQueenId} demoted; agent ${newQueen.agentId} promoted to queen`);
+        healed = true;
+      } else {
+        actions.push(`Queen ${swarm.queenAgentId} is degraded but no eligible replacement found`);
+      }
+    }
+
+    // Persist changes if any healing occurred
+    if (healed) {
+      const updatedQueenId = agents.find(a => a.role === 'queen')?.agentId ?? swarm.queenAgentId;
+      await db.swarm.update({
+        where: { id: swarmId },
+        data: {
+          agents: JSON.stringify(agents),
+          taskQueue: JSON.stringify(taskQueue),
+          queenAgentId: updatedQueenId,
+        },
+      });
+    }
+
+    return { healed, actions };
+  } catch (err: unknown) {
+    console.error(
+      '[SwarmEngine] selfHealSwarm error:',
+      err instanceof Error ? err.message : err
+    );
+    return {
+      healed: false,
+      actions: [`Self-heal failed: ${err instanceof Error ? err.message : String(err)}`],
+    };
+  }
+}
+
+// --- Knowledge Sharing ---
+
+export interface SwarmKnowledge {
+  id: string;
+  swarmId: string;
+  category: string;       // "tool_tip" | "code_pattern" | "error_solution" | "best_practice"
+  insight: string;
+  sourceAgentId: string;
+  confidence: number;
+  usageCount: number;
+  createdAt: string;
+}
+
+/**
+ * Share a learned insight with the swarm. Stored in the swarm's knowledgeBase JSON array.
+ */
+export async function shareKnowledge(
+  swarmId: string,
+  category: string,
+  insight: string,
+  sourceAgentId: string,
+  confidence: number
+): Promise<SwarmKnowledge> {
+  try {
+    const swarm = await db.swarm.findUnique({ where: { id: swarmId } });
+    if (!swarm) throw new Error(`Swarm not found: ${swarmId}`);
+
+    const knowledgeBase = parseJsonSafe<SwarmKnowledge[]>(swarm.knowledgeBase, []);
+
+    const entry: SwarmKnowledge = {
+      id: `k_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      swarmId,
+      category,
+      insight,
+      sourceAgentId,
+      confidence: Math.max(0, Math.min(1, confidence)),
+      usageCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+
+    knowledgeBase.push(entry);
+
+    await db.swarm.update({
+      where: { id: swarmId },
+      data: {
+        knowledgeBase: JSON.stringify(knowledgeBase),
+      },
+    });
+
+    return entry;
+  } catch (err: unknown) {
+    console.error(
+      '[SwarmEngine] shareKnowledge error:',
+      err instanceof Error ? err.message : err
+    );
+    throw err;
+  }
+}
+
+/**
+ * Query the swarm's knowledge base. Optionally filter by category and/or keyword matching.
+ */
+export async function queryKnowledge(
+  swarmId: string,
+  category?: string,
+  query?: string
+): Promise<SwarmKnowledge[]> {
+  try {
+    const swarm = await db.swarm.findUnique({ where: { id: swarmId } });
+    if (!swarm) return [];
+
+    const knowledgeBase = parseJsonSafe<SwarmKnowledge[]>(swarm.knowledgeBase, []);
+
+    let results = knowledgeBase;
+
+    // Filter by category if provided
+    if (category) {
+      results = results.filter(k => k.category === category);
+    }
+
+    // Filter by keyword matching on insight if query is provided
+    if (query) {
+      const queryLower = query.toLowerCase();
+      const queryWords = queryLower.split(/\s+/).filter(w => w.length > 0);
+      results = results.filter(k => {
+        const insightLower = k.insight.toLowerCase();
+        // Match if any query word appears in the insight
+        return queryWords.some(word => insightLower.includes(word));
+      });
+    }
+
+    // Sort by confidence descending, then by usageCount descending
+    results.sort((a, b) => {
+      if (b.confidence !== a.confidence) return b.confidence - a.confidence;
+      return b.usageCount - a.usageCount;
+    });
+
+    return results;
+  } catch (err: unknown) {
+    console.error(
+      '[SwarmEngine] queryKnowledge error:',
+      err instanceof Error ? err.message : err
+    );
+    return [];
+  }
+}
+
+// --- Enhanced Consensus with Weighted Voting ---
+
+/**
+ * Enhanced consensus that considers agent expertise weights.
+ * Each agent votes on each option with a reason, and votes are weighted
+ * by the agent's expertise relevance and historical accuracy.
+ */
+export async function weightedConsensus(
+  swarmId: string,
+  proposal: string,
+  options: string[]
+): Promise<{
+  decided: boolean;
+  winner: string | null;
+  votes: Record<string, Array<{ agentId: string; vote: string; weight: number; reason: string }>>;
+  confidence: number;
+}> {
+  try {
+    const swarm = await db.swarm.findUnique({ where: { id: swarmId } });
+    if (!swarm) throw new Error(`Swarm not found: ${swarmId}`);
+
+    const agents = parseJsonSafe<SwarmAgent[]>(swarm.agents, []);
+
+    if (agents.length === 0 || options.length === 0) {
+      return { decided: false, winner: null, votes: {}, confidence: 0 };
+    }
+
+    const votes: Record<string, Array<{ agentId: string; vote: string; weight: number; reason: string }>> = {};
+
+    // Initialize vote containers for each option
+    for (const option of options) {
+      votes[option] = [];
+    }
+
+    // Each agent votes on each option
+    for (const agent of agents) {
+      if (agent.status === 'offline' || agent.status === 'error') continue;
+
+      // Calculate agent's weight based on historical accuracy and experience
+      const experiences = await db.agentExperience.findMany({
+        where: { agentId: agent.agentId },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+      });
+
+      const successCount = experiences.filter(e => e.outcome === 'success').length;
+      const totalExp = experiences.length;
+      const accuracyScore = totalExp > 0 ? successCount / totalExp : 0.5;
+
+      // Weight: base 0.5 + accuracy bonus (up to 1.0)
+      // More experienced agents with higher success rates get more weight
+      const experienceBonus = Math.min(0.3, totalExp * 0.01);
+      const weight = Math.min(1.0, 0.5 + accuracyScore * 0.3 + experienceBonus);
+
+      // Determine the agent's vote based on a simple heuristic:
+      // Agents with more success in relevant task types lean toward options that
+      // align with their expertise. For simplicity, we use a deterministic hash
+      // based on the agent's experience to assign a "preferred" option.
+      const proposalWords = proposal.toLowerCase().split(/\s+/);
+
+      let bestOption = options[0];
+      let bestReason = `Agent ${agent.agentId} selected based on experience`;
+
+      // Match agent skills to proposal keywords to find the best option
+      const agentRecord = await db.agent.findUnique({ where: { id: agent.agentId } });
+      const skills = parseJsonSafe<string[]>(agentRecord?.skills, []);
+
+      if (skills.length > 0) {
+        // Find which option keywords best match the agent's skills
+        let bestScore = -1;
+        for (const option of options) {
+          const optionWords = option.toLowerCase().split(/\s+/);
+          const skillMatch = skills.filter(s =>
+            optionWords.some(ow => ow.includes(s.toLowerCase()) || s.toLowerCase().includes(ow)) ||
+            proposalWords.some(pw => pw.includes(s.toLowerCase()) || s.toLowerCase().includes(pw))
+          ).length;
+          const score = skillMatch + (accuracyScore * 0.5);
+          if (score > bestScore) {
+            bestScore = score;
+            bestOption = option;
+            bestReason = `Skills match: ${skills.join(', ')} — best aligned with option "${option}"`;
+          }
+        }
+      } else {
+        // No skills — use accuracy-weighted random selection favoring first options
+        const idx = Math.floor(accuracyScore * options.length) % options.length;
+        bestOption = options[idx];
+        bestReason = `No specific skill match; selected based on general accuracy (${(accuracyScore * 100).toFixed(0)}%)`;
+      }
+
+      // Record the vote for the best option
+      if (votes[bestOption]) {
+        votes[bestOption].push({
+          agentId: agent.agentId,
+          vote: bestOption,
+          weight,
+          reason: bestReason,
+        });
+      }
+    }
+
+    // Calculate weighted scores for each option
+    const weightedScores: Record<string, number> = {};
+    let totalWeight = 0;
+
+    for (const option of options) {
+      const optionVotes = votes[option] ?? [];
+      const score = optionVotes.reduce((sum, v) => sum + v.weight, 0);
+      weightedScores[option] = score;
+      totalWeight += score;
+    }
+
+    // Find the winner
+    let winner: string | null = null;
+    let highestScore = 0;
+
+    for (const [option, score] of Object.entries(weightedScores)) {
+      if (score > highestScore) {
+        highestScore = score;
+        winner = option;
+      }
+    }
+
+    // Confidence is the proportion of total weight that went to the winner
+    const confidence = totalWeight > 0 ? highestScore / totalWeight : 0;
+
+    // A decision is made if confidence > 0.5 (simple majority by weight)
+    const decided = confidence > 0.5 && winner !== null;
+
+    // Log the consensus round to the consensus log
+    const consensusLog = parseJsonSafe<ConsensusRound[]>(swarm.consensusLog, []);
+    const newRound: ConsensusRound = {
+      round: consensusLog.length + 1,
+      proposal: `[Weighted Consensus] ${proposal} → ${winner ?? 'no winner'}`,
+      votes: agents
+        .filter(a => a.status !== 'offline' && a.status !== 'error')
+        .map(a => ({
+          voterId: a.agentId,
+          vote: (winner && votes[winner]?.some(v => v.agentId === a.agentId)) ? 'for' as const : 'against' as const,
+          timestamp: new Date().toISOString(),
+        })),
+      decision: decided ? 'accepted' : 'pending',
+      startedAt: new Date().toISOString(),
+      completedAt: decided ? new Date().toISOString() : undefined,
+    };
+    consensusLog.push(newRound);
+
+    await db.swarm.update({
+      where: { id: swarmId },
+      data: {
+        consensusLog: JSON.stringify(consensusLog),
+      },
+    });
+
+    return { decided, winner, votes, confidence };
+  } catch (err: unknown) {
+    console.error(
+      '[SwarmEngine] weightedConsensus error:',
+      err instanceof Error ? err.message : err
+    );
+    return { decided: false, winner: null, votes: {}, confidence: 0 };
+  }
+}

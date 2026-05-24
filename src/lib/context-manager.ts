@@ -661,6 +661,133 @@ export class ContextManagerEngine {
       update: { maxTokens },
     });
   }
+
+  // ── Adaptive Token Management ──────────────────────────────────────────
+
+  /**
+   * Dynamically allocate context budget based on task type and conversation state.
+   * Different task types need different ratios of prompt vs completion tokens.
+   *
+   * Returns a budget allocation that can be used to configure the LLM call.
+   */
+  getAdaptiveTokenBudget(
+    model: string,
+    taskType: string,
+    conversationLength: number,
+    hasToolCalls: boolean
+  ): {
+    maxPromptTokens: number;
+    maxCompletionTokens: number;
+    reservedForTools: number;
+    compressionThreshold: number;
+    strategy: string;
+  } {
+    const contextWindow = this.getContextWindowSize(model);
+    
+    // Task-specific allocation profiles
+    const profiles: Record<string, {
+      promptRatio: number;     // fraction of context for prompt
+      completionRatio: number; // fraction of context for completion
+      toolReserve: number;     // tokens reserved for tool results
+      compressionAt: number;   // trigger compression at this usage %
+    }> = {
+      // Coding tasks: need lots of context for code, moderate completion
+      coding: { promptRatio: 0.75, completionRatio: 0.20, toolReserve: 1024, compressionAt: 0.80 },
+      // Research tasks: need lots of context for source material, moderate completion
+      research: { promptRatio: 0.70, completionRatio: 0.25, toolReserve: 2048, compressionAt: 0.85 },
+      // Creative tasks: less context needed, more completion space
+      creative: { promptRatio: 0.50, completionRatio: 0.45, toolReserve: 512, compressionAt: 0.90 },
+      // Analysis tasks: balanced context + completion
+      analysis: { promptRatio: 0.65, completionRatio: 0.30, toolReserve: 1536, compressionAt: 0.82 },
+      // Conversation: mostly completion, minimal context
+      conversation: { promptRatio: 0.55, completionRatio: 0.40, toolReserve: 256, compressionAt: 0.88 },
+      // Debugging: needs lots of context for code + error messages
+      debugging: { promptRatio: 0.80, completionRatio: 0.15, toolReserve: 2048, compressionAt: 0.75 },
+    };
+
+    const profile = profiles[taskType] || profiles.conversation;
+
+    // Adjust for conversation length — longer conversations need more compression
+    let promptRatio = profile.promptRatio;
+    let compressionAt = profile.compressionAt;
+    if (conversationLength > 20) {
+      promptRatio -= 0.05; // Less prompt space for very long conversations
+      compressionAt -= 0.05;
+    }
+    if (conversationLength > 50) {
+      promptRatio -= 0.05;
+      compressionAt -= 0.05;
+    }
+
+    // Adjust for tool usage — tools need buffer space
+    const toolReserve = hasToolCalls ? profile.toolReserve * 2 : profile.toolReserve;
+
+    const maxPromptTokens = Math.floor(contextWindow * promptRatio) - toolReserve;
+    const maxCompletionTokens = Math.floor(contextWindow * profile.completionRatio);
+
+    // Determine strategy name
+    let strategy = "standard";
+    if (conversationLength > 20) strategy = "compressed";
+    if (conversationLength > 50) strategy = "aggressive-compression";
+    if (hasToolCalls) strategy += "+tools";
+
+    return {
+      maxPromptTokens: Math.max(maxPromptTokens, 4096),
+      maxCompletionTokens: Math.max(maxCompletionTokens, 2048),
+      reservedForTools: toolReserve,
+      compressionThreshold: Math.max(compressionAt, 0.60),
+      strategy,
+    };
+  }
+
+  /**
+   * Get an optimized context configuration for a specific conversation and model.
+   * Combines usage data with adaptive budget to provide actionable recommendations.
+   */
+  async getOptimizedContextConfig(
+    conversationId: string,
+    model: string,
+    taskType: string
+  ): Promise<{
+    budget: ReturnType<ContextManagerEngine['getAdaptiveTokenBudget']>;
+    usage: ContextUsage;
+    recommendations: string[];
+    shouldCompressNow: boolean;
+  }> {
+    const usage = await this.getContextUsage(conversationId);
+    const messages = await db.message.findMany({
+      where: { conversationId },
+      select: { id: true },
+    });
+    const hasTools = await db.message.count({
+      where: { conversationId, role: "tool" },
+    }).then(c => c > 0);
+
+    const budget = this.getAdaptiveTokenBudget(model, taskType, messages.length, hasTools);
+    
+    const recommendations: string[] = [];
+    const usagePercent = usage.percentage / 100;
+
+    if (usagePercent > budget.compressionThreshold) {
+      recommendations.push(`Context usage at ${usage.percentage.toFixed(1)}% — exceeds compression threshold of ${(budget.compressionThreshold * 100).toFixed(0)}%. Run auto-compress.`);
+    }
+    if (usage.pinnedCount > 5) {
+      recommendations.push(`${usage.pinnedCount} pinned messages may be consuming too much context. Consider unpinning older messages.`);
+    }
+    if (messages.length > 30 && usage.compressionRatio > 0.8) {
+      recommendations.push("Conversation is long with low compression ratio. Aggressive summarization recommended.");
+    }
+    if (budget.strategy.includes("tools")) {
+      recommendations.push(`Tool usage detected. ${budget.reservedForTools} tokens reserved for tool results.`);
+    }
+
+    return {
+      budget,
+      usage,
+      recommendations,
+      shouldCompressNow: usagePercent > budget.compressionThreshold,
+    };
+  }
 }
 
 export function getContextManager(): ContextManagerEngine {

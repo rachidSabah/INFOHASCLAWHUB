@@ -71,15 +71,37 @@ model Provider {
 }
 
 model Agent {
-  id           String   @id @default(cuid())
-  name         String   @unique
+  id           String        @id @default(cuid())
+  name         String        @unique
   role         String
   systemPrompt String
   avatar       String? // Icon/Emoji representation
   skills       String? // JSON array of skill names/IDs
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  memories     AgentMemory[]
+}
+
+model AgentMemory {
+  id                   String   @id @default(cuid())
+  agentId              String
+  category             String   // preference, lesson, pattern, context, fact, skill
+  key                  String
+  value                String
+  confidence           Float    @default(0.5)
+  accessCount          Int      @default(0)
+  sourceConversationId String?
+  tags                 String   @default("[]") // JSON array
+  expiresAt            DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, category])
+  @@index([agentId, key])
+  @@index([agentId, confidence])
 }
 
 model Prompt {
@@ -724,9 +746,10 @@ model Swarm {
   status      String   @default("idle") // "idle" | "forming" | "active" | "disbanding" | "error"
   taskQueue   String   @default("[]") // JSON: { task, assignedTo, priority, status }[]
   consensusLog String  @default("[]") // JSON: { round, proposal, votes, decision }[]
-  config      String   @default("{}") // JSON: topology-specific config
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  config       String   @default("{}") // JSON: topology-specific config
+  knowledgeBase String  @default("[]") // JSON: { id, category, insight, sourceAgentId, confidence, usageCount, createdAt }[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([status])
   @@index([topology])

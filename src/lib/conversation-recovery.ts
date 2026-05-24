@@ -191,3 +191,75 @@ export function getDefaultUIState(): ConversationUIState {
     activeTab: "chat",
   };
 }
+
+// Client-side UI state save (call from React components)
+export function saveUIState(state: ConversationUIState): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(UI_STATE_KEY, JSON.stringify({
+      ...state,
+      savedAt: Date.now(),
+    }));
+  } catch (e) {
+    console.warn('Failed to save UI state:', e);
+  }
+}
+
+// Client-side UI state restore
+export function restoreUIState(): ConversationUIState | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(UI_STATE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    // Don't restore state older than 24 hours
+    if (Date.now() - (parsed.savedAt || 0) > 86400000) {
+      localStorage.removeItem(UI_STATE_KEY);
+      return null;
+    }
+    return {
+      conversationId: parsed.conversationId,
+      activeModel: parsed.activeModel,
+      activeProviderId: parsed.activeProviderId,
+      workspacePath: parsed.workspacePath,
+      scrollPosition: parsed.scrollPosition || 0,
+      draftMessage: parsed.draftMessage || '',
+      isGenerating: false, // Never restore generating state
+      lastActivityAt: parsed.lastActivityAt || new Date().toISOString(),
+      pinnedMessages: parsed.pinnedMessages || [],
+      expandedArtifacts: parsed.expandedArtifacts || [],
+      sidebarOpen: parsed.sidebarOpen ?? true,
+      activeTab: parsed.activeTab || 'chat',
+    };
+  } catch (e) {
+    console.warn('Failed to restore UI state:', e);
+    return null;
+  }
+}
+
+// Clear UI state (on explicit new conversation)
+export function clearUIState(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(UI_STATE_KEY);
+  } catch (e) {}
+}
+
+// Auto-save conversation state to server
+export async function autoSaveConversation(conversationId: string, messages: any[], model: string): Promise<void> {
+  try {
+    await fetch('/api/conversation-recovery', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'save',
+        conversationId,
+        messages,
+        model,
+        lastActivityAt: new Date().toISOString(),
+      }),
+    });
+  } catch (e) {
+    console.warn('Auto-save failed:', e);
+  }
+}

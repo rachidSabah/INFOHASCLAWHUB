@@ -14,6 +14,7 @@ export type ProgressPhase =
   | "reflecting"       // Self-reflection on results
   | "quality_check"    // Quality scoring in progress
   | "enhancing"        // Response enhancement in progress
+  | "cache_hit"        // Response served from semantic cache
   | "complete";        // All done
 
 export interface ProgressEvent {
@@ -85,6 +86,7 @@ export const PROGRESS_MESSAGES: Record<ProgressPhase, string> = {
   reflecting: "Reflecting on results and planning next steps...",
   quality_check: "Checking response quality...",
   enhancing: "Enhancing response...",
+  cache_hit: "Found cached response...",
   complete: "Done!",
 };
 

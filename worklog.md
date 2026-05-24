@@ -188,3 +188,113 @@ Iteration 2: queryLLM sees [...history, user:prompt1, user:continuationPrompt, a
 | Enhancements | 6 | ✅ All implemented |
 | New Files | 2 | prompt-optimizer.ts, intelligent-tool-selection.ts |
 | Modified Files | 6 | route.ts, ChatInput.tsx, ChatWindow.tsx, stores.ts, context-manager.ts, consensus/route.ts, ArtifactPreviewPanel.tsx |
+
+---
+
+## Date: 2026-05-24
+
+---
+
+### Phase 2-3: Complete Feature Implementation
+
+**Status**: ✅ All Phases Complete
+
+#### P1 Phase: Semantic Cache + Conversation Recovery + Multi-Tab Artifact + Swarm Intelligence
+
+1. **Semantic Cache Integration** — Already integrated into gemini/chat/route.ts:
+   - Cache lookup before agent loop (line ~1440)
+   - Cache store after agent loop (line ~1733)
+   - Similarity-based matching (Jaccard + bigram + substring)
+   - Per-task-type TTL (research: 1hr, coding: 10min, creative: never)
+
+2. **Conversation State Recovery** — Enhanced with client-side persistence:
+   - `saveUIState()` — localStorage-based UI state persistence
+   - `restoreUIState()` — Recover UI state after crash/refresh (24hr TTL)
+   - `clearUIState()` — Clean up on new conversation
+   - `autoSaveConversation()` — Server-side conversation backup
+
+3. **Multi-Tab Artifact Viewer** — Major ArtifactPreviewPanel.tsx enhancements:
+   - Version History dropdown with rollback support
+   - Export system with format detection and one-click download
+   - Enhanced tab bar with type icons, streaming indicators, close-on-hover
+   - Artifact type indicator bar below tabs
+
+4. **Swarm Intelligence** — New features in swarm-engine.ts (~500 lines added):
+   - `routeToSpecialist()` — Capability-based agent selection with scoring
+   - `selfHealSwarm()` — Auto-detect degraded agents, reassign tasks, promote new queen
+   - `shareKnowledge()` / `queryKnowledge()` — Cross-agent knowledge sharing
+   - `weightedConsensus()` — Expertise-weighted voting for consensus decisions
+   - New API route: `/api/swarm/[id]/intelligence`
+
+#### P2 Phase: Monaco Editor + WebSocket + Agent Memory
+
+5. **Monaco Editor** — Professional code editing in ArtifactPreviewPanel:
+   - Dynamic import with SSR-safe loading
+   - vs-dark theme, minimap disabled, word wrap, 14px font
+   - Edit/View toggle, Ctrl+S save, auto-language detection
+   - Version creation on save via /api/artifacts/versions
+   - Split-pane mode (Editor + Live Preview side-by-side)
+
+6. **WebSocket Transport** — Optional real-time communication:
+   - WebSocket server singleton (`websocket-server.ts`) with heartbeat, reconnection buffering
+   - Client hook (`use-websocket.ts`) with auto-reconnect + exponential backoff
+   - SSE fallback always available
+   - API route: `/api/ws/chat` for status discovery
+
+7. **Persistent Agent Memory** — Long-term memory for agents:
+   - `storeAgentMemory()` — Upsert with confidence, tags, TTL
+   - `getAgentMemories()` — Filtered retrieval with confidence thresholds
+   - `searchAgentMemories()` — Keyword relevance search + recency boost
+   - `getAgentMemoryContext()` — Prompt-injectable context string (token-budgeted)
+   - `extractAndStoreMemories()` — Auto-extract preferences, facts, lessons from conversations
+   - Prisma model: AgentMemory with indexes on agentId, category, confidence
+   - API route: `/api/agents/[id]/memory`
+
+#### P3 Phase: Adaptive Token Management
+
+8. **Adaptive Token Management** — Dynamic context allocation:
+   - Task-specific allocation profiles (coding, research, creative, analysis, conversation, debugging)
+   - `getAdaptiveTokenBudget()` — Dynamic prompt/completion/tool token allocation
+   - `getOptimizedContextConfig()` — Combined usage + budget + recommendations
+   - Conversation length adjustments (compression at 20+, aggressive at 50+ messages)
+   - Tool-aware reserve allocation (2x reserve when tools are active)
+   - Enhanced API: `/api/context-manager?action=optimized|budget|cost`
+
+#### Bug Fixes During Integration:
+- Fixed PreviewTab type union (added sql, yaml, xml, json, mermaid, latex, python, typescript, javascript, css, shell)
+- Fixed `prismaToMemoryEntry()` type errors (unknown → proper type assertions)
+- Removed unused eslint-disable directive in use-websocket.ts
+
+#### Build Verification:
+- TypeScript: 0 errors (excluding skill files)
+- Next.js build: Success
+- ESLint: 1 pre-existing warning (FileBrowser.tsx alt text)
+
+---
+
+### Summary Table
+
+| Phase | Features | Status |
+|-------|----------|--------|
+| P0 | Parallel Tools, Retry/Circuit Breaker, Agent Orchestration | ✅ Complete |
+| P1 | Semantic Cache, Conversation Recovery, Multi-Tab Artifacts, Swarm Intelligence | ✅ Complete |
+| P2 | Monaco Editor, WebSocket Transport, Persistent Agent Memory, Live Preview | ✅ Complete |
+| P3 | Adaptive Token Management, Version History, Export System | ✅ Complete |
+
+**New Files Created:**
+- `src/lib/agent-memory.ts` — Persistent agent memory system
+- `src/lib/websocket-server.ts` — WebSocket server singleton
+- `src/lib/use-websocket.ts` — Client-side WebSocket hook
+- `src/app/api/swarm/[id]/intelligence/route.ts` — Swarm intelligence API
+- `src/app/api/agents/[id]/memory/route.ts` — Agent memory API
+- `src/app/api/ws/chat/route.ts` — WebSocket status API
+
+**Files Modified:**
+- `src/lib/artifact-store.ts` — Extended PreviewTab type union
+- `src/lib/context-manager.ts` — Added adaptive token management
+- `src/lib/conversation-recovery.ts` — Added client-side persistence
+- `src/lib/swarm-engine.ts` — Added specialist routing, self-healing, knowledge sharing, weighted consensus
+- `src/lib/agent-memory.ts` — Fixed type errors in prismaToMemoryEntry
+- `src/components/enhancements/ArtifactPreviewPanel.tsx` — Monaco editor, version history, export, split-pane
+- `src/app/api/context-manager/route.ts` — Enhanced with budget/cost/optimized endpoints
+- `prisma/schema.prisma` — Added AgentMemory model

@@ -7,6 +7,7 @@ import { detectArtifact, shouldAutoOpen } from "@/lib/artifact-detector";
 import { stripToolCallXml } from "@/lib/tool-call-utils";
 import { optimizeRequest } from "@/lib/optimization-engine";
 import { getCachedResponse, setCachedResponse } from "@/lib/response-cache";
+import { saveUIState, restoreUIState, autoSaveConversation } from "@/lib/conversation-recovery";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -166,6 +167,14 @@ export function ChatInput() {
     }
   }, [input]);
 
+  // Restore conversation state on mount
+  useEffect(() => {
+    const restored = restoreUIState();
+    if (restored?.draftMessage) {
+      setInput(restored.draftMessage);
+    }
+  }, []);
+
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed && attachments.length === 0) return;
@@ -234,6 +243,22 @@ export function ChatInput() {
     setAttachments([]);
     uiStore.setIsGenerating(true);
     abortRef.current = false;
+
+    // Save UI state before sending
+    saveUIState({
+      conversationId: convId || 'unknown',
+      activeModel: model,
+      activeProviderId: '',
+      workspacePath: settings.workspacePath || '',
+      scrollPosition: 0,
+      draftMessage: '',
+      isGenerating: false,
+      lastActivityAt: new Date().toISOString(),
+      pinnedMessages: [],
+      expandedArtifacts: [],
+      sidebarOpen: true,
+      activeTab: 'chat',
+    });
 
     try {
       const history = useChatStore.getState().messages.map((m) => {
@@ -475,6 +500,12 @@ export function ChatInput() {
                     createdAt: new Date().toISOString(),
                   });
                 }
+                // Auto-save conversation state after assistant response
+                autoSaveConversation(
+                  convId || 'unknown',
+                  useChatStore.getState().messages,
+                  model
+                ).catch(() => {});
               } else if (data.type === "error") {
                 clearStreamingContent();
                 addMessage({

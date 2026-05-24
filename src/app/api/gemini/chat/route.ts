@@ -1437,6 +1437,18 @@ export async function POST(req: NextRequest) {
           // Track if any tool had errors for quality scoring
           let hadToolErrors = false;
 
+          // === SEMANTIC CACHE LOOKUP ===
+          const cacheResult = semanticCacheLookup(prompt || "", detectedTaskType, model);
+          if (cacheResult.hit && cacheResult.response) {
+            console.log(`[${requestId}] Semantic cache HIT (similarity: ${cacheResult.similarity?.toFixed(2)})`);
+            // Stream the cached response directly
+            controller.enqueue(encoder.encode(createProgressEvent("cache_hit", "Found cached response", 50)));
+            totalResponseText = cacheResult.response;
+            lastAssistantText = cacheResult.response;
+            // Skip the entire agent loop
+            iteration = maxIterations + 1; // Force exit the while loop
+          }
+
           while (iteration < maxIterations) {
             iteration++;
             console.log(`[${requestId}] Agent Loop Iteration ${iteration}`);
@@ -1717,6 +1729,26 @@ The user's ORIGINAL request must be FULLY completed. Continue now.`;
             hadToolErrors
           );
           console.log(`[${requestId}] Quality Score: ${qualityScore.overall} (${qualityScore.completeness} completeness, ${qualityScore.depth} depth)`);
+
+          // === SEMANTIC CACHE STORE ===
+          if (totalResponseText.trim().length > 100) {
+            const cleanedForCache = stripToolCallXml(totalResponseText).trim();
+            if (cleanedForCache.length > 100) {
+              try {
+                semanticCacheStore(
+                  prompt || "",
+                  cleanedForCache,
+                  model,
+                  isCustomProvider ? providerData?.name : "gemini",
+                  detectedTaskType,
+                  qualityScore?.overall ? qualityScore.overall / 100 : 0.5,
+                  promptTokens + completionTokens
+                );
+              } catch (err) {
+                console.error(`[${requestId}] Cache store failed:`, err);
+              }
+            }
+          }
 
           // === RESPONSE ENHANCEMENT ===
           // Analyze the response for type, confidence, follow-ups, and warnings

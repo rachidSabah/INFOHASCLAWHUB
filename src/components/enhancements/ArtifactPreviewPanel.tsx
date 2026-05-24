@@ -1,17 +1,38 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useArtifactPreviewStore, type PreviewTab } from "@/lib/artifact-store";
+import {
+  detectArtifactType,
+  getExportFormats,
+  exportArtifact,
+  type ArtifactVersion,
+} from "@/lib/artifact-system-v2";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   X, Download, Copy, Code2, Eye, ChevronLeft, ChevronRight, Maximize2, ArrowLeft, Loader2,
   FileText, FileSpreadsheet, File, Share2, Play, Terminal, RefreshCw, Monitor,
+  History, ChevronDown, Clock, RotateCcw, FileDown,
+  Globe, BarChart3, PenTool, Database, TerminalSquare, FileCode, Image, Layers,
+  Pencil, Save,
 } from "lucide-react";
 import { toast } from "sonner";
 
 const ACCENT = "#f97316";
 const PANEL_WIDTH = "min(60vw, 800px)";
+
+// ── Dynamic import for Monaco Editor (client-only, heavy) ──
+const MonacoEditor = dynamic(() => import("@monaco-editor/react").then((mod) => mod.default), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full text-gray-400 gap-2">
+      <Loader2 className="h-4 w-4 animate-spin" />
+      <span className="text-sm">Loading editor...</span>
+    </div>
+  ),
+});
 
 function getLanguage(tab: PreviewTab): string {
   const c = tab.content || "";
@@ -23,6 +44,59 @@ function getLanguage(tab: PreviewTab): string {
   if (/function|const |let |var /.test(c)) return "javascript";
   if (/^@|#\{|\$scope|\.class\b|\bcolor:|\.\w+\s*\{/.test(c)) return "css";
   return "text";
+}
+
+/** Map detected language / tab type to Monaco-compatible language identifier */
+function getMonacoLanguage(tab: PreviewTab): string {
+  const c = tab.content || "";
+  const title = tab.title.toLowerCase();
+  const t = tab.type;
+
+  // Detect by tab type first
+  if (t === "markdown" || t === "document") return "markdown";
+  if (t === "sql") return "sql";
+  if (t === "yaml") return "yaml";
+  if (t === "xml") return "xml";
+  if (t === "json") return "json";
+
+  // Detect by file extension in title
+  if (title.endsWith(".json")) return "json";
+  if (title.endsWith(".md") || title.endsWith(".markdown")) return "markdown";
+  if (title.endsWith(".sql")) return "sql";
+  if (title.endsWith(".yml") || title.endsWith(".yaml")) return "yaml";
+  if (title.endsWith(".xml")) return "xml";
+  if (title.endsWith(".sh") || title.endsWith(".bash") || title.endsWith(".zsh")) return "shell";
+  if (title.endsWith(".ts") || title.endsWith(".tsx")) return "typescript";
+  if (title.endsWith(".js") || title.endsWith(".jsx")) return "javascript";
+  if (title.endsWith(".py")) return "python";
+  if (title.endsWith(".css") || title.endsWith(".scss")) return "css";
+  if (title.endsWith(".html")) return "html";
+  if (title.endsWith(".go")) return "go";
+
+  // Detect by content patterns
+  const trimmed = c.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try { JSON.parse(trimmed); return "json"; } catch {}
+  }
+  if (/^---[\s\S]*?---/.test(trimmed)) return "yaml"; // YAML front matter
+  if (/^<\?xml/.test(trimmed)) return "xml";
+  if (/^#!\/bin\/|^#!\/usr\/bin\/env/.test(trimmed)) return "shell";
+  if (/^SELECT |^INSERT |^UPDATE |^DELETE |^CREATE TABLE|^ALTER TABLE/i.test(trimmed)) return "sql";
+  if (/^#\s/.test(trimmed) && /\n##\s/.test(trimmed)) return "markdown";
+
+  // Fall back to the existing getLanguage and map to Monaco IDs
+  const lang = getLanguage(tab);
+  const monacoMap: Record<string, string> = {
+    html: "html",
+    jsx: "javascript",
+    typescript: "typescript",
+    python: "python",
+    go: "go",
+    javascript: "javascript",
+    css: "css",
+    text: "plaintext",
+  };
+  return monacoMap[lang] || "plaintext";
 }
 
 function extractPureCode(content: string): string {
@@ -73,6 +147,37 @@ function isWebsitePreview(tab: PreviewTab): boolean {
   return tab.type === "website" || 
     (tab.metadata?.url !== undefined) ||
     (tab.title.toLowerCase().includes("website") && tab.content.includes("textContent"));
+}
+
+/** Get a Lucide icon component based on the tab/artifact type */
+function getTabTypeIcon(tab: PreviewTab): React.ComponentType<any> {
+  const detected = detectArtifactType(extractPureCode(tab.content || ""));
+  const typeKey = tab.type === "document" ? "markdown" : tab.type === "spreadsheet" ? "csv" : tab.type === "diagram" ? "mermaid" : tab.type === "sandbox" ? "html" : detected.type;
+  const iconMap: Record<string, React.ComponentType<any>> = {
+    html: Globe, react: Code2, code: FileCode, markdown: FileText,
+    svg: Image, mermaid: BarChart3, latex: PenTool, chart: BarChart3,
+    json: Database, csv: FileSpreadsheet, sql: Database, python: TerminalSquare,
+    typescript: FileCode, javascript: FileCode, css: PenTool, shell: TerminalSquare,
+    yaml: FileText, xml: FileCode, website: Globe, canvas: Layers,
+    image: Image, presentation: Layers,
+  };
+  return iconMap[typeKey] || FileCode;
+}
+
+/** Format a relative time string from an ISO date */
+function formatRelativeTime(isoDate: string): string {
+  const now = Date.now();
+  const then = new Date(isoDate).getTime();
+  const diffMs = now - then;
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return "just now";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 30) return `${diffDay}d ago`;
+  return new Date(isoDate).toLocaleDateString();
 }
 
 /**
@@ -221,6 +326,102 @@ function CodeView({ tab }: { tab: PreviewTab }) {
         .code-scroll-area::-webkit-scrollbar-track { background: transparent; }
         .code-scroll-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
       `}</style>
+    </div>
+  );
+}
+
+// ── Monaco Editor View (professional code editing) ──
+function MonacoEditorView({
+  tab,
+  onSave,
+}: {
+  tab: PreviewTab;
+  onSave: (content: string) => void;
+}) {
+  const code = extractPureCode(tab.content);
+  const language = getMonacoLanguage(tab);
+  const [content, setContent] = useState(code);
+  const [isDirty, setIsDirty] = useState(false);
+  const editorRef = useRef<any>(null);
+
+  // Sync content when tab changes externally
+  useEffect(() => {
+    const newCode = extractPureCode(tab.content);
+    if (newCode !== content && !isDirty) {
+      setContent(newCode);
+    }
+  }, [tab.content, tab.id, content, isDirty]);
+
+  const handleSave = useCallback(() => {
+    onSave(content);
+    setIsDirty(false);
+  }, [content, onSave]);
+
+  // Ctrl+S / Cmd+S save shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        if (isDirty) handleSave();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [isDirty, handleSave]);
+
+  const handleEditorMount = (editor: any) => {
+    editorRef.current = editor;
+  };
+
+  // Don't render for binary files or very short content
+  if (isBinaryFile(tab) || !code.trim() || code.length < 5) {
+    return <CodeView tab={tab} />;
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Editor status bar */}
+      <div className="flex items-center justify-between px-3 py-1 bg-[#1e1e2e] border-b border-white/[0.06] shrink-0">
+        <span className="text-xs text-gray-400">
+          {language} • {content.split("\n").length} lines
+        </span>
+        {isDirty && (
+          <button
+            onClick={handleSave}
+            className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium text-white transition-colors hover:opacity-90"
+            style={{ background: ACCENT }}
+          >
+            <Save className="h-3 w-3" />
+            Save (Ctrl+S)
+          </button>
+        )}
+      </div>
+      {/* Monaco editor */}
+      <div className="flex-1 min-h-0">
+        <MonacoEditor
+          height="100%"
+          language={language}
+          theme="vs-dark"
+          value={content}
+          onMount={handleEditorMount}
+          onChange={(val) => {
+            setContent(val || "");
+            setIsDirty(true);
+          }}
+          options={{
+            minimap: { enabled: false },
+            fontSize: 14,
+            wordWrap: "on",
+            scrollBeyondLastLine: false,
+            padding: { top: 16 },
+            lineNumbers: "on",
+            renderLineHighlight: "all",
+            bracketPairColorization: { enabled: true },
+            automaticLayout: true,
+            tabSize: 2,
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -546,14 +747,39 @@ function WebsiteView({ tab }: { tab: PreviewTab }) {
 }
 
 export default function ArtifactPreviewPanel() {
-  const { isOpen, tabs, activeTabId, isFullscreen, width, setOpen, setActiveTab, removeTab, setFullscreen } = useArtifactPreviewStore();
-  const [activeView, setActiveView] = useState<"code" | "preview" | "sandbox" | "website">("code");
+  const { isOpen, tabs, activeTabId, isFullscreen, width, setOpen, setActiveTab, removeTab, setFullscreen, updateTab } = useArtifactPreviewStore();
+  const [activeView, setActiveView] = useState<"code" | "preview" | "sandbox" | "website" | "split">("code");
+  const [isEditing, setIsEditing] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
 
+  // Version history state
+  const [showHistory, setShowHistory] = useState(false);
+  const [versions, setVersions] = useState<ArtifactVersion[]>([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+
+  // Export state
+  const [showExport, setShowExport] = useState(false);
+
   const sandboxAvailable = activeTab ? canSandbox(activeTab) : false;
   const websiteAvailable = activeTab ? isWebsitePreview(activeTab) : false;
+
+  // Detected artifact info for the type indicator
+  const detectedArtifact = activeTab ? detectArtifactType(extractPureCode(activeTab.content || "")) : null;
+
+  // Close dropdowns when clicking outside
+  const historyRef = useRef<HTMLDivElement>(null);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (historyRef.current && !historyRef.current.contains(e.target as Node)) setShowHistory(false);
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setShowExport(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   useEffect(() => {
     if (activeTabId && activeTab) {
@@ -567,6 +793,10 @@ export default function ArtifactPreviewPanel() {
       } else {
         setActiveView("code");
       }
+      // Close dropdowns on tab switch
+      setShowHistory(false);
+      setShowExport(false);
+      setIsEditing(false);
     }
   }, [activeTabId, sandboxAvailable, websiteAvailable]);
 
@@ -587,6 +817,84 @@ export default function ArtifactPreviewPanel() {
     const newIdx = historyIdx + dir;
     if (newIdx >= 0 && newIdx < history.length) { setHistoryIdx(newIdx); setActiveTab(history[newIdx]); }
   };
+
+  // ── Version History Handlers ──
+  const handleLoadVersions = useCallback(async () => {
+    if (!activeTab) return;
+    if (showHistory) { setShowHistory(false); return; }
+    setShowHistory(true);
+    setShowExport(false);
+    setLoadingVersions(true);
+    try {
+      const res = await fetch(`/api/artifacts/versions?artifactId=${encodeURIComponent(activeTab.id)}`);
+      const data = await res.json();
+      setVersions(data.versions || []);
+    } catch {
+      setVersions([]);
+    } finally {
+      setLoadingVersions(false);
+    }
+  }, [activeTab, showHistory]);
+
+  const handleRollbackVersion = useCallback(async (version: ArtifactVersion) => {
+    if (!activeTab) return;
+    try {
+      const res = await fetch("/api/artifacts/versions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "rollback", artifactId: activeTab.id, versionId: version.id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Update the tab content with the rolled-back version
+        updateTab(activeTab.id, { content: version.content });
+        toast.success(`Rolled back to v${version.version}`);
+        setShowHistory(false);
+      } else {
+        toast.error("Rollback failed");
+      }
+    } catch {
+      toast.error("Rollback failed");
+    }
+  }, [activeTab, updateTab]);
+
+  // ── Export Handlers ──
+  const handleExport = useCallback((format: string) => {
+    if (!activeTab) return;
+    const code = extractPureCode(activeTab.content);
+    const detected = detectArtifactType(code);
+    const result = exportArtifact(code, detected.type, activeTab.title);
+    const blob = new Blob([result.content], { type: result.mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = result.filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`Exported as ${format.toUpperCase()}`);
+    setShowExport(false);
+  }, [activeTab]);
+
+  // ── Monaco Editor Save Handler ──
+  const handleEditorSave = useCallback(async (content: string) => {
+    if (!activeTab) return;
+    updateTab(activeTab.id, { content });
+    try {
+      await fetch("/api/artifacts/versions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save",
+          artifactId: activeTab.id,
+          content,
+          message: "Manual edit",
+        }),
+      });
+      toast.success("Saved & version created");
+    } catch {
+      toast.success("Saved locally");
+    }
+  }, [activeTab, updateTab]);
 
   const handleCopy = () => { if (!activeTab) return; navigator.clipboard.writeText(extractPureCode(activeTab.content)); toast.success("Copied"); };
   const handleDownload = () => {
@@ -630,13 +938,26 @@ export default function ArtifactPreviewPanel() {
   const title = activeTab.title.replace(/^Code Artifact - |^Artifact - |^Document - |^Response - /, "");
   const hasPrev = historyIdx > 0;
   const hasNext = historyIdx < history.length - 1;
+  const exportFormats = getExportFormats(detectedArtifact?.type || "code");
 
   const renderContent = () => {
     switch (activeView) {
-      case "code": return <CodeView tab={activeTab} />;
+      case "code": return isEditing
+        ? <MonacoEditorView tab={activeTab} onSave={handleEditorSave} />
+        : <CodeView tab={activeTab} />;
       case "preview": return <PreviewView tab={activeTab} />;
       case "sandbox": return <SandboxView tab={activeTab} />;
       case "website": return <WebsiteView tab={activeTab} />;
+      case "split": return (
+        <div className="flex h-full">
+          <div className="w-1/2 border-r border-white/[0.06] overflow-hidden">
+            <MonacoEditorView tab={activeTab} onSave={handleEditorSave} />
+          </div>
+          <div className="w-1/2 overflow-hidden">
+            {canSandbox(activeTab) ? <SandboxView tab={activeTab} /> : <PreviewView tab={activeTab} />}
+          </div>
+        </div>
+      );
     }
   };
 
@@ -675,7 +996,7 @@ export default function ArtifactPreviewPanel() {
 
           {/* View toggle: Code | Preview | Website | Sandbox */}
           <div className="flex items-center rounded-lg bg-muted/30 p-0.5 shrink-0">
-            <button onClick={() => setActiveView("code")} className={cn("flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors duration-150", activeView === "code" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground")}>
+            <button onClick={() => { setActiveView("code"); }} className={cn("flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors duration-150", activeView === "code" && !isEditing ? "bg-background shadow-sm text-foreground" : activeView === "code" && isEditing ? "bg-orange-500/10 shadow-sm text-orange-500" : "text-muted-foreground")}>
               <Code2 className="h-3.5 w-3.5" />Code
             </button>
             <button onClick={() => setActiveView("preview")} className={cn("flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors duration-150", activeView === "preview" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground")}>
@@ -691,9 +1012,109 @@ export default function ArtifactPreviewPanel() {
                 <Play className="h-3.5 w-3.5" />Sandbox
               </button>
             )}
+            <button onClick={() => setActiveView("split")} className={cn("flex items-center gap-1 px-2.5 py-1 rounded-md text-[12px] font-medium transition-colors duration-150", activeView === "split" ? "bg-violet-500/10 shadow-sm text-violet-500" : "text-muted-foreground")} title="Split: Editor + Live Preview">
+              <Layers className="h-3.5 w-3.5" />Split
+            </button>
           </div>
 
+          {/* Edit toggle — only visible when in Code view */}
+          {activeView === "code" && (
+            <button
+              onClick={() => setIsEditing(!isEditing)}
+              className={cn(
+                "flex items-center gap-1 px-2 py-1 rounded-md text-[12px] font-medium transition-colors duration-150 shrink-0",
+                isEditing
+                  ? "bg-orange-500/15 text-orange-500 shadow-sm"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+              title={isEditing ? "Switch to read-only view" : "Edit in Monaco Editor"}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              {isEditing ? "Editing" : "Edit"}
+            </button>
+          )}
+
           <div className="flex items-center gap-1 shrink-0">
+            {/* Version History Button */}
+            <div className="relative" ref={historyRef}>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleLoadVersions} title="Version History">
+                <History className="h-3.5 w-3.5" />
+              </Button>
+              {showHistory && (
+                <div className="absolute right-0 top-full mt-1 w-64 rounded-lg border border-border bg-popover shadow-lg z-50 overflow-hidden">
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/30">
+                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[12px] font-semibold text-foreground">Version History</span>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto">
+                    {loadingVersions ? (
+                      <div className="flex items-center justify-center py-6">
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        <span className="ml-2 text-[12px] text-muted-foreground">Loading...</span>
+                      </div>
+                    ) : versions.length === 0 ? (
+                      <div className="px-3 py-6 text-center">
+                        <Clock className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+                        <p className="text-[12px] text-muted-foreground">No versions saved yet.</p>
+                        <p className="text-[11px] text-muted-foreground/70 mt-1">Versions are created when artifacts are auto-saved.</p>
+                      </div>
+                    ) : (
+                      versions.map((v) => (
+                        <button
+                          key={v.id}
+                          onClick={() => handleRollbackVersion(v)}
+                          className="w-full flex items-start gap-2 px-3 py-2 hover:bg-muted/50 transition-colors text-left group border-b border-border/30 last:border-0"
+                        >
+                          <div className="shrink-0 mt-0.5">
+                            <div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center">
+                              <span className="text-[9px] font-bold text-primary">{v.version}</span>
+                            </div>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[12px] font-medium text-foreground truncate">{v.message}</div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-[10px] text-muted-foreground">{formatRelativeTime(v.createdAt)}</span>
+                              <span className="text-[10px] text-muted-foreground">·</span>
+                              <span className="text-[10px] text-muted-foreground">{v.tokenCount} tokens</span>
+                            </div>
+                          </div>
+                          <RotateCcw className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-1 shrink-0" />
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Export Button */}
+            <div className="relative" ref={exportRef}>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setShowExport(!showExport); setShowHistory(false); }} title="Export">
+                <FileDown className="h-3.5 w-3.5" />
+              </Button>
+              {showExport && (
+                <div className="absolute right-0 top-full mt-1 w-52 rounded-lg border border-border bg-popover shadow-lg z-50 overflow-hidden">
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/30">
+                    <FileDown className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[12px] font-semibold text-foreground">Export As</span>
+                  </div>
+                  <div className="py-1">
+                    {exportFormats.map((fmt) => (
+                      <button
+                        key={fmt.format}
+                        onClick={() => handleExport(fmt.format)}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-muted/50 transition-colors text-left"
+                      >
+                        <span className="text-[14px]">{fmt.icon}</span>
+                        <span className="text-[12px] font-medium text-foreground">{fmt.label}</span>
+                        <span className="ml-auto text-[10px] text-muted-foreground uppercase">.{fmt.format}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleCopy} title="Copy"><Copy className="h-3.5 w-3.5" /></Button>
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleShare} title="Share"><Share2 className="h-3.5 w-3.5" /></Button>
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleDownload} title="Download"><Download className="h-3.5 w-3.5" /></Button>
@@ -702,14 +1123,77 @@ export default function ArtifactPreviewPanel() {
           </div>
         </div>
 
-        {tabs.length > 1 && (
-          <div className="flex items-center gap-0.5 px-2 py-1 border-b border-border/50 bg-muted/10 overflow-x-auto scrollbar-none shrink-0">
-            {tabs.map((tab) => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={cn("flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium shrink-0 max-w-[140px] border border-transparent", activeTabId === tab.id ? "bg-primary/10 text-primary border-primary/20" : "hover:bg-muted text-muted-foreground")}>
-                <span className="truncate">{tab.title.slice(0, 25)}</span>
-                <span onClick={(e) => { e.stopPropagation(); removeTab(tab.id); }} className="ml-0.5 hover:bg-destructive/10 rounded p-0.5 cursor-pointer"><X className="h-2.5 w-2.5" /></span>
-              </button>
-            ))}
+        {/* Enhanced Tab Bar */}
+        {tabs.length > 0 && (
+          <div className="flex items-center gap-0.5 px-2 py-1 border-b border-border/50 bg-muted/10 shrink-0">
+            <div className="flex items-center gap-0.5 overflow-x-auto scrollbar-none flex-1">
+              {tabs.map((tab) => {
+                const TabIcon = getTabTypeIcon(tab);
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); removeTab(tab.id); } }}
+                    className={cn(
+                      "group flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium shrink-0 max-w-[160px] border border-transparent transition-colors",
+                      activeTabId === tab.id ? "bg-primary/10 text-primary border-primary/20" : "hover:bg-muted text-muted-foreground"
+                    )}
+                  >
+                    <TabIcon className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    {/* Streaming indicator */}
+                    {tab.isStreaming && (
+                      <span className="relative flex h-2 w-2 shrink-0">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500" />
+                      </span>
+                    )}
+                    <span className="truncate">{tab.title.slice(0, 25)}</span>
+                    {/* Close button — visible on hover or always for active tab */}
+                    <span
+                      onClick={(e) => { e.stopPropagation(); removeTab(tab.id); }}
+                      className={cn(
+                        "ml-0.5 rounded p-0.5 cursor-pointer transition-opacity",
+                        activeTabId === tab.id ? "opacity-60 hover:opacity-100 hover:bg-destructive/10" : "opacity-0 group-hover:opacity-60 hover:!opacity-100 hover:bg-destructive/10"
+                      )}
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {tabs.length > 3 && (
+              <span className="text-[10px] text-muted-foreground shrink-0 ml-1 px-1.5 py-0.5 rounded bg-muted/50">
+                {tabs.length} tabs
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Artifact Type Indicator */}
+        {detectedArtifact && (
+          <div className="flex items-center gap-2 px-3 py-1 border-b border-border/30 bg-muted/5 shrink-0">
+            {(() => {
+              const TypeIcon = getTabTypeIcon(activeTab);
+              return <TypeIcon className="h-3 w-3 text-muted-foreground shrink-0" />;
+            })()}
+            <span className="text-[11px] font-medium text-muted-foreground capitalize">{detectedArtifact.type}</span>
+            <span className="text-[10px] text-muted-foreground/60">·</span>
+            <span className="text-[10px] px-1.5 py-0 rounded bg-muted/40 text-muted-foreground font-mono uppercase">.{detectedArtifact.exportFormat}</span>
+            <span className="text-[10px] text-muted-foreground/60">·</span>
+            <span className="text-[10px] text-muted-foreground/70">{detectedArtifact.mimeType}</span>
+            {activeTab.isStreaming && (
+              <>
+                <span className="text-[10px] text-muted-foreground/60">·</span>
+                <span className="flex items-center gap-1 text-[10px] text-orange-500">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-orange-500" />
+                  </span>
+                  streaming
+                </span>
+              </>
+            )}
           </div>
         )}
 
