@@ -198,22 +198,112 @@ export function extractCodeArtifacts(content: string): Array<{language: string; 
 }
 
 /**
+ * Aggressively strip all tool execution artifacts from content.
+ * This is the nuclear option — removes everything that looks like
+ * tool calls, tool results, system action markers, and intermediate
+ * reasoning output, leaving ONLY the actual user-facing content.
+ */
+function aggressiveStripToolArtifacts(text: string): string {
+  let clean = text;
+
+  // 1. Remove <longcat_tool_call>...</longcat_tool_call> blocks
+  clean = clean.replace(/<longcat_tool_call>[\s\S]*?<\/longcat_tool_call>/g, "");
+  clean = clean.replace(/<longcat_arg_key>[\s\S]*?<\/longcat_arg_key>/g, "");
+  clean = clean.replace(/<longcat_arg_value>[\s\S]*?<\/longcat_arg_value>/g, "");
+
+  // 2. Remove ```tool_call ... ``` code blocks
+  clean = clean.replace(/```tool_call\s*\n[\s\S]*?```/g, "");
+
+  // 3. Remove ⚙️ system action blocks (including everything until the next code block or double newline)
+  clean = clean.replace(/⚙️[\s\S]*?```/g, "");
+  clean = clean.replace(/⚙️[\s\S]*?(?=\n\n|```|$)/g, "");
+
+  // 4. Remove "*Running tool: ...*" indicators
+  clean = clean.replace(/\*Running tool: \w+\.\.\.\*/g, "");
+
+  // 5. Remove "[Executed System Action]" blocks
+  clean = clean.replace(/\*\*\[Executed System Action\]\*\*[\s\S]*?```/g, "");
+  clean = clean.replace(/\[Executed System Action\][\s\S]*?```/g, "");
+
+  // 6. Remove Tool:/Status:/Result: blocks (multi-line, handles large JSON payloads)
+  clean = clean.replace(/Tool:\s*\w+[^\n]*\nStatus:\s*(?:success|error)[^\n]*\nResult:\s*\n?[\s\S]*?(?=\n\n|\n(?=Tool:)|$)/gm, "");
+  clean = clean.replace(/Tool:\s*\w+[\s\S]*?Status:\s*(?:success|error)[\s\S]*?Result:\s*\{[\s\S]*?\}/g, "");
+
+  // 7. Remove • bullet-separated tool results
+  clean = clean.replace(/•\s*\n?Tool:\s*\w+[\s\S]*?Result:\s*\{[\s\S]*?\}/g, "");
+
+  // 8. Remove standalone JSON tool results with known keys
+  // Use brace-matching for correctness with nested objects
+  const toolResultMarkers = ['{"path":', '{"url":', '{"query":', '{"expression":', '{"stdout":'];
+  for (const marker of toolResultMarkers) {
+    let searchFrom = 0;
+    let safety = 0;
+    while (clean.includes(marker, searchFrom) && safety < 30) {
+      safety++;
+      const startIdx = clean.indexOf(marker, searchFrom);
+      if (startIdx < 0) break;
+      const afterStart = clean.substring(startIdx);
+      const endIdx = findMatchingBraceIndex(afterStart);
+      if (endIdx >= 0) {
+        // Check if the surrounding context suggests this is a tool result
+        const lookback = clean.substring(Math.max(0, startIdx - 200), startIdx);
+        if (lookback.includes("Result:") || lookback.includes("Tool:") || lookback.includes("Status:")) {
+          clean = clean.substring(0, startIdx) + clean.substring(startIdx + endIdx + 1);
+        } else {
+          searchFrom = startIdx + marker.length;
+        }
+      } else {
+        searchFrom = startIdx + marker.length;
+      }
+    }
+  }
+
+  // 9. Remove JSON tool calls: {"name": ..., "arguments": ...}
+  clean = stripJsonToolCalls(clean);
+
+  // 10. Remove <local_cmd>, <list_files>, <read_file>, <write_file> XML tags
+  clean = clean.replace(/<local_cmd>[\s\S]*?<\/local_cmd>/g, "");
+  clean = clean.replace(/<list_files>[\s\S]*?<\/list_files>/g, "");
+  clean = clean.replace(/<read_file>[\s\S]*?<\/read_file>/g, "");
+  clean = clean.replace(/<write_file\s+path="[\s\S]*?">[\s\S]*?<\/write_file>/g, "");
+
+  // 11. Remove action/tool JSON: {"action": ..., "params": ...}
+  clean = clean.replace(/\{\s*"(?:action|tool)"\s*:\s*"[^"]*"\s*,\s*"(?:params|input|arguments|args)"\s*:\s*\{[\s\S]*?\}\s*\}/g, "");
+
+  // 12. Remove lines that are purely tool execution markers
+  clean = clean.replace(/^Tool:\s*\w+.*$/gm, "");
+  clean = clean.replace(/^Status:\s*(?:success|error).*$/gm, "");
+  clean = clean.replace(/^Result:\s*$/gm, "");
+
+  // 13. Remove reasoning/thinking text patterns ("Let me explore...", "Now I have a clear picture...", etc.)
+  // These are intermediate reasoning steps that should NOT appear in the artifact preview
+  clean = clean.replace(/^(?:Let me|I'll|I will|Now I|First,? let me|I need to|I should|Let's)\s+[^\n]{0,200}\n/gm, "");
+
+  // 14. Clean up excessive whitespace
+  clean = clean.replace(/\n{3,}/g, "\n\n").trim();
+
+  return clean;
+}
+
+/**
  * Clean content for artifact preview display.
  * Returns content suitable for showing in the artifact panel,
  * with all tool execution artifacts stripped out.
  * If the content contains code blocks, returns ONLY the code blocks
  * (which is what the user actually wants to see as an artifact).
+ *
+ * IMPORTANT: This function is designed to be very aggressive in filtering
+ * out tool call content, reasoning text, and intermediate output.
+ * Only actual code artifacts and meaningful responses should survive.
  */
 export function cleanContentForArtifactDisplay(fullContent: string): { content: string; type: string; title: string } | null {
-  // First strip all tool call markup
-  let cleaned = stripToolCallXml(fullContent);
-  // Strip ⚙️ system action blocks more aggressively
-  cleaned = cleaned.replace(/⚙️[\s\S]*?```/g, "");
-  // Strip tool result JSON objects
+  // First, do an aggressive strip of all tool artifacts
+  let cleaned = aggressiveStripToolArtifacts(fullContent);
+
+  // Additional pass: strip any remaining tool result JSON objects
   cleaned = cleaned.replace(/\{"(url|path|query|expression|stdout|error|textContent|title|description|content|truncated|totalLength|files|written|replacements|appended|fetched|memories)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "");
-  // Strip Tool:/Status:/Result: blocks
-  cleaned = cleaned.replace(/Tool:\s*\w+[^\n]*\n?Status:\s*(?:success|error)[^\n]*\n?Result:\s*\n?[\s\S]*?(?=\n\n|\n(?=Tool:)|$)/gm, "");
-  cleaned = cleaned.replace(/•\s*\n?Tool:\s*\w+[\s\S]*?Result:\s*\{[\s\S]*?\}/g, "");
+
+  // Clean up
   cleaned = cleaned.replace(/\n{3,}/g, "\n\n").trim();
 
   // Check if this is primarily tool data — no artifact to show
@@ -226,18 +316,18 @@ export function cleanContentForArtifactDisplay(fullContent: string): { content: 
 
   // Extract code blocks from the cleaned content
   const codeBlocks = extractCodeArtifacts(cleaned);
-  
+
   if (codeBlocks.length > 0) {
     // If there are code blocks, use the largest/most meaningful one
     // Sort by code length descending — the main artifact is usually the largest block
     const sorted = [...codeBlocks].sort((a, b) => b.code.length - a.code.length);
     const mainBlock = sorted[0];
     const language = mainBlock.language;
-    
+
     // Determine artifact type from language
     let type = "code";
     let title = mainBlock.code.split('\n')[0]?.substring(0, 60) || "Code Artifact";
-    
+
     if (language === "html" || mainBlock.code.includes("<!DOCTYPE") || mainBlock.code.includes("<html")) {
       type = "html";
       title = "HTML Preview";
@@ -275,10 +365,10 @@ export function cleanContentForArtifactDisplay(fullContent: string): { content: 
       type = "diagram";
       title = "Diagram";
     }
-    
+
     return { content: mainBlock.code, type, title };
   }
-  
+
   // No code blocks — return cleaned content as-is if it's substantial
   if (cleaned.length < 50) return null;
   return { content: cleaned, type: "markdown", title: "Response" };

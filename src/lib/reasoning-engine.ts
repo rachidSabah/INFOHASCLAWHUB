@@ -212,6 +212,21 @@ export function assessTaskComplexity(prompt: string, historyLength: number): "si
   // Multi-file or multi-system indicators
   if (/entire|all|every|whole|comprehensive|complete|full/i.test(lower)) score += 1;
 
+  // Coding project indicators — these are always complex or critical
+  // because they require multiple file writes and verification
+  const codingProjectWords = ["theme", "plugin", "website", "app", "application", "project", "module", "package",
+    "wordpress", "react", "next", "vue", "angular", "svelte", "django", "flask", "express",
+    "wordpress theme", "wp theme", "chrome extension", "vscode extension", "npm package",
+    "full stack", "fullstack", "frontend", "backend", "api server", "rest api", "graphql"];
+  for (const w of codingProjectWords) {
+    if (lower.includes(w)) score += 2;
+  }
+
+  // Multi-file creation indicators
+  if (/create\s+(a\s+)?(new\s+)?(theme|website|app|project|component|page|module|plugin)/i.test(lower)) score += 2;
+  if (/write\s+(all\s+)?(the\s+)?(files|components|pages|modules|scripts)/i.test(lower)) score += 2;
+  if (/proceed|continue|go ahead|finish|complete (the|it)/i.test(lower)) score += 1;
+
   // Long conversation context adds complexity
   if (historyLength > 6) score += 1;
   if (historyLength > 12) score += 1;
@@ -657,24 +672,27 @@ export function getAdaptiveMaxIterations(
   toolsUsedCount: number,
   hasErrors: boolean
 ): number {
+  // Generous iteration limits — ClawHub agents must be able to complete
+  // complex multi-file coding tasks (e.g., WordPress themes = 12+ files)
   const baseIterations: Record<string, number> = {
-    simple: 5,
-    moderate: 10,
-    complex: 15,
-    critical: 20,
+    simple: 8,
+    moderate: 15,
+    complex: 25,
+    critical: 35,
   };
   
-  let maxIter = baseIterations[taskComplexity] || 10;
+  let maxIter = baseIterations[taskComplexity] || 15;
   
   // If we've already used many tools and no errors, we're making good progress
   // — allow more iterations to complete complex multi-step tasks
-  if (toolsUsedCount >= 4 && !hasErrors) maxIter += 3;
+  if (toolsUsedCount >= 4 && !hasErrors) maxIter += 5;
+  if (toolsUsedCount >= 8 && !hasErrors) maxIter += 5;
   
   // If we have errors, we need more attempts to try alternatives
-  if (hasErrors) maxIter += 2;
+  if (hasErrors) maxIter += 3;
   
-  // Cap at 25 to prevent infinite loops
-  return Math.min(maxIter, 25);
+  // Cap at 50 to prevent infinite loops (but allow complex tasks to complete)
+  return Math.min(maxIter, 50);
 }
 
 // ============================================================
