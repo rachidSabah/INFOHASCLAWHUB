@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from "re
 import { useChatStore, useUIStore, useSettingsStore, useAgentStore, usePromptStore } from "@/lib/stores";
 import { useArtifactPreviewStore } from "@/lib/artifact-store";
 import { detectArtifact, shouldAutoOpen } from "@/lib/artifact-detector";
-import { stripToolCallXml } from "@/lib/tool-call-utils";
+import { stripToolCallXml, cleanContentForArtifactDisplay, extractCodeArtifacts } from "@/lib/tool-call-utils";
 import { optimizeRequest } from "@/lib/optimization-engine";
 import { getCachedResponse, setCachedResponse } from "@/lib/response-cache";
 import { saveUIState, restoreUIState, autoSaveConversation } from "@/lib/conversation-recovery";
@@ -323,45 +323,17 @@ export function ChatInput() {
               if (data.type === "chunk") {
                 fullContent += data.content;
                 setStreamingContent(fullContent);
-                // Use the robust stripToolCallXml from tools.ts instead of fragile regexes
-                // It properly handles nested JSON, XML tags, and code blocks
-                let cleanContent = stripToolCallXml(fullContent)
-                  .replace(/⚙️\s*\*\*\[Executed System Action\]\*\*:[\s\S]*?```/g, "")
-                  .replace(/\n{3,}/g, "\n\n")
-                  .trim();
-                // Use robust brace-matching to strip tool call JSON that survived stripToolCallXml
-                cleanContent = stripToolCallJson(cleanContent);
-                // Strip tool result JSON objects that leak through
-                cleanContent = cleanContent.replace(/\{"(url|path|query|expression|stdout|error)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "");
-                cleanContent = cleanContent.replace(/\n{3,}/g, "\n\n").trim();
-                // Only detect artifacts in non-tool-execution content
-                const isToolExecution = cleanContent.includes('⚙️') || cleanContent.includes('[Executed System Action]') || /^Tool:\s*\w+/m.test(cleanContent);
-                // Skip artifact detection if content is just tool call data
-                // Check both the START of content AND the content after stripping all tool JSON
-                const strippedOfAllToolData = cleanContent
-                  .replace(/\{"name"\s*:\s*"[^"]*"\s*,\s*"(arguments|args|params)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "")
-                  .replace(/\{"(url|path|query|expression|stdout|error|textContent|title|description|content|truncated|totalLength)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "")
-                  .replace(/Tool:\s*\w+[^\n]*\n?Status:\s*\w+[^\n]*\n?Result:\s*\n?[\s\S]*?(?=\n\n|\n(?=Tool:)|$)/gm, "")
-                  .replace(/•\s*\n?Tool:\s*\w+[\s\S]*?Result:\s*\{[\s\S]*?\}/g, "")
-                  .trim();
-                const isJustToolData = cleanContent.trim().startsWith('{"name":') || 
-                  cleanContent.trim().startsWith('{"url":') ||
-                  cleanContent.trim().startsWith('{"path":') ||
-                  cleanContent.trim().startsWith('{"query":') ||
-                  cleanContent.trim().startsWith('{"expression":') ||
-                  cleanContent.trim().startsWith('{"content":') ||
-                  cleanContent.trim().startsWith('Tool:') ||
-                  cleanContent.trim().length < 20 ||
-                  strippedOfAllToolData.length < 30;
-                const detected = (isToolExecution || isJustToolData) ? null : detectArtifact(cleanContent, data.content);
-                if (!isToolExecution && shouldAutoOpen(detected, cleanContent.length)) {
+                // Use the new cleanContentForArtifactDisplay to properly extract
+                // only the meaningful code artifacts, stripping all tool execution output
+                const artifactResult = cleanContentForArtifactDisplay(fullContent);
+                if (artifactResult) {
                   const store = useArtifactPreviewStore.getState();
                   if (!store.isOpen) {
                     const previewTab = {
                       id: `auto-${Date.now()}`,
-                      title: detected!.title,
-                      type: detected!.type,
-                      content: cleanContent,
+                      title: artifactResult.title,
+                      type: artifactResult.type as any,
+                      content: artifactResult.content,
                       isPinned: false,
                       isStreaming: true,
                       createdAt: Date.now(),
@@ -370,7 +342,12 @@ export function ChatInput() {
                   } else {
                     const active = store.tabs.find(t => t.id === store.activeTabId);
                     if (active) {
-                      store.updateTab(active.id, { content: cleanContent, isStreaming: true });
+                      store.updateTab(active.id, { 
+                        content: artifactResult.content, 
+                        title: artifactResult.title,
+                        type: artifactResult.type as any,
+                        isStreaming: true 
+                      });
                     }
                   }
                 }
@@ -391,6 +368,87 @@ export function ChatInput() {
                 const resultStr = typeof data.result === "string" ? data.result : JSON.stringify(data.result);
                 const fileMatch = resultStr.match(/(\S+\.(docx|pdf|xlsx|pptx|csv|png|jpg|svg|html))\b/i);
                 const isBrowser = data.toolName === "agent-browser" || resultStr.includes("playwright") || resultStr.includes("browser_context") || resultStr.includes("Page opened");
+                
+                // Handle write_file results — create a code artifact with the written content
+                if (data.toolName === "write_file" && data.status === "success") {
+                  try {
+                    const writeResult = JSON.parse(resultStr);
+                    if (writeResult.path && writeResult.written) {
+                      const store = useArtifactPreviewStore.getState();
+                      const filePath = writeResult.path;
+                      const fileName = filePath.split(/[\\\/]/).pop() || "file";
+                      const ext = fileName.split('.').pop()?.toLowerCase() || "";
+                      
+                      // Determine type from file extension
+                      let artifactType: any = "code";
+                      if (["html", "htm"].includes(ext)) artifactType = "html";
+                      else if (["css", "scss", "sass", "less"].includes(ext)) artifactType = "css";
+                      else if (["py"].includes(ext)) artifactType = "python";
+                      else if (["ts", "tsx"].includes(ext)) artifactType = "typescript";
+                      else if (["js", "jsx"].includes(ext)) artifactType = "javascript";
+                      else if (["php"].includes(ext)) artifactType = "code";
+                      else if (["sql"].includes(ext)) artifactType = "sql";
+                      else if (["json"].includes(ext)) artifactType = "json";
+                      else if (["yml", "yaml"].includes(ext)) artifactType = "yaml";
+                      else if (["md", "markdown"].includes(ext)) artifactType = "markdown";
+                      else if (["sh", "bash"].includes(ext)) artifactType = "shell";
+                      else if (["xml"].includes(ext)) artifactType = "xml";
+                      
+                      // Extract the file content from the write_file arguments in fullContent
+                      let writtenContent = "";
+                      // Try to find the content in the accumulated text
+                      // Look for write_file tool calls and extract their content argument
+                      const writeFilePattern = /write_file[\s\S]*?"content"\s*:\s*"([\s\S]*?)"\s*[,}]/g;
+                      let writeMatch;
+                      while ((writeMatch = writeFilePattern.exec(fullContent)) !== null) {
+                        if (writeMatch[1].length > writtenContent.length) {
+                          writtenContent = writeMatch[1]
+                            .replace(/\\n/g, "\n")
+                            .replace(/\\t/g, "\t")
+                            .replace(/\\"/g, '"')
+                            .replace(/\\\\/g, "\\")
+                            .trim();
+                        }
+                      }
+                      
+                      // Also try extracting from code blocks in the content
+                      if (!writtenContent || writtenContent.length < 10) {
+                        const codeBlocks = extractCodeArtifacts(fullContent);
+                        if (codeBlocks.length > 0) {
+                          // Use the largest code block
+                          const sorted = [...codeBlocks].sort((a, b) => b.code.length - a.code.length);
+                          writtenContent = sorted[0].code;
+                        }
+                      }
+                      
+                      // Final fallback
+                      if (!writtenContent || writtenContent.length < 10) {
+                        const artifactResult = cleanContentForArtifactDisplay(fullContent);
+                        writtenContent = artifactResult?.content || stripToolCallXml(fullContent).trim();
+                      }
+                      
+                      // Create or update the artifact tab for this written file
+                      const existingTab = store.tabs.find(t => t.title === fileName);
+                      const tabData = {
+                        title: fileName,
+                        type: artifactType,
+                        content: writtenContent,
+                        metadata: { filePath, saved: true },
+                        isStreaming: false,
+                      };
+                      if (existingTab) {
+                        store.updateTab(existingTab.id, tabData);
+                      } else {
+                        store.addTab({
+                          id: `file-${Date.now()}`,
+                          ...tabData,
+                          isPinned: false,
+                          createdAt: Date.now(),
+                        });
+                      }
+                    }
+                  } catch (err) { console.error('write_file artifact error:', err); }
+                }
                 
                 // Handle web_fetch results — create a website preview artifact
                 if (data.toolName === "web_fetch" && data.status === "success") {
@@ -476,27 +534,18 @@ export function ChatInput() {
                   // Don't overwrite website-type tabs with stripped content — they need the raw JSON
                   // for WebsiteView to parse and render correctly
                   if (active.type !== "website") {
-                    let cleanContent = stripToolCallXml(fullContent)
-                      .replace(/⚙️\s*\*\*\[Executed System Action\]\*\*:[\s\S]*?```/g, "")
-                      .replace(/\n{3,}/g, "\n\n")
-                      .trim();
-                    // Use robust brace-matching to strip tool call JSON that survived stripToolCallXml
-                    cleanContent = stripToolCallJson(cleanContent);
-                    cleanContent = cleanContent.replace(/\{"(url|path|query|expression|stdout|error|content|truncated|totalLength)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "");
-                    cleanContent = cleanContent.replace(/\n{3,}/g, "\n\n").trim();
-                    
-                    // Check if the cleaned content is essentially just tool result data
-                    // If so, close the artifact panel instead of showing empty/garbage content
-                    const isOnlyToolData = cleanContent.trim().length < 30 ||
-                      /^Tool:\s*\w+/m.test(cleanContent) ||
-                      cleanContent.trim().startsWith('{"path":') ||
-                      cleanContent.trim().startsWith('{"url":');
-                    
-                    if (isOnlyToolData) {
-                      // Remove the tab entirely — it was a false artifact detection
+                    // Use the new cleanContentForArtifactDisplay for final content
+                    const artifactResult = cleanContentForArtifactDisplay(fullContent);
+                    if (!artifactResult) {
+                      // No meaningful artifact content — remove the tab
                       store.removeTab(active.id);
                     } else {
-                      store.updateTab(active.id, { content: cleanContent, isStreaming: false });
+                      store.updateTab(active.id, { 
+                        content: artifactResult.content, 
+                        title: artifactResult.title,
+                        type: artifactResult.type as any,
+                        isStreaming: false 
+                      });
                     }
                   } else {
                     store.updateTab(active.id, { isStreaming: false });

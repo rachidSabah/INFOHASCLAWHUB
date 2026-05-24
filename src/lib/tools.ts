@@ -99,9 +99,9 @@ const availableTools: ToolDefinition[] = [
   },
   {
     name: "write_file",
-    description: "Write content to a file at the given relative path. Creates parent directories if needed.",
+    description: "Write content to a file at the given relative path. Creates parent directories if needed. ALWAYS use this tool to save any code or content you generate — your task is NOT complete until files are saved to the workspace.",
     parameters: {
-      filePath: { type: "string", description: "Path to the file relative to the workspace" },
+      filePath: { type: "string", description: "Path to the file relative to the workspace (e.g., 'theme/style.css', 'src/index.ts')" },
       content: { type: "string", description: "Content to write to the file" },
     },
     execute: async (params, workspacePath) => {
@@ -643,7 +643,7 @@ const availableTools: ToolDefinition[] = [
   },
   {
     name: "append_file",
-    description: "Append content to an existing file. If the file doesn't exist, creates it. Useful for adding to logs, appending to configs, or incrementally building files.",
+    description: "Append content to an existing file. If the file doesn't exist, creates it. Useful for adding to logs, appending to configs, or incrementally building files. ALWAYS save your work using write_file or append_file.",
     parameters: {
       filePath: { type: "string", description: "Path to the file relative to the workspace" },
       content: { type: "string", description: "Content to append" },

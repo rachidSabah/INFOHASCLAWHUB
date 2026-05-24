@@ -158,10 +158,128 @@ export function stripToolCallXml(text: string): string {
   clean = clean.replace(/<write_file\s+path="[\s\S]*?">[\s\S]*?<\/write_file>/g, "");
   // 7. Remove "Tool: / Status: / Result:" blocks (read_file, list_files, etc.)
   clean = stripToolResultBlocks(clean);
-  // 8. Clean up excessive empty lines (but preserve spaces — critical for streaming!)
+  // 8. Remove ⚙️ **[Executed System Action]** blocks with their tool result content
+  // These blocks contain raw tool execution results that should never be shown to users
+  clean = clean.replace(/⚙️\s*\*\*\[Executed System Action\]\**\*:[\s\S]*?```/g, "");
+  clean = clean.replace(/⚙️[\s\S]*?```/g, "");
+  // 9. Remove "*Running tool: ...*" indicators
+  clean = clean.replace(/\*Running tool: \w+\.\.\.\*/g, "");
+  // 10. Clean up excessive empty lines (but preserve spaces — critical for streaming!)
   // DO NOT use .trim() here — during streaming, spaces between words arrive as leading
   // spaces on tokens (e.g., " how", " are", " you"), and trimming them concatenates
   // all words together (e.g., "Hellohowareyoutoday").
   clean = clean.replace(/\n{3,}/g, "\n\n");
   return clean;
+}
+
+/**
+ * Extract code blocks from content, returning only the meaningful code artifacts.
+ * Strips out all tool call markup, reasoning text, and intermediate output
+ * so the artifact preview shows ONLY the actual code content.
+ */
+export function extractCodeArtifacts(content: string): Array<{language: string; code: string}> {
+  const codeBlocks: Array<{language: string; code: string}> = [];
+  const regex = /```(\w*)\n([\s\S]*?)```/g;
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    const language = match[1] || "text";
+    const code = match[2].trim();
+    // Skip tool_call blocks, tiny blocks, and blocks that are just tool results
+    if (language === "tool_call") continue;
+    if (code.length < 20) continue;
+    // Skip blocks that are just tool result JSON
+    if (code.trim().startsWith('{"path":') || code.trim().startsWith('{"url":') ||
+        code.trim().startsWith('{"query":') || code.trim().startsWith('{"stdout"')) continue;
+    // Skip blocks that contain Tool:/Status:/Result: markers
+    if (/^Tool:\s*\w+/m.test(code) && /Status:\s*(success|error)/m.test(code)) continue;
+    codeBlocks.push({ language, code });
+  }
+  return codeBlocks;
+}
+
+/**
+ * Clean content for artifact preview display.
+ * Returns content suitable for showing in the artifact panel,
+ * with all tool execution artifacts stripped out.
+ * If the content contains code blocks, returns ONLY the code blocks
+ * (which is what the user actually wants to see as an artifact).
+ */
+export function cleanContentForArtifactDisplay(fullContent: string): { content: string; type: string; title: string } | null {
+  // First strip all tool call markup
+  let cleaned = stripToolCallXml(fullContent);
+  // Strip ⚙️ system action blocks more aggressively
+  cleaned = cleaned.replace(/⚙️[\s\S]*?```/g, "");
+  // Strip tool result JSON objects
+  cleaned = cleaned.replace(/\{"(url|path|query|expression|stdout|error|textContent|title|description|content|truncated|totalLength|files|written|replacements|appended|fetched|memories)"\s*:[^}]*(?:\{[^}]*\}[^}]*)*\}/g, "");
+  // Strip Tool:/Status:/Result: blocks
+  cleaned = cleaned.replace(/Tool:\s*\w+[^\n]*\n?Status:\s*(?:success|error)[^\n]*\n?Result:\s*\n?[\s\S]*?(?=\n\n|\n(?=Tool:)|$)/gm, "");
+  cleaned = cleaned.replace(/•\s*\n?Tool:\s*\w+[\s\S]*?Result:\s*\{[\s\S]*?\}/g, "");
+  cleaned = cleaned.replace(/\n{3,}/g, "\n\n").trim();
+
+  // Check if this is primarily tool data — no artifact to show
+  const isOnlyToolData = cleaned.length < 30 ||
+    cleaned.startsWith('{"path":') ||
+    cleaned.startsWith('{"url":') ||
+    cleaned.startsWith('{"query":') ||
+    cleaned.startsWith('Tool:');
+  if (isOnlyToolData) return null;
+
+  // Extract code blocks from the cleaned content
+  const codeBlocks = extractCodeArtifacts(cleaned);
+  
+  if (codeBlocks.length > 0) {
+    // If there are code blocks, use the largest/most meaningful one
+    // Sort by code length descending — the main artifact is usually the largest block
+    const sorted = [...codeBlocks].sort((a, b) => b.code.length - a.code.length);
+    const mainBlock = sorted[0];
+    const language = mainBlock.language;
+    
+    // Determine artifact type from language
+    let type = "code";
+    let title = mainBlock.code.split('\n')[0]?.substring(0, 60) || "Code Artifact";
+    
+    if (language === "html" || mainBlock.code.includes("<!DOCTYPE") || mainBlock.code.includes("<html")) {
+      type = "html";
+      title = "HTML Preview";
+    } else if (language === "css" || language === "scss") {
+      type = "css";
+      title = "Stylesheet";
+    } else if (language === "python" || language === "py") {
+      type = "python";
+      title = "Python Script";
+    } else if (language === "typescript" || language === "ts" || language === "tsx") {
+      type = "typescript";
+      title = "TypeScript Module";
+    } else if (language === "javascript" || language === "js" || language === "jsx") {
+      type = "javascript";
+      title = "JavaScript Module";
+    } else if (language === "php") {
+      type = "code";
+      title = "PHP Script";
+    } else if (language === "sql") {
+      type = "sql";
+      title = "SQL Query";
+    } else if (language === "json") {
+      type = "json";
+      title = "JSON Data";
+    } else if (language === "yaml" || language === "yml") {
+      type = "yaml";
+      title = "YAML Config";
+    } else if (language === "markdown" || language === "md") {
+      type = "markdown";
+      title = "Document";
+    } else if (language === "shell" || language === "bash" || language === "sh") {
+      type = "shell";
+      title = "Shell Script";
+    } else if (language === "mermaid") {
+      type = "diagram";
+      title = "Diagram";
+    }
+    
+    return { content: mainBlock.code, type, title };
+  }
+  
+  // No code blocks — return cleaned content as-is if it's substantial
+  if (cleaned.length < 50) return null;
+  return { content: cleaned, type: "markdown", title: "Response" };
 }
