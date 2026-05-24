@@ -30,6 +30,8 @@ import {
   type ThinkingConfig,
   DEFAULT_THINKING_CONFIG,
 } from "@/lib/reasoning-engine";
+import { executeWithResilience, isProviderHealthy, getProviderHealth } from "@/lib/resilience";
+import { semanticCacheLookup, semanticCacheStore } from "@/lib/semantic-cache";
 
 let cachedProviders: any[] | null = null;
 let providersCacheTime = 0;
@@ -333,9 +335,33 @@ async function parseAndExecuteTools(
   }
 
   console.log(`[${requestId}] Found ${calls.length} tool call(s) in response`);
-  const results: string[] = [];
 
-  for (const call of calls) {
+  // READ-ONLY tools that can always run in parallel
+  const READ_ONLY_TOOLS = new Set([
+    "read_file", "list_files", "tree_view", "grep_code", "git_status",
+    "get_system_info", "get_current_time", "memory_recall", "web_search",
+    "web_fetch", "diff_files", "calculator", "file_change_check", "list_processes",
+    "get_env_var",
+  ]);
+
+  // Helper: extract file path from tool arguments
+  function getFilePath(call: { name: string; arguments: Record<string, any> }): string | null {
+    return call.arguments.filePath || call.arguments.dirPath || call.arguments.path || null;
+  }
+
+  // Helper: determine if a tool call is a write operation
+  function isWriteOperation(call: { name: string; arguments: Record<string, any> }): boolean {
+    return ["write_file", "search_replace", "append_file", "memory_save"].includes(call.name);
+  }
+
+  // Group tool calls into parallel execution groups
+  // Strategy: all read-only tools run in parallel. Write tools run sequentially
+  // unless they target different files.
+  const results: string[] = [];
+  const writtenPaths = new Set<string>();
+
+  // Execute a single tool call with event streaming
+  async function executeSingleTool(call: { name: string; arguments: Record<string, any> }): Promise<ToolCallResult> {
     console.log(`[${requestId}] Executing tool: ${call.name}`);
 
     controller.enqueue(
@@ -358,6 +384,12 @@ async function parseAndExecuteTools(
     }
     allToolCalls.push(result);
 
+    return result;
+  }
+
+  if (calls.length === 1) {
+    // Single tool — execute directly
+    const result = await executeSingleTool(calls[0]);
     let formattedResult: string;
     try {
       const parsed = JSON.parse(result.result);
@@ -365,10 +397,63 @@ async function parseAndExecuteTools(
     } catch {
       formattedResult = result.result;
     }
+    results.push(`Tool: ${result.name}\nStatus: ${result.status}\nResult:\n${formattedResult}`);
+  } else {
+    // Multiple tools — determine parallel groups
+    const independentCalls: typeof calls = [];
+    const dependentCalls: typeof calls = [];
 
-    results.push(
-      `Tool: ${result.name}\nStatus: ${result.status}\nResult:\n${formattedResult}`
-    );
+    for (const call of calls) {
+      const isReadOnly = READ_ONLY_TOOLS.has(call.name);
+      const filePath = getFilePath(call);
+      const isWrite = isWriteOperation(call);
+
+      if (isReadOnly) {
+        // Read-only tools are always independent
+        independentCalls.push(call);
+      } else if (isWrite && filePath && writtenPaths.has(filePath)) {
+        // Write to already-written path — dependent
+        dependentCalls.push(call);
+      } else {
+        // First write to a path or other tool — can run in parallel with reads
+        independentCalls.push(call);
+        if (isWrite && filePath) {
+          writtenPaths.add(filePath);
+        }
+      }
+    }
+
+    // Execute independent calls in parallel
+    if (independentCalls.length > 0) {
+      console.log(`[${requestId}] Executing ${independentCalls.length} tool(s) in parallel`);
+      const parallelResults = await Promise.all(
+        independentCalls.map(call => executeSingleTool(call))
+      );
+
+      for (const result of parallelResults) {
+        let formattedResult: string;
+        try {
+          const parsed = JSON.parse(result.result);
+          formattedResult = JSON.stringify(parsed, null, 2);
+        } catch {
+          formattedResult = result.result;
+        }
+        results.push(`Tool: ${result.name}\nStatus: ${result.status}\nResult:\n${formattedResult}`);
+      }
+    }
+
+    // Execute dependent calls sequentially
+    for (const call of dependentCalls) {
+      const result = await executeSingleTool(call);
+      let formattedResult: string;
+      try {
+        const parsed = JSON.parse(result.result);
+        formattedResult = JSON.stringify(parsed, null, 2);
+      } catch {
+        formattedResult = result.result;
+      }
+      results.push(`Tool: ${result.name}\nStatus: ${result.status}\nResult:\n${formattedResult}`);
+    }
   }
 
   return {
